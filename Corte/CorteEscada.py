@@ -12,11 +12,12 @@ except Exception:
 
 class DialogoEscada:
     """
-    Caixa de diálogo simples para entrada de piso, espelho e número de degraus.
+    Caixa de diálogo para entrada dos dados da escada: piso, espelho,
+    número de degraus, espessura, patamares e vigas de partida/chegada.
     Uso:
         dlg = DialogoEscada()
         resultado = dlg.pedir_dados()
-        # resultado é None (usuário cancelou) ou (piso, espelho, n_degraus)
+        # resultado é None (usuário cancelou) ou um dicionário com os campos
     """
 
     def __init__(self):
@@ -31,37 +32,47 @@ class DialogoEscada:
         frm = ttk.Frame(root, padding=15)
         frm.grid(row=0, column=0)
 
-        ttk.Label(frm, text="Passo (largura do degrau, cm):").grid(row=0, column=0, sticky="w", pady=5)
-        piso_var = tk.StringVar(value="29")
-        ttk.Entry(frm, textvariable=piso_var, width=12).grid(row=0, column=1, pady=5, padx=5)
+        campos = [
+            ("piso", "Piso (largura do degrau, cm):", "29"),
+            ("espelho", "Espelho (altura do degrau, cm):", "17.9"),
+            ("n_degraus", "Número de degraus:", "12"),
+            ("espessura", "Espessura do degrau (cm):", "15"),
+            ("patamar_partida", "Comprimento patamar de partida (cm):", "150"),
+            ("patamar_chegada", "Comprimento patamar de chegada (cm):", "150"),
+            ("viga_largura", "Largura da viga (cm):", "20"),
+            ("viga_altura", "Altura da viga (cm):", "40"),
+        ]
 
-        ttk.Label(frm, text="Espelho (altura do degrau, cm):").grid(row=1, column=0, sticky="w", pady=5)
-        espelho_var = tk.StringVar(value="17.9")
-        ttk.Entry(frm, textvariable=espelho_var, width=12).grid(row=1, column=1, pady=5, padx=5)
-
-        ttk.Label(frm, text="Número de degraus:").grid(row=2, column=0, sticky="w", pady=5)
-        n_var = tk.StringVar(value="12")
-        ttk.Entry(frm, textvariable=n_var, width=12).grid(row=2, column=1, pady=5, padx=5)
-
-        ttk.Label(frm, text="Espessura do degrau (cm):").grid(row=3, column=0, sticky="w", pady=5)
-        espessura_var = tk.StringVar(value="15")
-        ttk.Entry(frm, textvariable=espessura_var, width=12).grid(row=3, column=1, pady=5, padx=5)
+        variaveis = {}
+        row = 0
+        for chave, rotulo, valor_padrao in campos:
+            ttk.Label(frm, text=rotulo).grid(row=row, column=0, sticky="w", pady=5)
+            var = tk.StringVar(value=valor_padrao)
+            ttk.Entry(frm, textvariable=var, width=12).grid(row=row, column=1, pady=5, padx=5)
+            variaveis[chave] = var
+            row += 1
 
         msg_var = tk.StringVar(value="")
-        ttk.Label(frm, textvariable=msg_var, foreground="red").grid(row=4, column=0, columnspan=2, pady=(0, 5))
+        ttk.Label(frm, textvariable=msg_var, foreground="red").grid(
+            row=row, column=0, columnspan=2, pady=(0, 5)
+        )
+        row += 1
 
         def confirmar():
             try:
-                piso = float(piso_var.get().replace(",", "."))
-                espelho = float(espelho_var.get().replace(",", "."))
-                n_degraus = int(n_var.get())
-                espessura = float(espessura_var.get().replace(",", "."))
-                if piso <= 0 or espelho <= 0 or n_degraus <= 0 or espessura <= 0:
+                dados = {}
+                for chave, _, _ in campos:
+                    texto = variaveis[chave].get().replace(",", ".")
+                    if chave == "n_degraus":
+                        dados[chave] = int(texto)
+                    else:
+                        dados[chave] = float(texto)
+                if any(v <= 0 for v in dados.values()):
                     raise ValueError
             except ValueError:
                 msg_var.set("Preencha valores numéricos válidos (> 0).")
                 return
-            self.resultado = (piso, espelho, n_degraus, espessura)
+            self.resultado = dados
             root.destroy()
 
         def cancelar():
@@ -69,7 +80,7 @@ class DialogoEscada:
             root.destroy()
 
         btn_frame = ttk.Frame(frm)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=(10, 0))
+        btn_frame.grid(row=row, column=0, columnspan=2, pady=(10, 0))
         ttk.Button(btn_frame, text="Gerar", command=confirmar).grid(row=0, column=0, padx=5)
         ttk.Button(btn_frame, text="Cancelar", command=cancelar).grid(row=0, column=1, padx=5)
 
@@ -85,17 +96,24 @@ class DialogoEscada:
         return self.resultado
 
 
-def desenhar_perfil_escada(dwg, x0, y0, piso, espelho, n_degraus, espessura):
+def desenhar_perfil_escada(dwg, x0, y0, dados):
     """
-    Desenha o perfil em degraus (zigue-zague) de uma escada, a partir do
-    ponto x0,y0 (canto inferior esquerdo do primeiro degrau), a linha
-    diagonal (inclinação) ligando o primeiro ao último degrau, e a linha
-    de espessura do degrau, paralela à diagonal, "espessura" cm abaixo dela.
+
     """
+    piso = dados["piso"]
+    espelho = dados["espelho"]
+    n_degraus = int(dados["n_degraus"])
+    espessura = dados["espessura"]
+    patamar_partida = dados["patamar_partida"]
+    patamar_chegada = dados["patamar_chegada"]
+    viga_largura = dados["viga_largura"]
+    viga_altura = dados["viga_altura"]
+
     draw = dwg.draw
     draw.level = 241     # nível observado no editor (ajuste se necessário)
     draw.color = 3       # verde
 
+    # --- Degraus ---
     x, y = x0, y0
     ponta_inicial = None
     ponta_final = None
@@ -111,15 +129,33 @@ def desenhar_perfil_escada(dwg, x0, y0, piso, espelho, n_degraus, espessura):
         x += piso
         y += espelho
 
-    # Linha de espessura do degrau: paralela à linha que liga a ponta do
-    # primeiro degrau à ponta do último degrau (não mais ao ponto de início
-    # e fim gerais), "espessura" cm por baixo dela. TQSGeo.ParallelLine
-    # calcula a paralela à direita do sentido do vetor 1->2; como essa linha
-    # sobe da esquerda pra direita, a distância positiva cai por baixo.
+    x_final, y_final = x, y   # ponto final do último degrau (topo)
+
+    # --- Linha de espessura do degrau ---
+    # Paralela à linha que liga a ponta do primeiro degrau à ponta do
+    # último, "espessura" cm por baixo dela.
     xp1, yp1, xp2, yp2 = TQSGeo.ParallelLine(
         ponta_inicial[0], ponta_inicial[1], ponta_final[0], ponta_final[1], espessura
     )
     draw.Line(xp1, yp1, xp2, yp2)
+
+    # --- Patamar de partida (à esquerda de x0,y0) ---
+    x_patamar_partida = x0 - patamar_partida
+    draw.Line(x_patamar_partida, y0, x0, y0)
+
+    # Viga de partida: retângulo na ponta externa do patamar (mais longe
+    # da escada), descendo "viga_altura" cm abaixo do nível do patamar.
+    x_viga_partida = x_patamar_partida - viga_largura
+    draw.Rectangle(x_viga_partida, y0 - viga_altura, x_patamar_partida, y0)
+
+    # --- Patamar de chegada (à direita do último degrau) ---
+    x_patamar_chegada = x_final + patamar_chegada
+    draw.Line(x_final, y_final, x_patamar_chegada, y_final)
+
+    # Viga de chegada: retângulo na ponta externa do patamar (mais longe
+    # da escada), descendo "viga_altura" cm abaixo do nível do patamar.
+    x_viga_chegada = x_patamar_chegada + viga_largura
+    draw.Rectangle(x_patamar_chegada, y_final - viga_altura, x_viga_chegada, y_final)
 
 
 def meucmd(eag, tqsjan):
@@ -133,17 +169,20 @@ def meucmd(eag, tqsjan):
         TQSUtil.writef("Operação cancelada.")
         return
 
-    piso, espelho, n_degraus, espessura = dados
-
     icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Ponto inicial da escada (canto inferior esquerdo)")
     if icod == -1:
         TQSUtil.writef("Operação cancelada.")
         return
 
-    desenhar_perfil_escada(tqsjan.dwg, x0, y0, piso, espelho, n_degraus, espessura)
+    desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
     tqsjan.ZoomTotal()
 
     TQSUtil.writef(
-        "Escada gerada: %d degraus, piso=%.1f cm, espelho=%.1f cm, espessura=%.1f cm"
-        % (n_degraus, piso, espelho, espessura)
+        "Escada gerada: %d degraus, piso=%.1f cm, espelho=%.1f cm, espessura=%.1f cm, "
+        "patamar partida=%.1f cm, patamar chegada=%.1f cm, viga %.1fx%.1f cm"
+        % (
+            dados["n_degraus"], dados["piso"], dados["espelho"], dados["espessura"],
+            dados["patamar_partida"], dados["patamar_chegada"],
+            dados["viga_largura"], dados["viga_altura"],
+        )
     )
