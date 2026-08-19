@@ -1,4 +1,4 @@
-from TQS import TQSUtil
+from TQS import TQSUtil, TQSGeo
 
 try:
     import tkinter as tk
@@ -120,6 +120,49 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x0 - patamar_partida, y0, x0, y0)
     draw.Line(x_final, y_final, x_final + patamar_chegada, y_final)
 
+    # Linha paralela ao patamar (base).
+    x_base_ini = x0 - patamar_partida
+    y_base = y0 - espessura
+
+    # Reta paralela ao alinhamento das pontas dos degraus, mantendo
+    # afastamento constante de "espessura".
+    p1x = x0 + piso
+    p1y = y0 + espelho
+    if n_degraus > 1:
+        p2x = x_final
+        p2y = y_final - espelho
+    else:
+        p2x = p1x + piso
+        p2y = p1y + espelho
+
+    xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
+    xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
+
+    ym = (p1y + p2y) / 2.0
+    if ((ya1 + ya2) / 2.0) < ym:
+        xp1, yp1, xp2, yp2 = xa1, ya1, xa2, ya2
+    else:
+        xp1, yp1, xp2, yp2 = xb1, yb1, xb2, yb2
+
+    if abs(yp2 - yp1) > 1e-9:
+        t = (y_base - yp1) / (yp2 - yp1)
+        x_base_fim = xp1 + t * (xp2 - xp1)
+    else:
+        x_base_fim = xp1
+
+    draw.Line(x_base_ini, y_base, x_base_fim, y_base)
+
+    dx = xp2 - xp1
+    dy = yp2 - yp1
+    dlen = (dx * dx + dy * dy) ** 0.5
+    if dlen > 0:
+        x_linha_fim = xp2 - dx / dlen * 0.001
+        y_linha_fim = yp2 - dy / dlen * 0.001
+    else:
+        x_linha_fim = xp2
+        y_linha_fim = yp2
+    draw.Line(x_base_fim, y_base, x_linha_fim, y_linha_fim)
+
     # Viga de saída: contorno em L/U como no desenho.
     # A espessura define a linha interna que vai até a reta do primeiro espelho.
     x_viga_saida_ini = x0 - patamar_partida - viga_largura
@@ -135,11 +178,10 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
     draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
 
-    # Viga de chegada: mantida como estava, sem mexer por enquanto.
+    # Viga de chegada simples, sem buraco por enquanto.
     x_viga_chegada_ini = x_final + patamar_chegada
     x_viga_chegada_fim = x_final + patamar_chegada + viga_largura
     draw.Rectangle(x_viga_chegada_ini, y_final - viga_altura, x_viga_chegada_fim, y_final)
-
 
 def meucmd(eag, tqsjan):
     if not TKINTER_OK:
