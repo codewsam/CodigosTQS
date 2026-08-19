@@ -29,6 +29,9 @@ class DialogoEscada:
             ("n_degraus", "Número de degraus:", "12"),
             ("patamar_partida", "Patamar de partida (cm):", "150"),
             ("patamar_chegada", "Patamar de chegada (cm):", "150"),
+            ("espessura", "Espessura da viga (cm):", "15"),
+            ("viga_largura", "Largura da viga (cm):", "20"),
+            ("viga_altura", "Altura da viga (cm):", "40"),
         ]
 
         variaveis = {}
@@ -91,6 +94,9 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     n_degraus = int(dados["n_degraus"])
     patamar_partida = dados["patamar_partida"]
     patamar_chegada = dados["patamar_chegada"]
+    espessura = dados["espessura"]
+    viga_largura = dados["viga_largura"]
+    viga_altura = dados["viga_altura"]
 
     draw = dwg.draw
     draw.level = 241
@@ -114,6 +120,27 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x0 - patamar_partida, y0, x0, y0)
     draw.Line(x_final, y_final, x_final + patamar_chegada, y_final)
 
+    # Viga de saída: contorno em L/U como no desenho.
+    # A espessura define a linha interna que vai até a reta do primeiro espelho.
+    x_viga_saida_ini = x0 - patamar_partida - viga_largura
+    x_viga_saida_meio = x_viga_saida_ini + viga_largura
+    x_viga_saida_fim = x0
+    y_viga_saida_topo = y0
+    y_viga_saida_base = y0 - viga_altura
+    y_viga_saida_corte = y0 - espessura
+
+    draw.Line(x_viga_saida_ini, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_base)
+    draw.Line(x_viga_saida_ini, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_base)
+    draw.Line(x_viga_saida_meio, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_corte)
+    draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
+    draw.Line(x_viga_saida_fim, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_topo)
+    draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
+
+    # Viga de chegada: mantida como estava, sem mexer por enquanto.
+    x_viga_chegada_ini = x_final + patamar_chegada
+    x_viga_chegada_fim = x_final + patamar_chegada + viga_largura
+    draw.Rectangle(x_viga_chegada_ini, y_final - viga_altura, x_viga_chegada_fim, y_final)
+
 
 def meucmd(eag, tqsjan):
     if not TKINTER_OK:
@@ -136,9 +163,12 @@ def meucmd(eag, tqsjan):
 
     TQSUtil.writef(
         "Escada gerada: %d degraus, piso=%.1f cm, espelho=%.1f cm, "
-        "patamar partida=%.1f cm, patamar chegada=%.1f cm"
+        "patamar partida=%.1f cm, patamar chegada=%.1f cm, "
+        "espessura=%.1f cm, viga %.1fx%.1f cm"
         % (
             dados["n_degraus"], dados["piso"], dados["espelho"],
             dados["patamar_partida"], dados["patamar_chegada"],
+            dados["espessura"],
+            dados["viga_largura"], dados["viga_altura"],
         )
     )
