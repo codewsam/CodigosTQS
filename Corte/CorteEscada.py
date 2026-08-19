@@ -133,7 +133,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x_viga_saida_ini, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_base)
     draw.Line(x_viga_saida_meio, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_corte)
     draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
-    draw.Line(x_viga_saida_fim, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_topo)
     draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
 
     # Viga de chegada: mantida como estava, sem mexer por enquanto.
