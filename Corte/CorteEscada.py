@@ -1,7 +1,5 @@
-from TQS import TQSUtil, TQSGeo
+from TQS import TQSUtil
 
-# Import isolado num bloco try/except só pra dar uma mensagem clara
-# caso o Python do TQS não tenha o tkinter disponível.
 try:
     import tkinter as tk
     from tkinter import ttk
@@ -11,14 +9,7 @@ except Exception:
 
 
 class DialogoEscada:
-    """
-    Caixa de diálogo para entrada dos dados da escada: piso, espelho,
-    número de degraus, espessura, patamares e vigas de partida/chegada.
-    Uso:
-        dlg = DialogoEscada()
-        resultado = dlg.pedir_dados()
-        # resultado é None (usuário cancelou) ou um dicionário com os campos
-    """
+    """Caixa de diálogo para os dados da escada."""
 
     def __init__(self):
         self.resultado = None
@@ -36,11 +27,8 @@ class DialogoEscada:
             ("piso", "Piso (largura do degrau, cm):", "29"),
             ("espelho", "Espelho (altura do degrau, cm):", "17.9"),
             ("n_degraus", "Número de degraus:", "12"),
-            ("espessura", "Espessura do degrau (cm):", "15"),
-            ("patamar_partida", "Comprimento patamar de partida (cm):", "150"),
-            ("patamar_chegada", "Comprimento patamar de chegada (cm):", "150"),
-            ("viga_largura", "Largura da viga (cm):", "20"),
-            ("viga_altura", "Altura da viga (cm):", "40"),
+            ("patamar_partida", "Patamar de partida (cm):", "150"),
+            ("patamar_chegada", "Patamar de chegada (cm):", "150"),
         ]
 
         variaveis = {}
@@ -97,65 +85,34 @@ class DialogoEscada:
 
 
 def desenhar_perfil_escada(dwg, x0, y0, dados):
-    """
-
-    """
+    """Desenha os degraus e os patamares de partida/chegada."""
     piso = dados["piso"]
     espelho = dados["espelho"]
     n_degraus = int(dados["n_degraus"])
-    espessura = dados["espessura"]
     patamar_partida = dados["patamar_partida"]
     patamar_chegada = dados["patamar_chegada"]
-    viga_largura = dados["viga_largura"]
-    viga_altura = dados["viga_altura"]
 
     draw = dwg.draw
-    draw.level = 241     # nível observado no editor (ajuste se necessário)
-    draw.color = 3       # verde
+    draw.level = 241
+    draw.color = 3
 
-    # --- Degraus ---
     x, y = x0, y0
-    ponta_inicial = None
-    ponta_final = None
-    for _ in range(n_degraus):
-        draw.Line(x, y, x + piso, y)                    # piso do degrau
-        # Ponta do degrau: canto em "L" onde o piso encontra o espelho
-        ponta_x, ponta_y = x + piso, y
-        if ponta_inicial is None:
-            ponta_inicial = (ponta_x, ponta_y)
-        ponta_final = (ponta_x, ponta_y)
+    for i in range(n_degraus):
+        draw.Line(x, y, x, y + espelho)  # espelho do degrau
 
-        draw.Line(x + piso, y, x + piso, y + espelho)    # espelho (subida)
-        x += piso
-        y += espelho
+        if i < n_degraus - 1:
+            draw.Line(x, y + espelho, x + piso, y + espelho)  # piso do degrau
+            x += piso
+            y += espelho
+        else:
+            # Último degrau: termina em espelho, sem gerar piso final.
+            x += 0
+            y += espelho
 
-    x_final, y_final = x, y   # ponto final do último degrau (topo)
+    x_final, y_final = x, y
 
-    # --- Linha de espessura do degrau ---
-    # Paralela à linha que liga a ponta do primeiro degrau à ponta do
-    # último, "espessura" cm por baixo dela.
-    xp1, yp1, xp2, yp2 = TQSGeo.ParallelLine(
-        ponta_inicial[0], ponta_inicial[1], ponta_final[0], ponta_final[1], espessura
-    )
-    draw.Line(xp1, yp1, xp2, yp2)
-
-    # --- Patamar de partida (à esquerda de x0,y0) ---
-    x_patamar_partida = x0 - patamar_partida
-    draw.Line(x_patamar_partida, y0, x0, y0)
-
-    # Viga de partida: retângulo na ponta externa do patamar (mais longe
-    # da escada), descendo "viga_altura" cm abaixo do nível do patamar.
-    x_viga_partida = x_patamar_partida - viga_largura
-    draw.Rectangle(x_viga_partida, y0 - viga_altura, x_patamar_partida, y0)
-
-    # --- Patamar de chegada (à direita do último degrau) ---
-    x_patamar_chegada = x_final + patamar_chegada
-    draw.Line(x_final, y_final, x_patamar_chegada, y_final)
-
-    # Viga de chegada: retângulo na ponta externa do patamar (mais longe
-    # da escada), descendo "viga_altura" cm abaixo do nível do patamar.
-    x_viga_chegada = x_patamar_chegada + viga_largura
-    draw.Rectangle(x_patamar_chegada, y_final - viga_altura, x_viga_chegada, y_final)
+    draw.Line(x0 - patamar_partida, y0, x0, y0)
+    draw.Line(x_final, y_final, x_final + patamar_chegada, y_final)
 
 
 def meucmd(eag, tqsjan):
@@ -169,7 +126,7 @@ def meucmd(eag, tqsjan):
         TQSUtil.writef("Operação cancelada.")
         return
 
-    icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Ponto inicial da escada (canto inferior esquerdo)")
+    icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Ponto inicial da escada")
     if icod == -1:
         TQSUtil.writef("Operação cancelada.")
         return
@@ -178,11 +135,10 @@ def meucmd(eag, tqsjan):
     tqsjan.ZoomTotal()
 
     TQSUtil.writef(
-        "Escada gerada: %d degraus, piso=%.1f cm, espelho=%.1f cm, espessura=%.1f cm, "
-        "patamar partida=%.1f cm, patamar chegada=%.1f cm, viga %.1fx%.1f cm"
+        "Escada gerada: %d degraus, piso=%.1f cm, espelho=%.1f cm, "
+        "patamar partida=%.1f cm, patamar chegada=%.1f cm"
         % (
-            dados["n_degraus"], dados["piso"], dados["espelho"], dados["espessura"],
+            dados["n_degraus"], dados["piso"], dados["espelho"],
             dados["patamar_partida"], dados["patamar_chegada"],
-            dados["viga_largura"], dados["viga_altura"],
         )
     )
