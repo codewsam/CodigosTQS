@@ -152,15 +152,15 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     draw.Line(x_base_ini, y_base, x_base_fim, y_base)
 
-    dx = xp2 - xp1
-    dy = yp2 - yp1
-    dlen = (dx * dx + dy * dy) ** 0.5
-    if dlen > 0:
-        x_linha_fim = xp2 - dx / dlen * 0.001
-        y_linha_fim = yp2 - dy / dlen * 0.001
+    # Termina a reta inclinada no nível da espessura da chegada para manter
+    # o afastamento e permitir o fechamento com a viga de chegada.
+    y_chegada_corte = y_final - espessura
+    if abs(yp2 - yp1) > 1e-9:
+        t2 = (y_chegada_corte - yp1) / (yp2 - yp1)
+        x_linha_fim = xp1 + t2 * (xp2 - xp1)
     else:
         x_linha_fim = xp2
-        y_linha_fim = yp2
+    y_linha_fim = y_chegada_corte
     draw.Line(x_base_fim, y_base, x_linha_fim, y_linha_fim)
 
     # Viga de saída: contorno em L/U como no desenho.
@@ -178,10 +178,21 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
     draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
 
-    # Viga de chegada simples, sem buraco por enquanto.
-    x_viga_chegada_ini = x_final + patamar_chegada
-    x_viga_chegada_fim = x_final + patamar_chegada + viga_largura
-    draw.Rectangle(x_viga_chegada_ini, y_final - viga_altura, x_viga_chegada_fim, y_final)
+    # Viga de chegada espelhada (formato L/U), preservando a espessura.
+    x_viga_chegada_borda = x_final + patamar_chegada
+    x_viga_chegada_externa = x_viga_chegada_borda + viga_largura
+    y_viga_chegada_topo = y_final
+    y_viga_chegada_base = y_final - viga_altura
+    y_viga_chegada_corte = y_final - espessura
+
+    if x_linha_fim > x_viga_chegada_borda:
+        x_linha_fim = x_viga_chegada_borda
+
+    draw.Line(x_viga_chegada_externa, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_base)
+    draw.Line(x_viga_chegada_externa, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_base)
+    draw.Line(x_viga_chegada_borda, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_corte)
+    draw.Line(x_viga_chegada_borda, y_viga_chegada_corte, x_linha_fim, y_viga_chegada_corte)
+    draw.Line(x_viga_chegada_borda, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_topo)
 
 def meucmd(eag, tqsjan):
     if not TKINTER_OK:
