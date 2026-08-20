@@ -1,30 +1,79 @@
 from TQS import TQSUtil, TQSGeo
+import os
 
 try:
     import tkinter as tk
     from tkinter import ttk
+    # Para lidar com imagens mais complexas (como PNG) no Tkinter,
+    # às vezes precisamos da biblioteca PIL (Pillow).
+    # Ela já costuma vir instalada no ambiente Python do TQS moderno.
+    from PIL import Image, ImageTk
+
     TKINTER_OK = True
 except Exception:
     TKINTER_OK = False
 
 
 class DialogoEscada:
-    """Caixa de diálogo para os dados da escada."""
+    """Caixa de diálogo para os dados da escada, com diagrama explicativo."""
 
     def __init__(self):
         self.resultado = None
+        # Nome do arquivo de imagem que criamos (deve estar na mesma pasta do script)
+        self.nome_imagem = "diagrama_escada.png"
 
     def pedir_dados(self):
         root = tk.Tk()
-        root.title("Dados da Escada")
+        root.title("Dados da Escada - Plugin TQS")
         root.attributes("-topmost", True)
         root.resizable(False, False)
 
-        frm = ttk.Frame(root, padding=15)
-        frm.grid(row=0, column=0)
+        # Usar um estilo mais moderno para os widgets
+        style = ttk.Style(root)
+        style.theme_use('clam')  # 'clam', 'alt', 'default', 'classic'
 
+        # Frame principal que conterá tudo
+        main_frm = ttk.Frame(root, padding=15)
+        main_frm.pack(fill=tk.BOTH, expand=True)
+
+        # --- Coluna 1: Imagem/Diagrama ---
+        # Tenta carregar a imagem. Se não conseguir, cria um espaço vazio.
+        imagem_tk = None
+        erro_imagem = False
+        try:
+            # Caminho absoluto da imagem para garantir que seja encontrada
+            caminho_script = os.path.dirname(os.path.abspath(__file__))
+            caminho_imagem = os.path.join(caminho_script, self.nome_imagem)
+
+            # Carrega e redimensiona a imagem usando PIL
+            img_original = Image.open(caminho_imagem)
+            # Redimensiona para um tamanho que não ocupe toda a tela (ex: largura 400px)
+            largura_desejada = 400
+            w_percent = (largura_desejada / float(img_original.size[0]))
+            h_size = int((float(img_original.size[1]) * float(w_percent)))
+            img_redimensionada = img_original.resize((largura_desejada, h_size), Image.Resampling.LANCZOS)
+
+            imagem_tk = ImageTk.PhotoImage(img_redimensionada)
+
+            lbl_imagem = ttk.Label(main_frm, image=imagem_tk)
+            lbl_imagem.image = imagem_tk  # Mantém uma referência para evitar garbage collection
+            lbl_imagem.grid(row=0, column=0, rowspan=10, padx=(0, 20), sticky="nw")
+        except FileNotFoundError:
+            TQSUtil.writef(f"AVISO: Arquivo de imagem '{self.nome_imagem}' não encontrado na pasta do script.")
+            ttk.Label(main_frm, text="[Diagrama não encontrado]", foreground="gray").grid(row=0, column=0, rowspan=10,
+                                                                                          padx=(0, 20))
+            erro_imagem = True
+        except Exception as e:
+            TQSUtil.writef(f"ERRO ao carregar imagem: {e}")
+            ttk.Label(main_frm, text="[Erro ao carregar diagrama]", foreground="red").grid(row=0, column=0, rowspan=10,
+                                                                                           padx=(0, 20))
+            erro_imagem = True
+
+        # --- Coluna 2: Campos de Entrada ---
+        # Define os campos: (chave_no_dicionario, rotulo_exibido, valor_padrao)
+        # Chave 'Passo' corrigida para 'piso' conforme erro anterior.
         campos = [
-            ("piso", "Piso (largura do degrau, cm):", "29"),
+            ("piso", "Passo (largura do degrau, cm):", "29"),
             ("espelho", "Espelho (altura do degrau, cm):", "17.9"),
             ("n_degraus", "Número de degraus:", "12"),
             ("patamar_partida", "Patamar de partida (cm):", "150"),
@@ -34,21 +83,23 @@ class DialogoEscada:
             ("viga_altura", "Altura da viga (cm):", "40"),
         ]
 
+        # Container para os campos de entrada para melhor organização
+        inputs_frm = ttk.Frame(main_frm)
+        inputs_frm.grid(row=0, column=1, sticky="nsew")
+
         variaveis = {}
-        row = 0
-        for chave, rotulo, valor_padrao in campos:
-            ttk.Label(frm, text=rotulo).grid(row=row, column=0, sticky="w", pady=5)
+        for i, (chave, rotulo, valor_padrao) in enumerate(campos):
+            ttk.Label(inputs_frm, text=rotulo).grid(row=i, column=0, sticky="w", pady=5)
             var = tk.StringVar(value=valor_padrao)
-            ttk.Entry(frm, textvariable=var, width=12).grid(row=row, column=1, pady=5, padx=5)
+            ttk.Entry(inputs_frm, textvariable=var, width=15).grid(row=i, column=1, pady=5, padx=(10, 0))
             variaveis[chave] = var
-            row += 1
 
+        # --- Área de Mensagens de Erro ---
         msg_var = tk.StringVar(value="")
-        ttk.Label(frm, textvariable=msg_var, foreground="red").grid(
-            row=row, column=0, columnspan=2, pady=(0, 5)
-        )
-        row += 1
+        lbl_erro = ttk.Label(inputs_frm, textvariable=msg_var, foreground="red", wraplength=200)
+        lbl_erro.grid(row=len(campos), column=0, columnspan=2, pady=(10, 0), sticky="w")
 
+        # --- Botões de Ação ---
         def confirmar():
             try:
                 dados = {}
@@ -58,11 +109,14 @@ class DialogoEscada:
                         dados[chave] = int(texto)
                     else:
                         dados[chave] = float(texto)
+
+                # Validação básica: todos os valores devem ser maiores que zero
                 if any(v <= 0 for v in dados.values()):
                     raise ValueError
             except ValueError:
-                msg_var.set("Preencha valores numéricos válidos (> 0).")
+                msg_var.set("Erro: Preencha todos os campos com valores numéricos válidos e maiores que 0.")
                 return
+
             self.resultado = dados
             root.destroy()
 
@@ -70,14 +124,17 @@ class DialogoEscada:
             self.resultado = None
             root.destroy()
 
-        btn_frame = ttk.Frame(frm)
-        btn_frame.grid(row=row, column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(btn_frame, text="Gerar", command=confirmar).grid(row=0, column=0, padx=5)
+        btn_frame = ttk.Frame(inputs_frm)
+        btn_frame.grid(row=len(campos) + 1, column=0, columnspan=2, pady=(20, 0), sticky="e")
+
+        ttk.Button(btn_frame, text="Gerar Escada", command=confirmar, default="active").grid(row=0, column=0, padx=5)
         ttk.Button(btn_frame, text="Cancelar", command=cancelar).grid(row=0, column=1, padx=5)
 
+        # Atalhos de teclado
         root.bind("<Return>", lambda e: confirmar())
         root.bind("<Escape>", lambda e: cancelar())
 
+        # Centralizar a janela na tela
         root.update_idletasks()
         w, h = root.winfo_width(), root.winfo_height()
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -86,6 +143,9 @@ class DialogoEscada:
         root.mainloop()
         return self.resultado
 
+
+# --- As funções 'desenhar_perfil_escada' e 'meucmd' permanecem iguais ---
+# (Opcional: Você pode colar o resto do seu código original aqui para ter o script completo)
 
 def desenhar_perfil_escada(dwg, x0, y0, dados):
     """Desenha os degraus e os patamares de partida/chegada."""
@@ -193,6 +253,8 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x_viga_chegada_borda, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_corte)
     draw.Line(x_viga_chegada_borda, y_viga_chegada_corte, x_linha_fim, y_viga_chegada_corte)
     draw.Line(x_viga_chegada_borda, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_topo)
+    pass
+
 
 def meucmd(eag, tqsjan):
     if not TKINTER_OK:
