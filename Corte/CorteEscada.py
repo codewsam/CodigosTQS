@@ -6,7 +6,259 @@ try:
     from tkinter import ttk
     # Para lidar com imagens mais complexas (como PNG) no Tkinter,
     # às vezes precisamos da biblioteca PIL (Pillow).
-    # Ela já costuma vir instalada no ambiente Python do TQS moderno.
+    # Ela já costuma vir instalada no ambiente Python do TQS moderno.import os
+import json
+import subprocess
+from TQS import TQSUtil, TQSGeo
+
+
+def pedir_dados_janela_windows():
+    """Gera uma janela nativa do Windows independente do Python para coletar os dados."""
+    caminho_script = os.path.dirname(os.path.abspath(__file__))
+    hta_path = os.path.join(caminho_script, "dialogo_escada.hta")
+    json_path = os.path.join(caminho_script, "dados_temp.json")
+    img_path = os.path.join(caminho_script, "diagrama_escada.png")
+
+    # Se houver lixo de execuções anteriores, apaga
+    if os.path.exists(json_path):
+        try:
+            os.remove(json_path)
+        except:
+            pass
+
+    # Converte os caminhos para o formato do Windows/JavaScript
+    json_js = json_path.replace('\\', '\\\\')
+    img_html = "file:///" + img_path.replace('\\', '/')
+
+    # O código da interface da janela nativa do Windows
+    hta_content = f"""<!DOCTYPE html>
+    <html>
+    <head>
+        <meta http-equiv="x-ua-compatible" content="ie=edge" />
+        <title>Dados da Escada - Plugin TQS</title>
+        <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="EscadaTQS" BORDER="dialog" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
+        <style>
+            body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f0f0; margin: 20px; font-size: 14px; }}
+            .container {{ display: flex; gap: 20px; }}
+            .img-box {{ background: white; padding: 10px; border: 1px solid #ccc; border-radius: 5px; display:flex; align-items:center; justify-content:center; }}
+            .img-box img {{ max-width: 480px; }}
+            .form-box {{ display: flex; flex-direction: column; gap: 8px; flex: 1; }}
+            h3 {{ margin: 0 0 10px 0; color: #333; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }}
+            .campo {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }}
+            label {{ font-weight: 500; color: #444; }}
+            input {{ width: 80px; padding: 4px; text-align: right; border: 1px solid #aaa; border-radius: 3px; }}
+            .btns {{ margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }}
+            button {{ padding: 6px 15px; cursor: pointer; border: 1px solid #999; border-radius: 3px; background: #e1e1e1; }}
+            button:hover {{ background: #d1d1d1; }}
+            .btn-gerar {{ background: #0056b3; color: white; border: none; font-weight: bold; }}
+            .btn-gerar:hover {{ background: #004494; }}
+        </style>
+        <script>
+            // Define o tamanho da janela
+            window.resizeTo(1000, 480);
+
+            function confirmar() {{
+                try {{
+                    var fso = new ActiveXObject("Scripting.FileSystemObject");
+                    // Cria o ficheiro para o Python ler (formato ASCII)
+                    var file = fso.CreateTextFile("{json_js}", true, false);
+
+                    var dados = {{
+                        "piso": parseFloat(document.getElementById('piso').value.replace(',', '.')),
+                        "espelho": parseFloat(document.getElementById('espelho').value.replace(',', '.')),
+                        "n_degraus": parseInt(document.getElementById('n_degraus').value),
+                        "patamar_partida": parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')),
+                        "patamar_chegada": parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')),
+                        "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
+                        "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
+                        "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.'))
+                    }};
+
+                    file.Write(JSON.stringify(dados));
+                    file.Close();
+                    window.close(); // Fecha a janela e devolve o controlo ao TQS
+                }} catch (e) {{
+                    alert("Erro ao gravar os dados: " + e.message);
+                }}
+            }}
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <div class="img-box">
+                <img src="{img_html}" alt="Diagrama" onerror="this.style.display='none';">
+            </div>
+            <div class="form-box">
+                <h3>Dados da Escada</h3>
+                <div class="campo"><label>Passo / Largura (cm):</label><input type="text" id="piso" value="29"></div>
+                <div class="campo"><label>Espelho / Altura (cm):</label><input type="text" id="espelho" value="17.9"></div>
+                <div class="campo"><label>Numero de degraus:</label><input type="text" id="n_degraus" value="12"></div>
+                <div class="campo"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+                <div class="campo"><label>Patamar chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
+                <div class="campo"><label>Espessura laje (cm):</label><input type="text" id="espessura" value="15"></div>
+                <div class="campo"><label>Largura viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
+                <div class="campo"><label>Altura viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
+
+                <div class="btns">
+                    <button onclick="window.close()">Cancelar</button>
+                    <button class="btn-gerar" onclick="confirmar()">Gerar Escada</button>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    # 1. Cria a janela executável
+    with open(hta_path, "w", encoding="utf-8") as f:
+        f.write(hta_content)
+
+    # 2. Roda a janela no Windows (O Python do TQS vai ficar em pausa esperando a janela fechar)
+    subprocess.call(["mshta", hta_path])
+
+    # 3. Quando a janela fechar, o Python lê os dados do ficheiro JSON
+    dados = None
+    if os.path.exists(json_path):
+        with open(json_path, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        # Limpa o ficheiro
+        os.remove(json_path)
+
+    # Limpa a janela temporária do disco
+    if os.path.exists(hta_path):
+        try:
+            os.remove(hta_path)
+        except:
+            pass
+
+    return dados
+
+
+# ==============================================================================
+# FUNÇÃO DE DESENHO DA GEOMETRIA NO TQS
+# ==============================================================================
+def desenhar_perfil_escada(dwg, x0, y0, dados):
+    piso = dados["piso"]
+    espelho = dados["espelho"]
+    n_degraus = int(dados["n_degraus"])
+    patamar_partida = dados["patamar_partida"]
+    patamar_chegada = dados["patamar_chegada"]
+    espessura = dados["espessura"]
+    viga_largura = dados["viga_largura"]
+    viga_altura = dados["viga_altura"]
+
+    draw = dwg.draw
+    draw.level = 241
+    draw.color = 3
+
+    x, y = x0, y0
+    for i in range(n_degraus):
+        draw.Line(x, y, x, y + espelho)
+
+        if i < n_degraus - 1:
+            draw.Line(x, y + espelho, x + piso, y + espelho)
+            x += piso
+            y += espelho
+        else:
+            x += 0
+            y += espelho
+
+    x_final, y_final = x, y
+    draw.Line(x0 - patamar_partida, y0, x0, y0)
+    draw.Line(x_final, y_final, x_final + patamar_chegada, y_final)
+
+    x_base_ini = x0 - patamar_partida
+    y_base = y0 - espessura
+    p1x = x0 + piso
+    p1y = y0 + espelho
+
+    if n_degraus > 1:
+        p2x = x_final
+        p2y = y_final - espelho
+    else:
+        p2x = p1x + piso
+        p2y = p1y + espelho
+
+    xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
+    xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
+
+    ym = (p1y + p2y) / 2.0
+    if ((ya1 + ya2) / 2.0) < ym:
+        xp1, yp1, xp2, yp2 = xa1, ya1, xa2, ya2
+    else:
+        xp1, yp1, xp2, yp2 = xb1, yb1, xb2, yb2
+
+    if abs(yp2 - yp1) > 1e-9:
+        t = (y_base - yp1) / (yp2 - yp1)
+        x_base_fim = xp1 + t * (xp2 - xp1)
+    else:
+        x_base_fim = xp1
+
+    draw.Line(x_base_ini, y_base, x_base_fim, y_base)
+
+    y_chegada_corte = y_final - espessura
+    if abs(yp2 - yp1) > 1e-9:
+        t2 = (y_chegada_corte - yp1) / (yp2 - yp1)
+        x_linha_fim = xp1 + t2 * (xp2 - xp1)
+    else:
+        x_linha_fim = xp2
+    y_linha_fim = y_chegada_corte
+
+    draw.Line(x_base_fim, y_base, x_linha_fim, y_linha_fim)
+
+    x_viga_saida_ini = x0 - patamar_partida - viga_largura
+    x_viga_saida_meio = x_viga_saida_ini + viga_largura
+    x_viga_saida_fim = x0
+    y_viga_saida_topo = y0
+    y_viga_saida_base = y0 - viga_altura
+    y_viga_saida_corte = y0 - espessura
+
+    draw.Line(x_viga_saida_ini, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_base)
+    draw.Line(x_viga_saida_ini, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_base)
+    draw.Line(x_viga_saida_meio, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_corte)
+    draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
+    draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
+
+    x_viga_chegada_borda = x_final + patamar_chegada
+    x_viga_chegada_externa = x_viga_chegada_borda + viga_largura
+    y_viga_chegada_topo = y_final
+    y_viga_chegada_base = y_final - viga_altura
+    y_viga_chegada_corte = y_final - espessura
+
+    if x_linha_fim > x_viga_chegada_borda: x_linha_fim = x_viga_chegada_borda
+
+    draw.Line(x_viga_chegada_externa, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_base)
+    draw.Line(x_viga_chegada_externa, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_base)
+    draw.Line(x_viga_chegada_borda, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_corte)
+    draw.Line(x_viga_chegada_borda, y_viga_chegada_corte, x_linha_fim, y_viga_chegada_corte)
+    draw.Line(x_viga_chegada_borda, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_topo)
+
+
+# ==============================================================================
+# COMANDO PRINCIPAL EXECUTADO PELO TQS
+# ==============================================================================
+def meucmd(eag, tqsjan):
+    """Função principal acionada pelo menu TQS."""
+
+    # Chama a janela nativa do Windows
+    dados = pedir_dados_janela_windows()
+
+    if dados is None:
+        TQSUtil.writef("Operação cancelada pelo utilizador.")
+        return
+
+    icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Clique no ponto inicial da escada")
+    if icod == -1:
+        TQSUtil.writef("Operação cancelada.")
+        return
+
+    desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
+    tqsjan.ZoomTotal()
+
+    TQSUtil.writef(
+        "Escada desenhada com sucesso! (%d degraus, piso=%.1f cm, espelho=%.1f cm)"
+        % (dados["n_degraus"], dados["piso"], dados["espelho"])
+    )
     from PIL import Image, ImageTk
 
     TKINTER_OK = True
