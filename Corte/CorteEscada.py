@@ -173,25 +173,23 @@ def pedir_dados_janela_windows():
 # ==============================================================================
 # FUNÇÕES AUXILIARES DE GEOMETRIA
 # ==============================================================================
-def obter_fundo_lance(p1x, p1y, p2x, p2y, espessura, direcao_inferior=True):
+def obter_fundo_lance(p1x, p1y, p2x, p2y, espessura):
     """Calcula a reta paralela da face inferior da laje inclinada."""
     xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
     xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
     ym = (p1y + p2y) / 2.0
 
-    if direcao_inferior:
-        if ((ya1 + ya2) / 2.0) < ym:
-            return xa1, ya1, xa2, ya2
-        return xb1, yb1, xb2, yb2
-    else:
-        if ((ya1 + ya2) / 2.0) > ym:
-            return xa1, ya1, xa2, ya2
-        return xb1, yb1, xb2, yb2
+    if ((ya1 + ya2) / 2.0) < ym:
+        return xa1, ya1, xa2, ya2
+    return xb1, yb1, xb2, yb2
 
 
-def intersecao_retas_pontos(x1, y1, x2, y2, x3, y3, x4, y4):
-    """Calcula a interseção entre duas retas (1-2) e (3-4)."""
-    return TQSGeo.Intersection2r(x1, y1, x2, y2, x3, y3, x4, y4)
+def calcular_x_no_y(x1, y1, x2, y2, y_alvo):
+    """Calcula o X correspondente a um Y em uma reta (x1, y1) -> (x2, y2)."""
+    if abs(y2 - y1) > 1e-9:
+        t = (y_alvo - y1) / (y2 - y1)
+        return x1 + t * (x2 - x1)
+    return x1
 
 
 # ==============================================================================
@@ -245,12 +243,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     # Interseção do fundo do Lance 1 com a horizontal inferior de partida
     y_base_partida = y0 - espessura
-    if abs(f1_y2 - f1_y1) > 1e-9:
-        t = (y_base_partida - f1_y1) / (f1_y2 - f1_y1)
-        x_base_partida_fim = f1_x1 + t * (f1_x2 - f1_x1)
-    else:
-        x_base_partida_fim = f1_x1
-
+    x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
     draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
 
     # Viga de Saída / Partida (Lado Esquerdo Inferior)
@@ -273,11 +266,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         draw.Line(x_topo_l1, y_topo_l1, x_fim_chegada, y_topo_l1)
 
         y_fundo_chegada = y_topo_l1 - espessura
-        if abs(f1_y2 - f1_y1) > 1e-9:
-            t = (y_fundo_chegada - f1_y1) / (f1_y2 - f1_y1)
-            x_fundo_l1_fim = f1_x1 + t * (f1_x2 - f1_x1)
-        else:
-            x_fundo_l1_fim = x_topo_l1
+        x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
 
         draw.Line(x_base_partida_fim, y_base_partida, x_fundo_l1_fim, y_fundo_chegada)
         draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
@@ -291,14 +280,9 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         return
 
     # --------------------------------------------------------------------------
-    # SE FOR 2 OU 3 LANCES: Constrói o 1º Patamar Intermediário à direita
-    # --------------------------------------------------------------------------
-    x_fim_pat1 = x_topo_l1 + patamar_int_1
-    draw.Line(x_topo_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
-
-    # --------------------------------------------------------------------------
     # 2. LANCE 2 (Sobe para a Esquerda: -X, +Y)
     # --------------------------------------------------------------------------
+    # Degraus Lance 2 (começam no nível y_topo_l1 em x_topo_l1)
     x, y = x_topo_l1, y_topo_l1
     for i in range(n2):
         draw.Line(x, y, x, y + espelho)
@@ -316,22 +300,31 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     p2_2x, p2_2y = x_topo_l2, y_topo_l2 - espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
     f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
 
-    # Encontro dos fundos Lance 1 e Lance 2 no 1º Patamar (Vértice / Cunha à direita)
-    xi_pat1, yi_pat1, stat1 = intersecao_retas_pontos(f1_x1, f1_y1, f1_x2, f1_y2, f2_x1, f2_y1, f2_x2, f2_y2)
-    if stat1 == 0:
-        draw.Line(x_base_partida_fim, y_base_partida, xi_pat1, yi_pat1)
-    else:
-        xi_pat1, yi_pat1 = f1_x2, f1_y2
-        draw.Line(x_base_partida_fim, y_base_partida, xi_pat1, yi_pat1)
+    # --------------------------------------------------------------------------
+    # 1º PATAMAR INTERMEDIÁRIO (À DIREITA)
+    # --------------------------------------------------------------------------
+    x_fim_pat1 = x_topo_l1 + patamar_int_1
+    y_fundo_pat1 = y_topo_l1 - espessura
+
+    # 1. Topo do Patamar 1 (do primeiro degrau do Lance 2 até a viga)
+    draw.Line(x_topo_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
+
+    # 2. Fundo do Lance 1 encontra a linha de baixo do patamar
+    x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
+    draw.Line(x_base_partida_fim, y_base_partida, x_fundo_l1_fim, y_fundo_pat1)
+
+    # 3. O Fundo do Lance 2 DESCE até a cota de baixo do patamar (y_fundo_pat1)
+    x_fundo_l2_no_pat1 = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat1)
+
+    # 4. Linha de BAIXO do patamar 1: se alonga desde x_fundo_l2_no_pat1 até a viga da direita
+    draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
 
     # Viga do 1º Patamar Intermediário (Lado Direito)
     x_viga_p1_ext = x_fim_pat1 + viga_largura
     draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
     draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
     draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - espessura)
-    draw.Line(x_fim_pat1, y_topo_l1 - espessura, xi_pat1, y_topo_l1 - espessura)
-    draw.Line(xi_pat1, y_topo_l1 - espessura, xi_pat1, yi_pat1)
+    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
 
     # ==========================================================================
     # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior à esquerda
@@ -341,13 +334,10 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
 
         y_fundo_chegada = y_topo_l2 - espessura
-        if abs(f2_y2 - f2_y1) > 1e-9:
-            t2 = (y_fundo_chegada - f2_y1) / (f2_y2 - f2_y1)
-            x_fundo_l2_fim = f2_x1 + t2 * (f2_x2 - f2_x1)
-        else:
-            x_fundo_l2_fim = x_topo_l2
+        x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
 
-        draw.Line(xi_pat1, yi_pat1, x_fundo_l2_fim, y_fundo_chegada)
+        # Fundo do Lance 2 vai desde a cota de baixo do patamar 1 até a chegada superior
+        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
         draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
         # Viga de Chegada (Lado Esquerdo Superior)
@@ -359,12 +349,8 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         return
 
     # ==========================================================================
-    # CASO 3 LANCES: Lance 2 chega no 2º Patamar e Lance 3 sobe para a Direita
+    # CASO 3 LANCES: 2º Patamar Intermediário (à esquerda) e Lance 3 (+X, +Y)
     # ==========================================================================
-    # Topo do 2º Patamar Intermediário (à esquerda)
-    x_fim_pat2 = x_topo_l2 - patamar_int_2
-    draw.Line(x_topo_l2, y_topo_l2, x_fim_pat2, y_topo_l2)
-
     # Degraus Lance 3 (Sobe para a Direita a partir de x_topo_l2, y_topo_l2)
     x, y = x_topo_l2, y_topo_l2
     for i in range(n3):
@@ -378,41 +364,48 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     x_topo_l3, y_topo_l3 = x, y
 
-    # Topo do Patamar de Chegada Superior (à direita)
-    x_fim_chegada = x_topo_l3 + patamar_chegada
-    draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
-
     # Linha paralela de fundo do Lance 3
     p3_1x, p3_1y = x_topo_l2 + piso, y_topo_l2 + espelho
     p3_2x, p3_2y = x_topo_l3, y_topo_l3 - espelho if n3 > 1 else (p3_1x + piso, p3_1y + espelho)
     f3_x1, f3_y1, f3_x2, f3_y2 = obter_fundo_lance(p3_1x, p3_1y, p3_2x, p3_2y, espessura)
 
-    # Encontro dos fundos Lance 2 e Lance 3 no 2º Patamar (Vértice / Cunha à esquerda)
-    xi_pat2, yi_pat2, stat2 = intersecao_retas_pontos(f2_x1, f2_y1, f2_x2, f2_y2, f3_x1, f3_y1, f3_x2, f3_y2)
-    if stat2 == 0:
-        draw.Line(xi_pat1, yi_pat1, xi_pat2, yi_pat2)
-    else:
-        xi_pat2, yi_pat2 = f2_x2, f2_y2
-        draw.Line(xi_pat1, yi_pat1, xi_pat2, yi_pat2)
+    # --------------------------------------------------------------------------
+    # 2º PATAMAR INTERMEDIÁRIO (À ESQUERDA)
+    # --------------------------------------------------------------------------
+    x_fim_pat2 = x_topo_l2 - patamar_int_2
+    y_fundo_pat2 = y_topo_l2 - espessura
+
+    # 1. Topo do Patamar 2 (do primeiro degrau do Lance 3 até a viga da esquerda)
+    draw.Line(x_topo_l2, y_topo_l2, x_fim_pat2, y_topo_l2)
+
+    # 2. Fundo do Lance 2 encontra a linha de baixo do patamar 2
+    x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat2)
+    draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_pat2)
+
+    # 3. O Fundo do Lance 3 DESCE até a cota de baixo do patamar 2 (y_fundo_pat2)
+    x_fundo_l3_no_pat2 = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_pat2)
+
+    # 4. Linha de BAIXO do patamar 2: se alonga desde a viga até x_fundo_l3_no_pat2 à direita
+    draw.Line(x_fim_pat2, y_fundo_pat2, x_fundo_l3_no_pat2, y_fundo_pat2)
 
     # Viga do 2º Patamar Intermediário (Lado Esquerdo)
     x_viga_p2_ext = x_fim_pat2 - viga_largura
     draw.Line(x_fim_pat2, y_topo_l2, x_viga_p2_ext, y_topo_l2)
     draw.Line(x_viga_p2_ext, y_topo_l2, x_viga_p2_ext, y_topo_l2 - viga_altura)
     draw.Line(x_viga_p2_ext, y_topo_l2 - viga_altura, x_fim_pat2, y_topo_l2 - viga_altura)
-    draw.Line(x_fim_pat2, y_topo_l2 - viga_altura, x_fim_pat2, y_topo_l2 - espessura)
-    draw.Line(x_fim_pat2, y_topo_l2 - espessura, xi_pat2, y_topo_l2 - espessura)
-    draw.Line(xi_pat2, y_topo_l2 - espessura, xi_pat2, yi_pat2)
+    draw.Line(x_fim_pat2, y_topo_l2 - viga_altura, x_fim_pat2, y_fundo_pat2)
 
-    # Fundo do Lance 3 até a Chegada Superior
+    # --------------------------------------------------------------------------
+    # PATAMAR DE CHEGADA SUPERIOR (LADO DIREITO)
+    # --------------------------------------------------------------------------
+    x_fim_chegada = x_topo_l3 + patamar_chegada
+    draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
+
+    # Fundo do Lance 3 vai desde a cota de baixo do patamar 2 até a chegada superior
     y_fundo_chegada = y_topo_l3 - espessura
-    if abs(f3_y2 - f3_y1) > 1e-9:
-        t3 = (y_fundo_chegada - f3_y1) / (f3_y2 - f3_y1)
-        x_fundo_l3_fim = f3_x1 + t3 * (f3_x2 - f3_x1)
-    else:
-        x_fundo_l3_fim = x_topo_l3
+    x_fundo_l3_fim = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_chegada)
 
-    draw.Line(xi_pat2, yi_pat2, x_fundo_l3_fim, y_fundo_chegada)
+    draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_fundo_l3_fim, y_fundo_chegada)
     draw.Line(x_fundo_l3_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
     # Viga de Chegada Superior (Lado Direito)
