@@ -1,12 +1,4 @@
-from TQS import TQSUtil, TQSGeo
 import os
-
-try:
-    import tkinter as tk
-    from tkinter import ttk
-    # Para lidar com imagens mais complexas (como PNG) no Tkinter,
-    # às vezes precisamos da biblioteca PIL (Pillow).
-    # Ela já costuma vir instalada no ambiente Python do TQS moderno.import os
 import json
 import subprocess
 from TQS import TQSUtil, TQSGeo
@@ -19,18 +11,15 @@ def pedir_dados_janela_windows():
     json_path = os.path.join(caminho_script, "dados_temp.json")
     img_path = os.path.join(caminho_script, "diagrama_escada.png")
 
-    # Se houver lixo de execuções anteriores, apaga
     if os.path.exists(json_path):
         try:
             os.remove(json_path)
         except:
             pass
 
-    # Converte os caminhos para o formato do Windows/JavaScript
     json_js = json_path.replace('\\', '\\\\')
     img_html = "file:///" + img_path.replace('\\', '/')
 
-    # O código da interface da janela nativa do Windows
     hta_content = f"""<!DOCTYPE html>
     <html>
     <head>
@@ -38,36 +27,67 @@ def pedir_dados_janela_windows():
         <title>Dados da Escada - Plugin TQS</title>
         <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="EscadaTQS" BORDER="dialog" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
         <style>
-            body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f0f0; margin: 20px; font-size: 14px; }}
+            body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f0f0; margin: 15px 20px; font-size: 13px; }}
             .container {{ display: flex; gap: 20px; }}
             .img-box {{ background: white; padding: 10px; border: 1px solid #ccc; border-radius: 5px; display:flex; align-items:center; justify-content:center; }}
-            .img-box img {{ max-width: 480px; }}
-            .form-box {{ display: flex; flex-direction: column; gap: 8px; flex: 1; }}
-            h3 {{ margin: 0 0 10px 0; color: #333; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }}
-            .campo {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }}
+            .img-box img {{ max-width: 430px; }}
+            .form-box {{ display: flex; flex-direction: column; gap: 5px; flex: 1; }}
+            h3 {{ margin: 0 0 6px 0; color: #333; font-size: 15px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }}
+            .campo {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }}
             label {{ font-weight: 500; color: #444; }}
-            input {{ width: 80px; padding: 4px; text-align: right; border: 1px solid #aaa; border-radius: 3px; }}
-            .btns {{ margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; }}
+            input, select {{ width: 85px; padding: 3px; text-align: right; border: 1px solid #aaa; border-radius: 3px; }}
+            select {{ text-align: left; }}
+            .sec-opcional {{ background: #e8eef7; padding: 5px 8px; border-radius: 4px; border: 1px solid #c5d6eb; margin-top: 3px; }}
+            .btns {{ margin-top: 10px; display: flex; justify-content: flex-end; gap: 10px; }}
             button {{ padding: 6px 15px; cursor: pointer; border: 1px solid #999; border-radius: 3px; background: #e1e1e1; }}
             button:hover {{ background: #d1d1d1; }}
             .btn-gerar {{ background: #0056b3; color: white; border: none; font-weight: bold; }}
             .btn-gerar:hover {{ background: #004494; }}
         </style>
         <script>
-            // Define o tamanho da janela
-            window.resizeTo(1000, 480);
+            window.resizeTo(980, 580);
+
+            function toggleLances() {{
+                var numLances = parseInt(document.getElementById('num_lances').value);
+                var box2 = document.getElementById('box_lance2');
+                var box3 = document.getElementById('box_lance3');
+                var campoPat1 = document.getElementById('campo_pat1');
+
+                if (numLances === 1) {{
+                    box2.style.display = "none";
+                    box3.style.display = "none";
+                    campoPat1.style.display = "none";
+                }} else if (numLances === 2) {{
+                    box2.style.display = "block";
+                    box3.style.display = "none";
+                    campoPat1.style.display = "flex";
+                }} else if (numLances === 3) {{
+                    box2.style.display = "block";
+                    box3.style.display = "block";
+                    campoPat1.style.display = "flex";
+                }}
+            }}
 
             function confirmar() {{
                 try {{
                     var fso = new ActiveXObject("Scripting.FileSystemObject");
-                    // Cria o ficheiro para o Python ler (formato ASCII)
                     var file = fso.CreateTextFile("{json_js}", true, false);
 
+                    var numLances = parseInt(document.getElementById('num_lances').value);
+                    var n_deg1 = parseInt(document.getElementById('n_degraus_1').value);
+                    var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
+                    var n_deg3 = numLances === 3 ? parseInt(document.getElementById('n_degraus_3').value) : 0;
+
                     var dados = {{
+                        "num_lances": numLances,
                         "piso": parseFloat(document.getElementById('piso').value.replace(',', '.')),
                         "espelho": parseFloat(document.getElementById('espelho').value.replace(',', '.')),
-                        "n_degraus": parseInt(document.getElementById('n_degraus').value),
+                        "n_degraus_1": n_deg1,
+                        "n_degraus_2": n_deg2,
+                        "n_degraus_3": n_deg3,
                         "patamar_partida": parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')),
+                        "patamar_intermediario_1": parseFloat(document.getElementById('patamar_int_1').value.replace(',', '.')),
+                        "patamar_intermediario_2": parseFloat(document.getElementById('patamar_int_2').value.replace(',', '.')),
                         "patamar_chegada": parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')),
                         "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
                         "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
@@ -76,24 +96,45 @@ def pedir_dados_janela_windows():
 
                     file.Write(JSON.stringify(dados));
                     file.Close();
-                    window.close(); // Fecha a janela e devolve o controlo ao TQS
+                    window.close();
                 }} catch (e) {{
                     alert("Erro ao gravar os dados: " + e.message);
                 }}
             }}
         </script>
     </head>
-    <body>
+    <body onload="toggleLances()">
         <div class="container">
             <div class="img-box">
                 <img src="{img_html}" alt="Diagrama" onerror="this.style.display='none';">
             </div>
             <div class="form-box">
-                <h3>Dados da Escada</h3>
+                <h3>Configuração da Escada</h3>
+
+                <div class="campo">
+                    <label>Quantidade de Lances:</label>
+                    <select id="num_lances" onchange="toggleLances()">
+                        <option value="1">1 Lance</option>
+                        <option value="2" selected>2 Lances</option>
+                        <option value="3">3 Lances</option>
+                    </select>
+                </div>
+
                 <div class="campo"><label>Passo / Largura (cm):</label><input type="text" id="piso" value="29"></div>
                 <div class="campo"><label>Espelho / Altura (cm):</label><input type="text" id="espelho" value="17.9"></div>
-                <div class="campo"><label>Numero de degraus:</label><input type="text" id="n_degraus" value="12"></div>
+                <div class="campo"><label>Degraus Lance 1:</label><input type="text" id="n_degraus_1" value="8"></div>
+
+                <div id="box_lance2" class="sec-opcional">
+                    <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
+                </div>
+
+                <div id="box_lance3" class="sec-opcional" style="display:none;">
+                    <div class="campo"><label>Degraus Lance 3:</label><input type="text" id="n_degraus_3" value="8"></div>
+                    <div class="campo"><label>2º Patamar Interm. (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
+                </div>
+
                 <div class="campo"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+                <div class="campo" id="campo_pat1"><label>1º Patamar Interm. (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
                 <div class="campo"><label>Patamar chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
                 <div class="campo"><label>Espessura laje (cm):</label><input type="text" id="espessura" value="15"></div>
                 <div class="campo"><label>Largura viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
@@ -109,22 +150,17 @@ def pedir_dados_janela_windows():
     </html>
     """
 
-    # 1. Cria a janela executável
     with open(hta_path, "w", encoding="utf-8") as f:
         f.write(hta_content)
 
-    # 2. Roda a janela no Windows (O Python do TQS vai ficar em pausa esperando a janela fechar)
     subprocess.call(["mshta", hta_path])
 
-    # 3. Quando a janela fechar, o Python lê os dados do ficheiro JSON
     dados = None
     if os.path.exists(json_path):
         with open(json_path, "r", encoding="utf-8") as f:
             dados = json.load(f)
-        # Limpa o ficheiro
         os.remove(json_path)
 
-    # Limpa a janela temporária do disco
     if os.path.exists(hta_path):
         try:
             os.remove(hta_path)
@@ -135,103 +171,256 @@ def pedir_dados_janela_windows():
 
 
 # ==============================================================================
+# FUNÇÕES AUXILIARES DE GEOMETRIA
+# ==============================================================================
+def obter_fundo_lance(p1x, p1y, p2x, p2y, espessura, direcao_inferior=True):
+    """Calcula a reta paralela da face inferior da laje inclinada."""
+    xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
+    xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
+    ym = (p1y + p2y) / 2.0
+
+    if direcao_inferior:
+        if ((ya1 + ya2) / 2.0) < ym:
+            return xa1, ya1, xa2, ya2
+        return xb1, yb1, xb2, yb2
+    else:
+        if ((ya1 + ya2) / 2.0) > ym:
+            return xa1, ya1, xa2, ya2
+        return xb1, yb1, xb2, yb2
+
+
+def intersecao_retas_pontos(x1, y1, x2, y2, x3, y3, x4, y4):
+    """Calcula a interseção entre duas retas (1-2) e (3-4)."""
+    return TQSGeo.Intersection2r(x1, y1, x2, y2, x3, y3, x4, y4)
+
+
+# ==============================================================================
 # FUNÇÃO DE DESENHO DA GEOMETRIA NO TQS
 # ==============================================================================
 def desenhar_perfil_escada(dwg, x0, y0, dados):
+    num_lances = dados.get("num_lances", 2)
     piso = dados["piso"]
     espelho = dados["espelho"]
-    n_degraus = int(dados["n_degraus"])
-    patamar_partida = dados["patamar_partida"]
-    patamar_chegada = dados["patamar_chegada"]
     espessura = dados["espessura"]
     viga_largura = dados["viga_largura"]
     viga_altura = dados["viga_altura"]
+
+    patamar_partida = dados["patamar_partida"]
+    patamar_int_1 = dados.get("patamar_intermediario_1", 120)
+    patamar_int_2 = dados.get("patamar_intermediario_2", 120)
+    patamar_chegada = dados["patamar_chegada"]
+
+    n1 = int(dados["n_degraus_1"])
+    n2 = int(dados.get("n_degraus_2", 0))
+    n3 = int(dados.get("n_degraus_3", 0))
 
     draw = dwg.draw
     draw.level = 241
     draw.color = 3
 
-    x, y = x0, y0
-    for i in range(n_degraus):
-        draw.Line(x, y, x, y + espelho)
+    # --------------------------------------------------------------------------
+    # 1. LANCE 1 (Sobe para a Direita: +X, +Y)
+    # --------------------------------------------------------------------------
+    x_partida = x0 - patamar_partida
+    y_partida = y0
+    draw.Line(x_partida, y_partida, x0, y0)  # Topo patamar de partida
 
-        if i < n_degraus - 1:
+    # Degraus Lance 1
+    x, y = x0, y0
+    for i in range(n1):
+        draw.Line(x, y, x, y + espelho)
+        if i < n1 - 1:
             draw.Line(x, y + espelho, x + piso, y + espelho)
             x += piso
             y += espelho
         else:
-            x += 0
             y += espelho
 
-    x_final, y_final = x, y
-    draw.Line(x0 - patamar_partida, y0, x0, y0)
-    draw.Line(x_final, y_final, x_final + patamar_chegada, y_final)
+    x_topo_l1, y_topo_l1 = x, y
 
-    x_base_ini = x0 - patamar_partida
-    y_base = y0 - espessura
-    p1x = x0 + piso
-    p1y = y0 + espelho
+    # Linha paralela de fundo do Lance 1
+    p1x, p1y = x0 + piso, y0 + espelho
+    p2x, p2y = x_topo_l1, y_topo_l1 - espelho if n1 > 1 else (p1x + piso, p1y + espelho)
+    f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
 
-    if n_degraus > 1:
-        p2x = x_final
-        p2y = y_final - espelho
+    # Interseção do fundo do Lance 1 com a horizontal inferior de partida
+    y_base_partida = y0 - espessura
+    if abs(f1_y2 - f1_y1) > 1e-9:
+        t = (y_base_partida - f1_y1) / (f1_y2 - f1_y1)
+        x_base_partida_fim = f1_x1 + t * (f1_x2 - f1_x1)
     else:
-        p2x = p1x + piso
-        p2y = p1y + espelho
+        x_base_partida_fim = f1_x1
 
-    xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
-    xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
+    draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
 
-    ym = (p1y + p2y) / 2.0
-    if ((ya1 + ya2) / 2.0) < ym:
-        xp1, yp1, xp2, yp2 = xa1, ya1, xa2, ya2
+    # Viga de Saída / Partida (Lado Esquerdo Inferior)
+    x_viga_s_ini = x_partida - viga_largura
+    x_viga_s_meio = x_partida
+    y_viga_s_topo = y0
+    y_viga_s_base = y0 - viga_altura
+    y_viga_s_corte = y0 - espessura
+
+    draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+    draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+    draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+    draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+
+    # ==========================================================================
+    # CASO 1 LANCE: Finaliza direto no patamar de chegada superior à direita
+    # ==========================================================================
+    if num_lances == 1:
+        x_fim_chegada = x_topo_l1 + patamar_chegada
+        draw.Line(x_topo_l1, y_topo_l1, x_fim_chegada, y_topo_l1)
+
+        y_fundo_chegada = y_topo_l1 - espessura
+        if abs(f1_y2 - f1_y1) > 1e-9:
+            t = (y_fundo_chegada - f1_y1) / (f1_y2 - f1_y1)
+            x_fundo_l1_fim = f1_x1 + t * (f1_x2 - f1_x1)
+        else:
+            x_fundo_l1_fim = x_topo_l1
+
+        draw.Line(x_base_partida_fim, y_base_partida, x_fundo_l1_fim, y_fundo_chegada)
+        draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+
+        # Viga de Chegada (Lado Direito Superior)
+        x_viga_c_ext = x_fim_chegada + viga_largura
+        draw.Line(x_fim_chegada, y_topo_l1, x_viga_c_ext, y_topo_l1)
+        draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_chegada, y_topo_l1 - viga_altura)
+        draw.Line(x_fim_chegada, y_topo_l1 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        return
+
+    # --------------------------------------------------------------------------
+    # SE FOR 2 OU 3 LANCES: Constrói o 1º Patamar Intermediário à direita
+    # --------------------------------------------------------------------------
+    x_fim_pat1 = x_topo_l1 + patamar_int_1
+    draw.Line(x_topo_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
+
+    # --------------------------------------------------------------------------
+    # 2. LANCE 2 (Sobe para a Esquerda: -X, +Y)
+    # --------------------------------------------------------------------------
+    x, y = x_topo_l1, y_topo_l1
+    for i in range(n2):
+        draw.Line(x, y, x, y + espelho)
+        if i < n2 - 1:
+            draw.Line(x, y + espelho, x - piso, y + espelho)
+            x -= piso
+            y += espelho
+        else:
+            y += espelho
+
+    x_topo_l2, y_topo_l2 = x, y
+
+    # Linha paralela de fundo do Lance 2
+    p2_1x, p2_1y = x_topo_l1 - piso, y_topo_l1 + espelho
+    p2_2x, p2_2y = x_topo_l2, y_topo_l2 - espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
+    f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
+
+    # Encontro dos fundos Lance 1 e Lance 2 no 1º Patamar (Vértice / Cunha à direita)
+    xi_pat1, yi_pat1, stat1 = intersecao_retas_pontos(f1_x1, f1_y1, f1_x2, f1_y2, f2_x1, f2_y1, f2_x2, f2_y2)
+    if stat1 == 0:
+        draw.Line(x_base_partida_fim, y_base_partida, xi_pat1, yi_pat1)
     else:
-        xp1, yp1, xp2, yp2 = xb1, yb1, xb2, yb2
+        xi_pat1, yi_pat1 = f1_x2, f1_y2
+        draw.Line(x_base_partida_fim, y_base_partida, xi_pat1, yi_pat1)
 
-    if abs(yp2 - yp1) > 1e-9:
-        t = (y_base - yp1) / (yp2 - yp1)
-        x_base_fim = xp1 + t * (xp2 - xp1)
+    # Viga do 1º Patamar Intermediário (Lado Direito)
+    x_viga_p1_ext = x_fim_pat1 + viga_largura
+    draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+    draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+    draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - espessura)
+    draw.Line(x_fim_pat1, y_topo_l1 - espessura, xi_pat1, y_topo_l1 - espessura)
+    draw.Line(xi_pat1, y_topo_l1 - espessura, xi_pat1, yi_pat1)
+
+    # ==========================================================================
+    # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior à esquerda
+    # ==========================================================================
+    if num_lances == 2:
+        x_fim_chegada = x_topo_l2 - patamar_chegada
+        draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
+
+        y_fundo_chegada = y_topo_l2 - espessura
+        if abs(f2_y2 - f2_y1) > 1e-9:
+            t2 = (y_fundo_chegada - f2_y1) / (f2_y2 - f2_y1)
+            x_fundo_l2_fim = f2_x1 + t2 * (f2_x2 - f2_x1)
+        else:
+            x_fundo_l2_fim = x_topo_l2
+
+        draw.Line(xi_pat1, yi_pat1, x_fundo_l2_fim, y_fundo_chegada)
+        draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+
+        # Viga de Chegada (Lado Esquerdo Superior)
+        x_viga_c_ext = x_fim_chegada - viga_largura
+        draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
+        draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
+        draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        return
+
+    # ==========================================================================
+    # CASO 3 LANCES: Lance 2 chega no 2º Patamar e Lance 3 sobe para a Direita
+    # ==========================================================================
+    # Topo do 2º Patamar Intermediário (à esquerda)
+    x_fim_pat2 = x_topo_l2 - patamar_int_2
+    draw.Line(x_topo_l2, y_topo_l2, x_fim_pat2, y_topo_l2)
+
+    # Degraus Lance 3 (Sobe para a Direita a partir de x_topo_l2, y_topo_l2)
+    x, y = x_topo_l2, y_topo_l2
+    for i in range(n3):
+        draw.Line(x, y, x, y + espelho)
+        if i < n3 - 1:
+            draw.Line(x, y + espelho, x + piso, y + espelho)
+            x += piso
+            y += espelho
+        else:
+            y += espelho
+
+    x_topo_l3, y_topo_l3 = x, y
+
+    # Topo do Patamar de Chegada Superior (à direita)
+    x_fim_chegada = x_topo_l3 + patamar_chegada
+    draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
+
+    # Linha paralela de fundo do Lance 3
+    p3_1x, p3_1y = x_topo_l2 + piso, y_topo_l2 + espelho
+    p3_2x, p3_2y = x_topo_l3, y_topo_l3 - espelho if n3 > 1 else (p3_1x + piso, p3_1y + espelho)
+    f3_x1, f3_y1, f3_x2, f3_y2 = obter_fundo_lance(p3_1x, p3_1y, p3_2x, p3_2y, espessura)
+
+    # Encontro dos fundos Lance 2 e Lance 3 no 2º Patamar (Vértice / Cunha à esquerda)
+    xi_pat2, yi_pat2, stat2 = intersecao_retas_pontos(f2_x1, f2_y1, f2_x2, f2_y2, f3_x1, f3_y1, f3_x2, f3_y2)
+    if stat2 == 0:
+        draw.Line(xi_pat1, yi_pat1, xi_pat2, yi_pat2)
     else:
-        x_base_fim = xp1
+        xi_pat2, yi_pat2 = f2_x2, f2_y2
+        draw.Line(xi_pat1, yi_pat1, xi_pat2, yi_pat2)
 
-    draw.Line(x_base_ini, y_base, x_base_fim, y_base)
+    # Viga do 2º Patamar Intermediário (Lado Esquerdo)
+    x_viga_p2_ext = x_fim_pat2 - viga_largura
+    draw.Line(x_fim_pat2, y_topo_l2, x_viga_p2_ext, y_topo_l2)
+    draw.Line(x_viga_p2_ext, y_topo_l2, x_viga_p2_ext, y_topo_l2 - viga_altura)
+    draw.Line(x_viga_p2_ext, y_topo_l2 - viga_altura, x_fim_pat2, y_topo_l2 - viga_altura)
+    draw.Line(x_fim_pat2, y_topo_l2 - viga_altura, x_fim_pat2, y_topo_l2 - espessura)
+    draw.Line(x_fim_pat2, y_topo_l2 - espessura, xi_pat2, y_topo_l2 - espessura)
+    draw.Line(xi_pat2, y_topo_l2 - espessura, xi_pat2, yi_pat2)
 
-    y_chegada_corte = y_final - espessura
-    if abs(yp2 - yp1) > 1e-9:
-        t2 = (y_chegada_corte - yp1) / (yp2 - yp1)
-        x_linha_fim = xp1 + t2 * (xp2 - xp1)
+    # Fundo do Lance 3 até a Chegada Superior
+    y_fundo_chegada = y_topo_l3 - espessura
+    if abs(f3_y2 - f3_y1) > 1e-9:
+        t3 = (y_fundo_chegada - f3_y1) / (f3_y2 - f3_y1)
+        x_fundo_l3_fim = f3_x1 + t3 * (f3_x2 - f3_x1)
     else:
-        x_linha_fim = xp2
-    y_linha_fim = y_chegada_corte
+        x_fundo_l3_fim = x_topo_l3
 
-    draw.Line(x_base_fim, y_base, x_linha_fim, y_linha_fim)
+    draw.Line(xi_pat2, yi_pat2, x_fundo_l3_fim, y_fundo_chegada)
+    draw.Line(x_fundo_l3_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-    x_viga_saida_ini = x0 - patamar_partida - viga_largura
-    x_viga_saida_meio = x_viga_saida_ini + viga_largura
-    x_viga_saida_fim = x0
-    y_viga_saida_topo = y0
-    y_viga_saida_base = y0 - viga_altura
-    y_viga_saida_corte = y0 - espessura
-
-    draw.Line(x_viga_saida_ini, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_base)
-    draw.Line(x_viga_saida_ini, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_base)
-    draw.Line(x_viga_saida_meio, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_corte)
-    draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
-    draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
-
-    x_viga_chegada_borda = x_final + patamar_chegada
-    x_viga_chegada_externa = x_viga_chegada_borda + viga_largura
-    y_viga_chegada_topo = y_final
-    y_viga_chegada_base = y_final - viga_altura
-    y_viga_chegada_corte = y_final - espessura
-
-    if x_linha_fim > x_viga_chegada_borda: x_linha_fim = x_viga_chegada_borda
-
-    draw.Line(x_viga_chegada_externa, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_base)
-    draw.Line(x_viga_chegada_externa, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_base)
-    draw.Line(x_viga_chegada_borda, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_corte)
-    draw.Line(x_viga_chegada_borda, y_viga_chegada_corte, x_linha_fim, y_viga_chegada_corte)
-    draw.Line(x_viga_chegada_borda, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_topo)
+    # Viga de Chegada Superior (Lado Direito)
+    x_viga_c_ext = x_fim_chegada + viga_largura
+    draw.Line(x_fim_chegada, y_topo_l3, x_viga_c_ext, y_topo_l3)
+    draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
+    draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_fim_chegada, y_topo_l3 - viga_altura)
+    draw.Line(x_fim_chegada, y_topo_l3 - viga_altura, x_fim_chegada, y_fundo_chegada)
 
 
 # ==============================================================================
@@ -239,8 +428,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 # ==============================================================================
 def meucmd(eag, tqsjan):
     """Função principal acionada pelo menu TQS."""
-
-    # Chama a janela nativa do Windows
     dados = pedir_dados_janela_windows()
 
     if dados is None:
@@ -256,285 +443,6 @@ def meucmd(eag, tqsjan):
     tqsjan.ZoomTotal()
 
     TQSUtil.writef(
-        "Escada desenhada com sucesso! (%d degraus, piso=%.1f cm, espelho=%.1f cm)"
-        % (dados["n_degraus"], dados["piso"], dados["espelho"])
-    )
-    from PIL import Image, ImageTk
-
-    TKINTER_OK = True
-except Exception:
-    TKINTER_OK = False
-
-
-class DialogoEscada:
-    """Caixa de diálogo para os dados da escada, com diagrama explicativo."""
-
-    def __init__(self):
-        self.resultado = None
-        # Nome do arquivo de imagem que criamos (deve estar na mesma pasta do script)
-        self.nome_imagem = "diagrama_escada.png"
-
-    def pedir_dados(self):
-        root = tk.Tk()
-        root.title("Dados da Escada - Plugin TQS")
-        root.attributes("-topmost", True)
-        root.resizable(False, False)
-
-        # Usar um estilo mais moderno para os widgets
-        style = ttk.Style(root)
-        style.theme_use('clam')  # 'clam', 'alt', 'default', 'classic'
-
-        # Frame principal que conterá tudo
-        main_frm = ttk.Frame(root, padding=15)
-        main_frm.pack(fill=tk.BOTH, expand=True)
-
-        # --- Coluna 1: Imagem/Diagrama ---
-        # Tenta carregar a imagem. Se não conseguir, cria um espaço vazio.
-        imagem_tk = None
-        erro_imagem = False
-        try:
-            # Caminho absoluto da imagem para garantir que seja encontrada
-            caminho_script = os.path.dirname(os.path.abspath(__file__))
-            caminho_imagem = os.path.join(caminho_script, self.nome_imagem)
-
-            # Carrega e redimensiona a imagem usando PIL
-            img_original = Image.open(caminho_imagem)
-            # Redimensiona para um tamanho que não ocupe toda a tela (ex: largura 400px)
-            largura_desejada = 400
-            w_percent = (largura_desejada / float(img_original.size[0]))
-            h_size = int((float(img_original.size[1]) * float(w_percent)))
-            img_redimensionada = img_original.resize((largura_desejada, h_size), Image.Resampling.LANCZOS)
-
-            imagem_tk = ImageTk.PhotoImage(img_redimensionada)
-
-            lbl_imagem = ttk.Label(main_frm, image=imagem_tk)
-            lbl_imagem.image = imagem_tk  # Mantém uma referência para evitar garbage collection
-            lbl_imagem.grid(row=0, column=0, rowspan=10, padx=(0, 20), sticky="nw")
-        except FileNotFoundError:
-            TQSUtil.writef(f"AVISO: Arquivo de imagem '{self.nome_imagem}' não encontrado na pasta do script.")
-            ttk.Label(main_frm, text="[Diagrama não encontrado]", foreground="gray").grid(row=0, column=0, rowspan=10,
-                                                                                          padx=(0, 20))
-            erro_imagem = True
-        except Exception as e:
-            TQSUtil.writef(f"ERRO ao carregar imagem: {e}")
-            ttk.Label(main_frm, text="[Erro ao carregar diagrama]", foreground="red").grid(row=0, column=0, rowspan=10,
-                                                                                           padx=(0, 20))
-            erro_imagem = True
-
-        # --- Coluna 2: Campos de Entrada ---
-        # Define os campos: (chave_no_dicionario, rotulo_exibido, valor_padrao)
-        # Chave 'Passo' corrigida para 'piso' conforme erro anterior.
-        campos = [
-            ("piso", "Passo (largura do degrau, cm):", "29"),
-            ("espelho", "Espelho (altura do degrau, cm):", "17.9"),
-            ("n_degraus", "Número de degraus:", "12"),
-            ("patamar_partida", "Patamar de partida (cm):", "150"),
-            ("patamar_chegada", "Patamar de chegada (cm):", "150"),
-            ("espessura", "Espessura da viga (cm):", "15"),
-            ("viga_largura", "Largura da viga (cm):", "20"),
-            ("viga_altura", "Altura da viga (cm):", "40"),
-        ]
-
-        # Container para os campos de entrada para melhor organização
-        inputs_frm = ttk.Frame(main_frm)
-        inputs_frm.grid(row=0, column=1, sticky="nsew")
-
-        variaveis = {}
-        for i, (chave, rotulo, valor_padrao) in enumerate(campos):
-            ttk.Label(inputs_frm, text=rotulo).grid(row=i, column=0, sticky="w", pady=5)
-            var = tk.StringVar(value=valor_padrao)
-            ttk.Entry(inputs_frm, textvariable=var, width=15).grid(row=i, column=1, pady=5, padx=(10, 0))
-            variaveis[chave] = var
-
-        # --- Área de Mensagens de Erro ---
-        msg_var = tk.StringVar(value="")
-        lbl_erro = ttk.Label(inputs_frm, textvariable=msg_var, foreground="red", wraplength=200)
-        lbl_erro.grid(row=len(campos), column=0, columnspan=2, pady=(10, 0), sticky="w")
-
-        # --- Botões de Ação ---
-        def confirmar():
-            try:
-                dados = {}
-                for chave, _, _ in campos:
-                    texto = variaveis[chave].get().replace(",", ".")
-                    if chave == "n_degraus":
-                        dados[chave] = int(texto)
-                    else:
-                        dados[chave] = float(texto)
-
-                # Validação básica: todos os valores devem ser maiores que zero
-                if any(v <= 0 for v in dados.values()):
-                    raise ValueError
-            except ValueError:
-                msg_var.set("Erro: Preencha todos os campos com valores numéricos válidos e maiores que 0.")
-                return
-
-            self.resultado = dados
-            root.destroy()
-
-        def cancelar():
-            self.resultado = None
-            root.destroy()
-
-        btn_frame = ttk.Frame(inputs_frm)
-        btn_frame.grid(row=len(campos) + 1, column=0, columnspan=2, pady=(20, 0), sticky="e")
-
-        ttk.Button(btn_frame, text="Gerar Escada", command=confirmar, default="active").grid(row=0, column=0, padx=5)
-        ttk.Button(btn_frame, text="Cancelar", command=cancelar).grid(row=0, column=1, padx=5)
-
-        # Atalhos de teclado
-        root.bind("<Return>", lambda e: confirmar())
-        root.bind("<Escape>", lambda e: cancelar())
-
-        # Centralizar a janela na tela
-        root.update_idletasks()
-        w, h = root.winfo_width(), root.winfo_height()
-        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        root.geometry(f"+{(sw - w) // 2}+{(sh - h) // 2}")
-
-        root.mainloop()
-        return self.resultado
-
-
-# --- As funções 'desenhar_perfil_escada' e 'meucmd' permanecem iguais ---
-# (Opcional: Você pode colar o resto do seu código original aqui para ter o script completo)
-
-def desenhar_perfil_escada(dwg, x0, y0, dados):
-    """Desenha os degraus e os patamares de partida/chegada."""
-    piso = dados["piso"]
-    espelho = dados["espelho"]
-    n_degraus = int(dados["n_degraus"])
-    patamar_partida = dados["patamar_partida"]
-    patamar_chegada = dados["patamar_chegada"]
-    espessura = dados["espessura"]
-    viga_largura = dados["viga_largura"]
-    viga_altura = dados["viga_altura"]
-
-    draw = dwg.draw
-    draw.level = 241
-    draw.color = 3
-
-    x, y = x0, y0
-    for i in range(n_degraus):
-        draw.Line(x, y, x, y + espelho)  # espelho do degrau
-
-        if i < n_degraus - 1:
-            draw.Line(x, y + espelho, x + piso, y + espelho)  # piso do degrau
-            x += piso
-            y += espelho
-        else:
-            # Último degrau: termina em espelho, sem gerar piso final.
-            x += 0
-            y += espelho
-
-    x_final, y_final = x, y
-
-    draw.Line(x0 - patamar_partida, y0, x0, y0)
-    draw.Line(x_final, y_final, x_final + patamar_chegada, y_final)
-
-    # Linha paralela ao patamar (base).
-    x_base_ini = x0 - patamar_partida
-    y_base = y0 - espessura
-
-    # Reta paralela ao alinhamento das pontas dos degraus, mantendo
-    # afastamento constante de "espessura".
-    p1x = x0 + piso
-    p1y = y0 + espelho
-    if n_degraus > 1:
-        p2x = x_final
-        p2y = y_final - espelho
-    else:
-        p2x = p1x + piso
-        p2y = p1y + espelho
-
-    xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
-    xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
-
-    ym = (p1y + p2y) / 2.0
-    if ((ya1 + ya2) / 2.0) < ym:
-        xp1, yp1, xp2, yp2 = xa1, ya1, xa2, ya2
-    else:
-        xp1, yp1, xp2, yp2 = xb1, yb1, xb2, yb2
-
-    if abs(yp2 - yp1) > 1e-9:
-        t = (y_base - yp1) / (yp2 - yp1)
-        x_base_fim = xp1 + t * (xp2 - xp1)
-    else:
-        x_base_fim = xp1
-
-    draw.Line(x_base_ini, y_base, x_base_fim, y_base)
-
-    # Termina a reta inclinada no nível da espessura da chegada para manter
-    # o afastamento e permitir o fechamento com a viga de chegada.
-    y_chegada_corte = y_final - espessura
-    if abs(yp2 - yp1) > 1e-9:
-        t2 = (y_chegada_corte - yp1) / (yp2 - yp1)
-        x_linha_fim = xp1 + t2 * (xp2 - xp1)
-    else:
-        x_linha_fim = xp2
-    y_linha_fim = y_chegada_corte
-    draw.Line(x_base_fim, y_base, x_linha_fim, y_linha_fim)
-
-    # Viga de saída: contorno em L/U como no desenho.
-    # A espessura define a linha interna que vai até a reta do primeiro espelho.
-    x_viga_saida_ini = x0 - patamar_partida - viga_largura
-    x_viga_saida_meio = x_viga_saida_ini + viga_largura
-    x_viga_saida_fim = x0
-    y_viga_saida_topo = y0
-    y_viga_saida_base = y0 - viga_altura
-    y_viga_saida_corte = y0 - espessura
-
-    draw.Line(x_viga_saida_ini, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_base)
-    draw.Line(x_viga_saida_ini, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_base)
-    draw.Line(x_viga_saida_meio, y_viga_saida_base, x_viga_saida_meio, y_viga_saida_corte)
-    draw.Line(x_viga_saida_meio, y_viga_saida_corte, x_viga_saida_fim, y_viga_saida_corte)
-    draw.Line(x_viga_saida_fim, y_viga_saida_topo, x_viga_saida_ini, y_viga_saida_topo)
-
-    # Viga de chegada espelhada (formato L/U), preservando a espessura.
-    x_viga_chegada_borda = x_final + patamar_chegada
-    x_viga_chegada_externa = x_viga_chegada_borda + viga_largura
-    y_viga_chegada_topo = y_final
-    y_viga_chegada_base = y_final - viga_altura
-    y_viga_chegada_corte = y_final - espessura
-
-    if x_linha_fim > x_viga_chegada_borda:
-        x_linha_fim = x_viga_chegada_borda
-
-    draw.Line(x_viga_chegada_externa, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_base)
-    draw.Line(x_viga_chegada_externa, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_base)
-    draw.Line(x_viga_chegada_borda, y_viga_chegada_base, x_viga_chegada_borda, y_viga_chegada_corte)
-    draw.Line(x_viga_chegada_borda, y_viga_chegada_corte, x_linha_fim, y_viga_chegada_corte)
-    draw.Line(x_viga_chegada_borda, y_viga_chegada_topo, x_viga_chegada_externa, y_viga_chegada_topo)
-    pass
-
-
-def meucmd(eag, tqsjan):
-    if not TKINTER_OK:
-        TQSUtil.writef("ERRO: tkinter não está disponível neste Python do TQS.")
-        return
-
-    dlg = DialogoEscada()
-    dados = dlg.pedir_dados()
-    if dados is None:
-        TQSUtil.writef("Operação cancelada.")
-        return
-
-    icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Ponto inicial da escada")
-    if icod == -1:
-        TQSUtil.writef("Operação cancelada.")
-        return
-
-    desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
-    tqsjan.ZoomTotal()
-
-    TQSUtil.writef(
-        "Escada gerada: %d degraus, piso=%.1f cm, espelho=%.1f cm, "
-        "patamar partida=%.1f cm, patamar chegada=%.1f cm, "
-        "espessura=%.1f cm, viga %.1fx%.1f cm"
-        % (
-            dados["n_degraus"], dados["piso"], dados["espelho"],
-            dados["patamar_partida"], dados["patamar_chegada"],
-            dados["espessura"],
-            dados["viga_largura"], dados["viga_altura"],
-        )
+        "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho=%.1f cm)"
+        % (dados["num_lances"], dados["piso"], dados["espelho"])
     )
