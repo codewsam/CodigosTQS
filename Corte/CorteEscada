@@ -37,6 +37,7 @@ def pedir_dados_janela_windows():
             label {{ font-weight: 500; color: #444; }}
             input, select {{ width: 85px; padding: 3px; text-align: right; border: 1px solid #aaa; border-radius: 3px; }}
             select {{ text-align: left; }}
+            input[type="checkbox"] {{ width: auto; text-align: left; }}
             .sec-opcional {{ background: #e8eef7; padding: 5px 8px; border-radius: 4px; border: 1px solid #c5d6eb; margin-top: 3px; }}
             .btns {{ margin-top: 10px; display: flex; justify-content: flex-end; gap: 10px; }}
             button {{ padding: 6px 15px; cursor: pointer; border: 1px solid #999; border-radius: 3px; background: #e1e1e1; }}
@@ -69,7 +70,7 @@ def pedir_dados_janela_windows():
             }}
 
             function togglePatamarPartida() {{
-                var temPat = document.getElementById('tem_patamar_partida').value === "sim";
+                var temPat = document.getElementById('tem_patamar_partida').checked;
                 var box = document.getElementById('box_patamar_partida');
                 if (box) {{
                     box.style.display = temPat ? "flex" : "none";
@@ -85,7 +86,7 @@ def pedir_dados_janela_windows():
                     var n_deg1 = parseInt(document.getElementById('n_degraus_1').value);
                     var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
                     var n_deg3 = numLances === 3 ? parseInt(document.getElementById('n_degraus_3').value) : 0;
-                    var temPatPartida = document.getElementById('tem_patamar_partida').value === "sim";
+                    var temPatPartida = document.getElementById('tem_patamar_partida').checked;
 
                     var dados = {{
                         "num_lances": numLances,
@@ -144,11 +145,8 @@ def pedir_dados_janela_windows():
                 </div>
 
                 <div class="campo">
-                    <label>Patamar de Partida:</label>
-                    <select id="tem_patamar_partida" onchange="togglePatamarPartida()">
-                        <option value="sim" selected>Sim (Com patamar)</option>
-                        <option value="nao">Não (Viga no 1º degrau)</option>
-                    </select>
+                    <label>Tem patamar de partida?</label>
+                    <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
                 </div>
                 <div class="campo" id="box_patamar_partida"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
 
