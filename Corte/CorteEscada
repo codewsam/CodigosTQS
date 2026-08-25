@@ -27,26 +27,180 @@ def pedir_dados_janela_windows():
         <title>Dados da Escada - Plugin TQS</title>
         <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="EscadaTQS" BORDER="dialog" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
         <style>
-            body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f0f0; margin: 15px 20px; font-size: 13px; }}
-            .container {{ display: flex; gap: 20px; }}
-            .img-box {{ background: white; padding: 10px; border: 1px solid #ccc; border-radius: 5px; display:flex; align-items:center; justify-content:center; }}
-            .img-box img {{ max-width: 430px; }}
-            .form-box {{ display: flex; flex-direction: column; gap: 5px; flex: 1; }}
-            h3 {{ margin: 0 0 6px 0; color: #333; font-size: 15px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }}
-            .campo {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }}
-            label {{ font-weight: 500; color: #444; }}
-            input, select {{ width: 85px; padding: 3px; text-align: right; border: 1px solid #aaa; border-radius: 3px; }}
-            select {{ text-align: left; }}
-            input[type="checkbox"] {{ width: auto; text-align: left; }}
-            .sec-opcional {{ background: #e8eef7; padding: 5px 8px; border-radius: 4px; border: 1px solid #c5d6eb; margin-top: 3px; }}
-            .btns {{ margin-top: 10px; display: flex; justify-content: flex-end; gap: 10px; }}
-            button {{ padding: 6px 15px; cursor: pointer; border: 1px solid #999; border-radius: 3px; background: #e1e1e1; }}
-            button:hover {{ background: #d1d1d1; }}
-            .btn-gerar {{ background: #0056b3; color: white; border: none; font-weight: bold; }}
-            .btn-gerar:hover {{ background: #004494; }}
+            * {{ box-sizing: border-box; }}
+
+            body {{
+                font-family: 'Segoe UI', Tahoma, sans-serif;
+                background: #eef1f5;
+                margin: 0;
+                padding: 0;
+                font-size: 13px;
+                color: #2b2f36;
+            }}
+
+            .topbar {{
+                background: linear-gradient(135deg, #0056b3 0%, #003d80 100%);
+                color: #fff;
+                padding: 12px 20px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+            }}
+
+            .topbar .icon {{
+                width: 26px;
+                height: 26px;
+                background: rgba(255,255,255,0.15);
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 15px;
+            }}
+
+            .topbar h1 {{
+                margin: 0;
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: 0.2px;
+            }}
+
+            .topbar p {{
+                margin: 1px 0 0 0;
+                font-size: 11px;
+                color: #d7e6fb;
+                font-weight: 400;
+            }}
+
+            .container {{
+                display: flex;
+                gap: 16px;
+                padding: 16px 20px 20px 20px;
+            }}
+
+            .img-box {{
+                background: #ffffff;
+                padding: 10px;
+                border: 1px solid #dbe1e8;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            }}
+
+            .img-box img {{ max-width: 420px; }}
+
+            .form-box {{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                flex: 1;
+                min-width: 300px;
+            }}
+
+            .card {{
+                background: #ffffff;
+                border: 1px solid #dbe1e8;
+                border-radius: 8px;
+                padding: 10px 14px 12px 14px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            }}
+
+            .card h3 {{
+                margin: 0 0 8px 0;
+                color: #0056b3;
+                font-size: 12.5px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
+                border-bottom: 1px solid #e7ebf0;
+                padding-bottom: 6px;
+            }}
+
+            .campo {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 6px;
+            }}
+
+            .campo:last-child {{ margin-bottom: 0; }}
+
+            label {{
+                font-weight: 500;
+                color: #45505c;
+            }}
+
+            input, select {{
+                width: 90px;
+                padding: 4px 6px;
+                text-align: right;
+                border: 1px solid #c3cbd4;
+                border-radius: 4px;
+                background: #fbfcfd;
+                transition: border-color 0.15s, box-shadow 0.15s;
+            }}
+
+            input:focus, select:focus {{
+                outline: none;
+                border-color: #0056b3;
+                box-shadow: 0 0 0 2px rgba(0,86,179,0.15);
+                background: #fff;
+            }}
+
+            select {{ text-align: left; width: 130px; }}
+
+            input[type="checkbox"] {{
+                width: auto;
+                text-align: left;
+                accent-color: #0056b3;
+                transform: scale(1.1);
+            }}
+
+            .sec-opcional {{
+                background: #f2f6fb;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid #d7e4f2;
+                margin-top: 2px;
+            }}
+
+            .btns {{
+                margin-top: 4px;
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                padding: 0 20px 18px 20px;
+            }}
+
+            button {{
+                padding: 7px 18px;
+                cursor: pointer;
+                border: 1px solid #c3cbd4;
+                border-radius: 5px;
+                background: #f4f5f7;
+                font-size: 12.5px;
+                font-weight: 500;
+                color: #45505c;
+                transition: background 0.15s;
+            }}
+
+            button:hover {{ background: #e6e8eb; }}
+
+            .btn-gerar {{
+                background: linear-gradient(135deg, #0056b3 0%, #003d80 100%);
+                color: #fff;
+                border: none;
+                font-weight: 600;
+                box-shadow: 0 1px 3px rgba(0,86,179,0.35);
+            }}
+
+            .btn-gerar:hover {{ background: linear-gradient(135deg, #004494 0%, #00306b 100%); }}
         </style>
         <script>
-            window.resizeTo(980, 600);
+            window.resizeTo(1000, 640);
 
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
@@ -115,52 +269,70 @@ def pedir_dados_janela_windows():
         </script>
     </head>
     <body onload="toggleLances(); togglePatamarPartida();">
+        <div class="topbar">
+            <div class="icon">&#9650;</div>
+            <div>
+                <h1>Dados da Escada</h1>
+                <p>Plugin TQS &middot; Geometria automatica de escadas</p>
+            </div>
+        </div>
+
         <div class="container">
             <div class="img-box">
                 <img src="{img_html}" alt="Diagrama" onerror="this.style.display='none';">
             </div>
             <div class="form-box">
-                <h3>Dados da Escada</h3>
-
-                <div class="campo">
-                    <label>Quantidade de Lances:</label>
-                    <select id="num_lances" onchange="toggleLances()">
-                        <option value="1">1 Lance</option>
-                        <option value="2" selected>2 Lances</option>
-                        <option value="3">3 Lances</option>
-                    </select>
+                <div class="card">
+                    <h3>Configuracao Geral</h3>
+                    <div class="campo">
+                        <label>Quantidade de Lances:</label>
+                        <select id="num_lances" onchange="toggleLances()">
+                            <option value="1">1 Lance</option>
+                            <option value="2" selected>2 Lances</option>
+                            <option value="3">3 Lances</option>
+                        </select>
+                    </div>
+                    <div class="campo"><label>Passo / Largura (cm):</label><input type="text" id="piso" value="29"></div>
+                    <div class="campo"><label>Espelho / Altura (cm):</label><input type="text" id="espelho" value="17.9"></div>
                 </div>
 
-                <div class="campo"><label>Passo / Largura (cm):</label><input type="text" id="piso" value="29"></div>
-                <div class="campo"><label>Espelho / Altura (cm):</label><input type="text" id="espelho" value="17.9"></div>
-                <div class="campo"><label>Degraus Lance 1:</label><input type="text" id="n_degraus_1" value="8"></div>
+                <div class="card">
+                    <h3>Degraus por Lance</h3>
+                    <div class="campo"><label>Degraus Lance 1:</label><input type="text" id="n_degraus_1" value="8"></div>
 
-                <div id="box_lance2" class="sec-opcional">
-                    <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
+                    <div id="box_lance2" class="sec-opcional">
+                        <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
+                    </div>
+
+                    <div id="box_lance3" class="sec-opcional" style="display:none; margin-top: 6px;">
+                        <div class="campo"><label>Degraus Lance 3:</label><input type="text" id="n_degraus_3" value="8"></div>
+                        <div class="campo"><label>Segundo Patamar meio. (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
+                    </div>
                 </div>
 
-                <div id="box_lance3" class="sec-opcional" style="display:none;">
-                    <div class="campo"><label>Degraus Lance 3:</label><input type="text" id="n_degraus_3" value="8"></div>
-                    <div class="campo"><label>Segundo Patamar meio. (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
+                <div class="card">
+                    <h3>Patamares</h3>
+                    <div class="campo">
+                        <label>Tem patamar de partida?</label>
+                        <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
+                    </div>
+                    <div class="campo" id="box_patamar_partida"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+                    <div class="campo" id="campo_pat1"><label>Patamar meio. (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
+                    <div class="campo"><label>Patamar chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
                 </div>
 
-                <div class="campo">
-                    <label>Tem patamar de partida?</label>
-                    <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
-                </div>
-                <div class="campo" id="box_patamar_partida"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
-
-                <div class="campo" id="campo_pat1"><label>Patamar meio. (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
-                <div class="campo"><label>Patamar chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
-                <div class="campo"><label>Espessura laje (cm):</label><input type="text" id="espessura" value="15"></div>
-                <div class="campo"><label>Largura viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
-                <div class="campo"><label>Altura viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
-
-                <div class="btns">
-                    <button onclick="window.close()">Cancelar</button>
-                    <button class="btn-gerar" onclick="confirmar()">Gerar Escada</button>
+                <div class="card">
+                    <h3>Laje e Vigas</h3>
+                    <div class="campo"><label>Espessura laje (cm):</label><input type="text" id="espessura" value="15"></div>
+                    <div class="campo"><label>Largura viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
+                    <div class="campo"><label>Altura viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
                 </div>
             </div>
+        </div>
+
+        <div class="btns">
+            <button onclick="window.close()">Cancelar</button>
+            <button class="btn-gerar" onclick="confirmar()">Gerar Escada</button>
         </div>
     </body>
     </html>
