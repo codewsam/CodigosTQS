@@ -273,7 +273,7 @@ def pedir_dados_janela_windows():
             <div class="icon">&#9650;</div>
             <div>
                 <h1>Dados da Escada</h1>
-                <p>Plugin TQS &middot; Samuel Araújo Brandão</p>
+                <p>Plugin TQS &middot; Samuel Araujo Brandao &middot; G3 Engenharia</p>
             </div>
         </div>
 
@@ -323,7 +323,7 @@ def pedir_dados_janela_windows():
 
                 <div class="card">
                     <h3>Laje e Vigas</h3>
-                    <div class="campo"><label>Espessura laje (cm):</label><input type="text" id="espessura" value="15"></div>
+                    <div class="campo"><label>Espessura (cm):</label><input type="text" id="espessura" value="15"></div>
                     <div class="campo"><label>Largura viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
                     <div class="campo"><label>Altura viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
                 </div>
@@ -484,8 +484,8 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
         # Fundo da viga
         draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-        # Face direita da viga (fecha a viga completamente até o topo y0)
-        draw.Line(x0, y_viga_s_base, x0, y_viga_s_topo)
+        # Face direita da viga (apenas da base até o encontro com o fundo da escada)
+        draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
 
         x_fundo_l1_ini = x0
         y_fundo_l1_ini = y_fundo_no_x0
