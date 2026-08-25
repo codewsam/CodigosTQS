@@ -45,7 +45,7 @@ def pedir_dados_janela_windows():
             .btn-gerar:hover {{ background: #004494; }}
         </style>
         <script>
-            window.resizeTo(980, 580);
+            window.resizeTo(980, 600);
 
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
@@ -68,6 +68,14 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
+            function togglePatamarPartida() {{
+                var temPat = document.getElementById('tem_patamar_partida').value === "sim";
+                var box = document.getElementById('box_patamar_partida');
+                if (box) {{
+                    box.style.display = temPat ? "flex" : "none";
+                }}
+            }}
+
             function confirmar() {{
                 try {{
                     var fso = new ActiveXObject("Scripting.FileSystemObject");
@@ -77,6 +85,7 @@ def pedir_dados_janela_windows():
                     var n_deg1 = parseInt(document.getElementById('n_degraus_1').value);
                     var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
                     var n_deg3 = numLances === 3 ? parseInt(document.getElementById('n_degraus_3').value) : 0;
+                    var temPatPartida = document.getElementById('tem_patamar_partida').value === "sim";
 
                     var dados = {{
                         "num_lances": numLances,
@@ -85,7 +94,8 @@ def pedir_dados_janela_windows():
                         "n_degraus_1": n_deg1,
                         "n_degraus_2": n_deg2,
                         "n_degraus_3": n_deg3,
-                        "patamar_partida": parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')),
+                        "tem_patamar_partida": temPatPartida,
+                        "patamar_partida": temPatPartida ? parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')) : 0.0,
                         "patamar_intermediario_1": parseFloat(document.getElementById('patamar_int_1').value.replace(',', '.')),
                         "patamar_intermediario_2": parseFloat(document.getElementById('patamar_int_2').value.replace(',', '.')),
                         "patamar_chegada": parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')),
@@ -103,7 +113,7 @@ def pedir_dados_janela_windows():
             }}
         </script>
     </head>
-    <body onload="toggleLances()">
+    <body onload="toggleLances(); togglePatamarPartida();">
         <div class="container">
             <div class="img-box">
                 <img src="{img_html}" alt="Diagrama" onerror="this.style.display='none';">
@@ -133,7 +143,15 @@ def pedir_dados_janela_windows():
                     <div class="campo"><label>Segundo Patamar meio. (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
                 </div>
 
-                <div class="campo"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+                <div class="campo">
+                    <label>Patamar de Partida:</label>
+                    <select id="tem_patamar_partida" onchange="togglePatamarPartida()">
+                        <option value="sim" selected>Sim (Com patamar)</option>
+                        <option value="nao">Não (Viga no 1º degrau)</option>
+                    </select>
+                </div>
+                <div class="campo" id="box_patamar_partida"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+
                 <div class="campo" id="campo_pat1"><label>Patamar meio. (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
                 <div class="campo"><label>Patamar chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
                 <div class="campo"><label>Espessura laje (cm):</label><input type="text" id="espessura" value="15"></div>
@@ -192,6 +210,14 @@ def calcular_x_no_y(x1, y1, x2, y2, y_alvo):
     return x1
 
 
+def calcular_y_no_x(x1, y1, x2, y2, x_alvo):
+    """Calcula o Y correspondente a um X em uma reta (x1, y1) -> (x2, y2)."""
+    if abs(x2 - x1) > 1e-9:
+        t = (x_alvo - x1) / (x2 - x1)
+        return y1 + t * (y2 - y1)
+    return y1
+
+
 # ==============================================================================
 # FUNÇÃO DE DESENHO DA GEOMETRIA NO TQS
 # ==============================================================================
@@ -203,7 +229,11 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     viga_largura = dados["viga_largura"]
     viga_altura = dados["viga_altura"]
 
-    patamar_partida = dados["patamar_partida"]
+    tem_patamar_partida = dados.get("tem_patamar_partida", True)
+    if isinstance(tem_patamar_partida, str):
+        tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
+
+    patamar_partida = dados.get("patamar_partida", 150)
     patamar_int_1 = dados.get("patamar_intermediario_1", 120)
     patamar_int_2 = dados.get("patamar_intermediario_2", 120)
     patamar_chegada = dados["patamar_chegada"]
@@ -219,10 +249,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # --------------------------------------------------------------------------
     # 1. LANCE 1 (Sobe para a Direita: +X, +Y)
     # --------------------------------------------------------------------------
-    x_partida = x0 - patamar_partida
-    y_partida = y0
-    draw.Line(x_partida, y_partida, x0, y0)  # Topo patamar de partida
-
     y_topo_l1 = y0 + n1 * espelho
     y_fundo_pat1 = y_topo_l1 - espessura
 
@@ -230,7 +256,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     x, y = x0, y0
     for i in range(n1):
         if num_lances > 1 and i == n1 - 1:
-            # O último espelho sobe apenas até a face de baixo do patamar 1 (sem entrar no concreto)
+            # O último espelho sobe apenas até a face de baixo do patamar 1
             if y < y_fundo_pat1:
                 draw.Line(x, y, x, y_fundo_pat1)
             y = y_topo_l1
@@ -249,22 +275,50 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     p2x, p2y = x0 + (n1 - 1) * piso, y0 + (n1 - 1) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
     f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
 
-    # Interseção do fundo do Lance 1 com a horizontal inferior de partida
-    y_base_partida = y0 - espessura
-    x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
-    draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
+    if tem_patamar_partida:
+        x_partida = x0 - patamar_partida
+        y_partida = y0
+        draw.Line(x_partida, y_partida, x0, y0)  # Topo patamar de partida
 
-    # Viga de Saída / Partida (Lado Esquerdo Inferior)
-    x_viga_s_ini = x_partida - viga_largura
-    x_viga_s_meio = x_partida
-    y_viga_s_topo = y0
-    y_viga_s_base = y0 - viga_altura
-    y_viga_s_corte = y0 - espessura
+        # Interseção do fundo do Lance 1 com a horizontal inferior de partida
+        y_base_partida = y0 - espessura
+        x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
+        draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
 
-    draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-    draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-    draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-    draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+        # Viga de Saída / Partida (Lado Esquerdo Inferior)
+        x_viga_s_ini = x_partida - viga_largura
+        x_viga_s_meio = x_partida
+        y_viga_s_topo = y0
+        y_viga_s_base = y0 - viga_altura
+        y_viga_s_corte = y0 - espessura
+
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+        draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+        draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
+
+        x_fundo_l1_ini = x_base_partida_fim
+        y_fundo_l1_ini = y_base_partida
+    else:
+        # Viga de Partida Direta no 1º Degrau (Sem Patamar)
+        x_viga_s_ini = x0 - viga_largura
+        y_viga_s_topo = y0
+        y_viga_s_base = y0 - viga_altura
+
+        # Ponto onde o fundo inclinado do lance 1 encontra x0 (face direita da viga)
+        y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
+
+        # Topo da viga
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+        # Face esquerda da viga
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+        # Fundo da viga
+        draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
+        # Face direita da viga (fecha a viga completamente até o topo y0)
+        draw.Line(x0, y_viga_s_base, x0, y_viga_s_topo)
+
+        x_fundo_l1_ini = x0
+        y_fundo_l1_ini = y_fundo_no_x0
 
     # ==========================================================================
     # CASO 1 LANCE
@@ -276,7 +330,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         y_fundo_chegada = y_topo_l1 - espessura
         x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
 
-        draw.Line(x_base_partida_fim, y_base_partida, x_fundo_l1_fim, y_fundo_chegada)
+        draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
         draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
         # Viga de Chegada (Lado Direito Superior)
@@ -327,7 +381,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     # Fundo do Lance 1 encontra a linha de baixo do patamar 1
     x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
-    draw.Line(x_base_partida_fim, y_base_partida, x_fundo_l1_fim, y_fundo_pat1)
+    draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_pat1)
 
     # O Fundo do Lance 2 desce até a cota de baixo do patamar (y_fundo_pat1)
     x_fundo_l2_no_pat1 = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat1)
