@@ -273,7 +273,7 @@ def pedir_dados_janela_windows():
             <div class="icon">&#9650;</div>
             <div>
                 <h1>Dados da Escada</h1>
-                <p>Plugin TQS &middot; Geometria automatica de escadas</p>
+                <p>Plugin TQS &middot; Samuel Araújo Brandão</p>
             </div>
         </div>
 
