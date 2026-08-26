@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import json
 import subprocess
@@ -23,6 +24,7 @@ def pedir_dados_janela_windows():
     hta_content = f"""<!DOCTYPE html>
     <html>
     <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
         <meta http-equiv="x-ua-compatible" content="ie=edge" />
         <title>Dados da Escada - Plugin TQS</title>
         <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="EscadaTQS" BORDER="dialog" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
@@ -104,7 +106,7 @@ def pedir_dados_janela_windows():
                 background: #ffffff;
                 border: 1px solid #dbe1e8;
                 border-radius: 8px;
-                padding: 10px 14px 12px 14px;
+                padding: 10px 14px;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             }}
 
@@ -164,7 +166,7 @@ def pedir_dados_janela_windows():
                 padding: 8px 10px;
                 border-radius: 6px;
                 border: 1px solid #d7e4f2;
-                margin-top: 2px;
+                margin-top: 4px;
             }}
 
             .btns {{
@@ -200,7 +202,7 @@ def pedir_dados_janela_windows():
             .btn-gerar:hover {{ background: linear-gradient(135deg, #004494 0%, #00306b 100%); }}
         </style>
         <script>
-            window.resizeTo(1000, 640);
+            window.resizeTo(1000, 700);
 
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
@@ -231,6 +233,14 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
+            function toggleExtremos() {{
+                var altExt = document.getElementById('alterar_extremos').checked;
+                var box = document.getElementById('box_extremos');
+                if (box) {{
+                    box.style.display = altExt ? "block" : "none";
+                }}
+            }}
+
             function confirmar() {{
                 try {{
                     var fso = new ActiveXObject("Scripting.FileSystemObject");
@@ -241,11 +251,16 @@ def pedir_dados_janela_windows():
                     var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
                     var n_deg3 = numLances === 3 ? parseInt(document.getElementById('n_degraus_3').value) : 0;
                     var temPatPartida = document.getElementById('tem_patamar_partida').checked;
+                    var altExtremos = document.getElementById('alterar_extremos').checked;
+                    var espGeral = parseFloat(document.getElementById('espelho').value.replace(',', '.'));
 
                     var dados = {{
                         "num_lances": numLances,
                         "piso": parseFloat(document.getElementById('piso').value.replace(',', '.')),
-                        "espelho": parseFloat(document.getElementById('espelho').value.replace(',', '.')),
+                        "espelho": espGeral,
+                        "alterar_extremos": altExtremos,
+                        "espelho_primeiro": altExtremos ? parseFloat(document.getElementById('espelho_primeiro').value.replace(',', '.')) : espGeral,
+                        "espelho_ultimo": altExtremos ? parseFloat(document.getElementById('espelho_ultimo').value.replace(',', '.')) : espGeral,
                         "n_degraus_1": n_deg1,
                         "n_degraus_2": n_deg2,
                         "n_degraus_3": n_deg3,
@@ -268,12 +283,12 @@ def pedir_dados_janela_windows():
             }}
         </script>
     </head>
-    <body onload="toggleLances(); togglePatamarPartida();">
+    <body onload="toggleLances(); togglePatamarPartida(); toggleExtremos();">
         <div class="topbar">
             <div class="icon">&#9650;</div>
             <div>
                 <h1>Dados da Escada</h1>
-                <p>Plugin TQS &middot; Samuel Araujo Brandao &middot; G3 Engenharia</p>
+                <p>Plugin TQS &middot; Ediglânthio Samuel Araújo Brandão &middot; G3 Engenharia</p>
             </div>
         </div>
 
@@ -283,7 +298,7 @@ def pedir_dados_janela_windows():
             </div>
             <div class="form-box">
                 <div class="card">
-                    <h3>Configuracao Geral</h3>
+                    <h3>Configuração Geral</h3>
                     <div class="campo">
                         <label>Quantidade de Lances:</label>
                         <select id="num_lances" onchange="toggleLances()">
@@ -293,7 +308,16 @@ def pedir_dados_janela_windows():
                         </select>
                     </div>
                     <div class="campo"><label>Passo / Largura (cm):</label><input type="text" id="piso" value="29"></div>
-                    <div class="campo"><label>Espelho / Altura (cm):</label><input type="text" id="espelho" value="17.9"></div>
+                    <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
+
+                    <div class="campo" style="margin-top: 8px;">
+                        <label>Alterar espelho do primeiro e último degrau?</label>
+                        <input type="checkbox" id="alterar_extremos" onchange="toggleExtremos()">
+                    </div>
+                    <div id="box_extremos" class="sec-opcional" style="display:none;">
+                        <div class="campo"><label>Espelho 1º degrau (cm):</label><input type="text" id="espelho_primeiro" value="17.9"></div>
+                        <div class="campo"><label>Espelho último degrau (cm):</label><input type="text" id="espelho_ultimo" value="17.9"></div>
+                    </div>
                 </div>
 
                 <div class="card">
@@ -306,7 +330,7 @@ def pedir_dados_janela_windows():
 
                     <div id="box_lance3" class="sec-opcional" style="display:none; margin-top: 6px;">
                         <div class="campo"><label>Degraus Lance 3:</label><input type="text" id="n_degraus_3" value="8"></div>
-                        <div class="campo"><label>Segundo Patamar meio. (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
+                        <div class="campo"><label>2º Patamar Intermediário (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
                     </div>
                 </div>
 
@@ -316,16 +340,16 @@ def pedir_dados_janela_windows():
                         <label>Tem patamar de partida?</label>
                         <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
                     </div>
-                    <div class="campo" id="box_patamar_partida"><label>Patamar partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
-                    <div class="campo" id="campo_pat1"><label>Patamar meio. (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
-                    <div class="campo"><label>Patamar chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
+                    <div class="campo" id="box_patamar_partida"><label>Patamar de Partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+                    <div class="campo" id="campo_pat1"><label>Patamar Intermediário (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
+                    <div class="campo"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
                 </div>
 
                 <div class="card">
                     <h3>Laje e Vigas</h3>
                     <div class="campo"><label>Espessura (cm):</label><input type="text" id="espessura" value="15"></div>
-                    <div class="campo"><label>Largura viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
-                    <div class="campo"><label>Altura viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
+                    <div class="campo"><label>Largura da Viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
+                    <div class="campo"><label>Altura da Viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
                 </div>
             </div>
         </div>
@@ -338,7 +362,7 @@ def pedir_dados_janela_windows():
     </html>
     """
 
-    with open(hta_path, "w", encoding="utf-8") as f:
+    with open(hta_path, "w", encoding="utf-8-sig") as f:
         f.write(hta_content)
 
     subprocess.call(["mshta", hta_path])
@@ -393,20 +417,31 @@ def calcular_y_no_x(x1, y1, x2, y2, x_alvo):
 # ==============================================================================
 def desenhar_perfil_escada(dwg, x0, y0, dados):
     num_lances = dados.get("num_lances", 2)
-    piso = dados["piso"]
-    espelho = dados["espelho"]
-    espessura = dados["espessura"]
-    viga_largura = dados["viga_largura"]
-    viga_altura = dados["viga_altura"]
+    piso = float(dados["piso"])
+    espelho = float(dados["espelho"])
+    espessura = float(dados["espessura"])
+    viga_largura = float(dados["viga_largura"])
+    viga_altura = float(dados["viga_altura"])
+
+    alterar_extremos = dados.get("alterar_extremos", False)
+    if isinstance(alterar_extremos, str):
+        alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
+
+    if alterar_extremos:
+        espelho_primeiro = float(dados.get("espelho_primeiro", espelho))
+        espelho_ultimo = float(dados.get("espelho_ultimo", espelho))
+    else:
+        espelho_primeiro = espelho
+        espelho_ultimo = espelho
 
     tem_patamar_partida = dados.get("tem_patamar_partida", True)
     if isinstance(tem_patamar_partida, str):
         tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
 
-    patamar_partida = dados.get("patamar_partida", 150)
-    patamar_int_1 = dados.get("patamar_intermediario_1", 120)
-    patamar_int_2 = dados.get("patamar_intermediario_2", 120)
-    patamar_chegada = dados["patamar_chegada"]
+    patamar_partida = float(dados.get("patamar_partida", 150))
+    patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
+    patamar_int_2 = float(dados.get("patamar_intermediario_2", 120))
+    patamar_chegada = float(dados["patamar_chegada"])
 
     n1 = int(dados["n_degraus_1"])
     n2 = int(dados.get("n_degraus_2", 0))
@@ -419,7 +454,14 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # --------------------------------------------------------------------------
     # 1. LANCE 1 (Sobe para a Direita: +X, +Y)
     # --------------------------------------------------------------------------
-    y_topo_l1 = y0 + n1 * espelho
+    if num_lances == 1:
+        if n1 > 1:
+            y_topo_l1 = y0 + espelho_primeiro + (n1 - 2) * espelho + espelho_ultimo
+        else:
+            y_topo_l1 = y0 + espelho_primeiro
+    else:
+        y_topo_l1 = y0 + espelho_primeiro + (n1 - 1) * espelho
+
     y_fundo_pat1 = y_topo_l1 - espessura
 
     # Degraus Lance 1
@@ -431,8 +473,15 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
                 draw.Line(x, y, x, y_fundo_pat1)
             y = y_topo_l1
         else:
-            draw.Line(x, y, x, y + espelho)
-            y += espelho
+            if i == 0:
+                h_esp = espelho_primeiro
+            elif num_lances == 1 and i == n1 - 1:
+                h_esp = espelho_ultimo
+            else:
+                h_esp = espelho
+
+            draw.Line(x, y, x, y + h_esp)
+            y += h_esp
 
         if i < n1 - 1:
             draw.Line(x, y, x + piso, y)
@@ -440,9 +489,9 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     x_inicio_l2 = x
 
-    # Linha paralela de fundo do Lance 1
-    p1x, p1y = x0 + piso, y0 + espelho
-    p2x, p2y = x0 + (n1 - 1) * piso, y0 + (n1 - 1) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
+    # Linha paralela de fundo do Lance 1 (referenciada aos cantos reentrantes)
+    p1x, p1y = x0 + piso, y0 + espelho_primeiro
+    p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
     f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
 
     if tem_patamar_partida:
@@ -515,7 +564,14 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # 2. LANCE 2 (Sobe para a Esquerda: -X, +Y)
     # --------------------------------------------------------------------------
     x, y = x_inicio_l2, y_topo_l1
-    y_topo_l2 = y_topo_l1 + n2 * espelho
+    if num_lances == 2:
+        if n2 > 1:
+            y_topo_l2 = y_topo_l1 + (n2 - 1) * espelho + espelho_ultimo
+        else:
+            y_topo_l2 = y_topo_l1 + (espelho_ultimo if n2 == 1 else 0)
+    else:
+        y_topo_l2 = y_topo_l1 + n2 * espelho
+
     y_fundo_pat2 = y_topo_l2 - espessura
 
     # Degraus Lance 2
@@ -526,8 +582,13 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
                 draw.Line(x, y, x, y_fundo_pat2)
             y = y_topo_l2
         else:
-            draw.Line(x, y, x, y + espelho)
-            y += espelho
+            if num_lances == 2 and i == n2 - 1:
+                h_esp = espelho_ultimo
+            else:
+                h_esp = espelho
+
+            draw.Line(x, y, x, y + h_esp)
+            y += h_esp
 
         if i < n2 - 1:
             draw.Line(x, y, x - piso, y)
@@ -537,8 +598,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     # Linha paralela de fundo do Lance 2
     p2_1x, p2_1y = x_inicio_l2 - piso, y_topo_l1 + espelho
-    p2_2x, p2_2y = x_inicio_l2 - (n2 - 1) * piso, y_topo_l1 + (n2 - 1) * espelho if n2 > 1 else (p2_1x - piso,
-                                                                                                 p2_1y + espelho)
+    p2_2x, p2_2y = x_inicio_l2 - (n2 - 1) * piso, y_topo_l1 + (n2 - 1) * espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
     f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
 
     # --------------------------------------------------------------------------
@@ -594,21 +654,29 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     x_inicio_l3 = x_topo_l2
     x, y = x_inicio_l3, y_topo_l2
 
+    if n3 > 1:
+        y_topo_l3 = y_topo_l2 + (n3 - 1) * espelho + espelho_ultimo
+    else:
+        y_topo_l3 = y_topo_l2 + (espelho_ultimo if n3 == 1 else 0)
+
     # Degraus Lance 3 (Sobe para a Direita a partir de x_inicio_l3, y_topo_l2)
     for i in range(n3):
-        draw.Line(x, y, x, y + espelho)
-        y += espelho
+        if i == n3 - 1:
+            h_esp = espelho_ultimo
+        else:
+            h_esp = espelho
+
+        draw.Line(x, y, x, y + h_esp)
+        y += h_esp
         if i < n3 - 1:
             draw.Line(x, y, x + piso, y)
             x += piso
 
     x_topo_l3 = x
-    y_topo_l3 = y_topo_l2 + n3 * espelho
 
     # Linha paralela de fundo do Lance 3
     p3_1x, p3_1y = x_inicio_l3 + piso, y_topo_l2 + espelho
-    p3_2x, p3_2y = x_inicio_l3 + (n3 - 1) * piso, y_topo_l2 + (n3 - 1) * espelho if n3 > 1 else (p3_1x + piso,
-                                                                                                 p3_1y + espelho)
+    p3_2x, p3_2y = x_inicio_l3 + (n3 - 1) * piso, y_topo_l2 + (n3 - 1) * espelho if n3 > 1 else (p3_1x + piso, p3_1y + espelho)
     f3_x1, f3_y1, f3_x2, f3_y2 = obter_fundo_lance(p3_1x, p3_1y, p3_2x, p3_2y, espessura)
 
     # --------------------------------------------------------------------------
@@ -676,7 +744,13 @@ def meucmd(eag, tqsjan):
     desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
     tqsjan.ZoomTotal()
 
-    TQSUtil.writef(
-        "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho=%.1f cm)"
-        % (dados["num_lances"], dados["piso"], dados["espelho"])
-    )
+    if dados.get("alterar_extremos"):
+        TQSUtil.writef(
+            "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho Geral=%.1f cm, 1º=%.1f cm, Último=%.1f cm)"
+            % (dados["num_lances"], dados["piso"], dados["espelho"], dados["espelho_primeiro"], dados["espelho_ultimo"])
+        )
+    else:
+        TQSUtil.writef(
+            "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho=%.1f cm)"
+            % (dados["num_lances"], dados["piso"], dados["espelho"])
+        )
