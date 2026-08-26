@@ -298,7 +298,7 @@ def pedir_dados_janela_windows():
             <div class="icon">📐</div>
             <div>
                 <h1>Parâmetros da Escada</h1>
-                <p>Configuração de geometria e lances</p>
+                <p>Plugin TQS &#9679 Ediglânthio Samuel Araújo Brandão &#9679 G3 Engenharia</p>
             </div>
         </div>
 
