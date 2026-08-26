@@ -202,7 +202,7 @@ def pedir_dados_janela_windows():
             .btn-gerar:hover {{ background: linear-gradient(135deg, #004494 0%, #00306b 100%); }}
         </style>
         <script>
-            window.resizeTo(1000, 700);
+            window.resizeTo(1000, 720);
 
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
@@ -233,6 +233,14 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
+            function togglePatamarChegada() {{
+                var temPat = document.getElementById('tem_patamar_chegada').checked;
+                var box = document.getElementById('box_patamar_chegada');
+                if (box) {{
+                    box.style.display = temPat ? "flex" : "none";
+                }}
+            }}
+
             function toggleExtremos() {{
                 var altExt = document.getElementById('alterar_extremos').checked;
                 var box = document.getElementById('box_extremos');
@@ -251,6 +259,7 @@ def pedir_dados_janela_windows():
                     var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
                     var n_deg3 = numLances === 3 ? parseInt(document.getElementById('n_degraus_3').value) : 0;
                     var temPatPartida = document.getElementById('tem_patamar_partida').checked;
+                    var temPatChegada = document.getElementById('tem_patamar_chegada').checked;
                     var altExtremos = document.getElementById('alterar_extremos').checked;
                     var espGeral = parseFloat(document.getElementById('espelho').value.replace(',', '.'));
 
@@ -268,7 +277,8 @@ def pedir_dados_janela_windows():
                         "patamar_partida": temPatPartida ? parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')) : 0.0,
                         "patamar_intermediario_1": parseFloat(document.getElementById('patamar_int_1').value.replace(',', '.')),
                         "patamar_intermediario_2": parseFloat(document.getElementById('patamar_int_2').value.replace(',', '.')),
-                        "patamar_chegada": parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')),
+                        "tem_patamar_chegada": temPatChegada,
+                        "patamar_chegada": temPatChegada ? parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')) : 0.0,
                         "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
                         "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
                         "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.'))
@@ -278,36 +288,37 @@ def pedir_dados_janela_windows():
                     file.Close();
                     window.close();
                 }} catch (e) {{
-                    alert("Erro ao gravar os dados: " + e.message);
+                    alert("Erro ao salvar dados: " + e.message);
                 }}
             }}
         </script>
     </head>
-    <body onload="toggleLances(); togglePatamarPartida(); toggleExtremos();">
+    <body onload="toggleLances(); togglePatamarPartida(); togglePatamarChegada(); toggleExtremos();">
         <div class="topbar">
-            <div class="icon">&#9650;</div>
+            <div class="icon">📐</div>
             <div>
-                <h1>Dados da Escada</h1>
-                <p>Plugin TQS &middot; Ediglânthio Samuel Araújo Brandão &middot; G3 Engenharia</p>
+                <h1>Parâmetros da Escada</h1>
+                <p>Configuração de geometria e lances</p>
             </div>
         </div>
 
         <div class="container">
             <div class="img-box">
-                <img src="{img_html}" alt="Diagrama" onerror="this.style.display='none';">
+                <img src="{img_html}" alt="Diagrama da Escada" onerror="this.parentElement.innerHTML='<div style=\'color:#888; text-align:center; padding:40px;\'>Diagrama ilustrativo indisponível</div>'" />
             </div>
+
             <div class="form-box">
                 <div class="card">
                     <h3>Configuração Geral</h3>
                     <div class="campo">
-                        <label>Quantidade de Lances:</label>
+                        <label>Número de Lances:</label>
                         <select id="num_lances" onchange="toggleLances()">
                             <option value="1">1 Lance</option>
                             <option value="2" selected>2 Lances</option>
                             <option value="3">3 Lances</option>
                         </select>
                     </div>
-                    <div class="campo"><label>Passo / Largura (cm):</label><input type="text" id="piso" value="29"></div>
+                    <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
                     <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
 
                     <div class="campo" style="margin-top: 8px;">
@@ -342,7 +353,11 @@ def pedir_dados_janela_windows():
                     </div>
                     <div class="campo" id="box_patamar_partida"><label>Patamar de Partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
                     <div class="campo" id="campo_pat1"><label>Patamar Intermediário (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
-                    <div class="campo"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
+                    <div class="campo">
+                        <label>Tem patamar de chegada?</label>
+                        <input type="checkbox" id="tem_patamar_chegada" checked onchange="togglePatamarChegada()">
+                    </div>
+                    <div class="campo" id="box_patamar_chegada"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
                 </div>
 
                 <div class="card">
@@ -438,10 +453,14 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     if isinstance(tem_patamar_partida, str):
         tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
 
+    tem_patamar_chegada = dados.get("tem_patamar_chegada", True)
+    if isinstance(tem_patamar_chegada, str):
+        tem_patamar_chegada = (tem_patamar_chegada.lower() in ["true", "1", "sim"])
+
     patamar_partida = float(dados.get("patamar_partida", 150))
     patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
     patamar_int_2 = float(dados.get("patamar_intermediario_2", 120))
-    patamar_chegada = float(dados["patamar_chegada"])
+    patamar_chegada = float(dados.get("patamar_chegada", 150))
 
     n1 = int(dados["n_degraus_1"])
     n2 = int(dados.get("n_degraus_2", 0))
@@ -543,21 +562,38 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # CASO 1 LANCE
     # ==========================================================================
     if num_lances == 1:
-        x_fim_chegada = x_inicio_l2 + patamar_chegada
-        draw.Line(x_inicio_l2, y_topo_l1, x_fim_chegada, y_topo_l1)
+        if tem_patamar_chegada:
+            x_fim_chegada = x_inicio_l2 + patamar_chegada
+            draw.Line(x_inicio_l2, y_topo_l1, x_fim_chegada, y_topo_l1)
 
-        y_fundo_chegada = y_topo_l1 - espessura
-        x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
+            y_fundo_chegada = y_topo_l1 - espessura
+            x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
 
-        draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
-        draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+            draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
+            draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-        # Viga de Chegada (Lado Direito Superior)
-        x_viga_c_ext = x_fim_chegada + viga_largura
-        draw.Line(x_fim_chegada, y_topo_l1, x_viga_c_ext, y_topo_l1)
-        draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_chegada, y_topo_l1 - viga_altura)
-        draw.Line(x_fim_chegada, y_topo_l1 - viga_altura, x_fim_chegada, y_fundo_chegada)
+            # Viga de Chegada (Lado Direito Superior)
+            x_viga_c_ext = x_fim_chegada + viga_largura
+            draw.Line(x_fim_chegada, y_topo_l1, x_viga_c_ext, y_topo_l1)
+            draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+            draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_chegada, y_topo_l1 - viga_altura)
+            draw.Line(x_fim_chegada, y_topo_l1 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        else:
+            # Viga de Chegada Direta no Último Degrau (Sem Patamar)
+            x_viga_c_ext = x_inicio_l2 + viga_largura
+            y_fundo_no_xtopo = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x_inicio_l2)
+
+            # Topo da viga
+            draw.Line(x_inicio_l2, y_topo_l1, x_viga_c_ext, y_topo_l1)
+            # Face direita da viga
+            draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+            # Fundo da viga
+            draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_inicio_l2, y_topo_l1 - viga_altura)
+            # Face esquerda da viga (do fundo da viga até o fundo inclinado do lance 1)
+            draw.Line(x_inicio_l2, y_topo_l1 - viga_altura, x_inicio_l2, y_fundo_no_xtopo)
+
+            # Fundo do Lance 1 vai até x_inicio_l2
+            draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_inicio_l2, y_fundo_no_xtopo)
         return
 
     # --------------------------------------------------------------------------
@@ -630,22 +666,39 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior à esquerda
     # ==========================================================================
     if num_lances == 2:
-        x_fim_chegada = x_topo_l2 - patamar_chegada
-        draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
+        if tem_patamar_chegada:
+            x_fim_chegada = x_topo_l2 - patamar_chegada
+            draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
 
-        y_fundo_chegada = y_topo_l2 - espessura
-        x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
+            y_fundo_chegada = y_topo_l2 - espessura
+            x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
 
-        # Fundo do Lance 2 vai desde a cota de baixo do patamar 1 até a chegada superior
-        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
-        draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+            # Fundo do Lance 2 vai desde a cota de baixo do patamar 1 até a chegada superior
+            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
+            draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-        # Viga de Chegada (Lado Esquerdo Superior)
-        x_viga_c_ext = x_fim_chegada - viga_largura
-        draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
-        draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
-        draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
+            # Viga de Chegada (Lado Esquerdo Superior)
+            x_viga_c_ext = x_fim_chegada - viga_largura
+            draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
+            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
+            draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        else:
+            # Viga de Chegada Direta no Último Degrau (Sem Patamar)
+            x_viga_c_ext = x_topo_l2 - viga_largura
+            y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
+
+            # Topo da viga
+            draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
+            # Face esquerda da viga
+            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+            # Fundo da viga
+            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
+            # Face direita da viga (do fundo da viga até o fundo inclinado do lance 2)
+            draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
+
+            # Fundo do Lance 2 vai desde o patamar 1 até x_topo_l2
+            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
         return
 
     # ==========================================================================
@@ -707,22 +760,39 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # --------------------------------------------------------------------------
     # PATAMAR DE CHEGADA SUPERIOR (LADO DIREITO)
     # --------------------------------------------------------------------------
-    x_fim_chegada = x_topo_l3 + patamar_chegada
-    draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
+    if tem_patamar_chegada:
+        x_fim_chegada = x_topo_l3 + patamar_chegada
+        draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
 
-    # Fundo do Lance 3 vai desde o patamar 2 até a chegada superior
-    y_fundo_chegada = y_topo_l3 - espessura
-    x_fundo_l3_fim = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_chegada)
+        # Fundo do Lance 3 vai desde o patamar 2 até a chegada superior
+        y_fundo_chegada = y_topo_l3 - espessura
+        x_fundo_l3_fim = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_chegada)
 
-    draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_fundo_l3_fim, y_fundo_chegada)
-    draw.Line(x_fundo_l3_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+        draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_fundo_l3_fim, y_fundo_chegada)
+        draw.Line(x_fundo_l3_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-    # Viga de Chegada Superior (Lado Direito)
-    x_viga_c_ext = x_fim_chegada + viga_largura
-    draw.Line(x_fim_chegada, y_topo_l3, x_viga_c_ext, y_topo_l3)
-    draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
-    draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_fim_chegada, y_topo_l3 - viga_altura)
-    draw.Line(x_fim_chegada, y_topo_l3 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        # Viga de Chegada Superior (Lado Direito)
+        x_viga_c_ext = x_fim_chegada + viga_largura
+        draw.Line(x_fim_chegada, y_topo_l3, x_viga_c_ext, y_topo_l3)
+        draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_fim_chegada, y_topo_l3 - viga_altura)
+        draw.Line(x_fim_chegada, y_topo_l3 - viga_altura, x_fim_chegada, y_fundo_chegada)
+    else:
+        # Viga de Chegada Direta no Último Degrau (Sem Patamar)
+        x_viga_c_ext = x_topo_l3 + viga_largura
+        y_fundo_no_xtopo3 = calcular_y_no_x(f3_x1, f3_y1, f3_x2, f3_y2, x_topo_l3)
+
+        # Topo da viga
+        draw.Line(x_topo_l3, y_topo_l3, x_viga_c_ext, y_topo_l3)
+        # Face direita da viga
+        draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
+        # Fundo da viga
+        draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_topo_l3, y_topo_l3 - viga_altura)
+        # Face esquerda da viga (do fundo da viga até o fundo inclinado do lance 3)
+        draw.Line(x_topo_l3, y_topo_l3 - viga_altura, x_topo_l3, y_fundo_no_xtopo3)
+
+        # Fundo do Lance 3 vai desde o patamar 2 até x_topo_l3
+        draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_topo_l3, y_fundo_no_xtopo3)
 
 
 # ==============================================================================
