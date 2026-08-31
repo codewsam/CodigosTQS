@@ -952,7 +952,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
         # Seta de subida
-        draw.color = 4  # Ciano/Azul
+        draw.color = 4  #Azul
         x_seta_start = x0 + piso * 0.5
         x_seta_end = x_fim_deg_l1 + (patamar_chegada * 0.5 if tem_patamar_chegada else 0.0)
         y_seta = y_planta_bot + largura_l1 / 2.0
@@ -1112,21 +1112,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         dwg.dim.DimHorizontal(x_l2_esq, y_l2_topo, x_inicio_l2, y_l2_topo, x_l2_esq, y_cota_top2)
         dwg.dim.DimHorizontal(x_inicio_l2, y_l2_topo, x_viga_p1_ext, y_l2_topo, x_inicio_l2, y_cota_top2)
 
-        # Cotas Inferiores (Lance 1)
-        y_cota_bot1 = y_planta_bot - 35.0
-        y_cota_bot2 = y_planta_bot - 70.0
 
-        for i in range(n1 - 1):
-            x_a = x0 + i * piso
-            x_b = x_a + piso
-            dwg.dim.DimHorizontal(x_a, y_planta_bot, x_b, y_planta_bot, x_a, y_cota_bot1)
-
-        dwg.dim.DimHorizontal(x_inicio_l2, y_planta_bot, x_fim_pat1, y_planta_bot, x_inicio_l2, y_cota_bot1)
-        dwg.dim.DimHorizontal(x_fim_pat1, y_planta_bot, x_viga_p1_ext, y_planta_bot, x_fim_pat1, y_cota_bot1)
-
-        # Cota total inferior Lance 1
-        dwg.dim.DimHorizontal(x0, y_planta_bot, x_inicio_l2, y_planta_bot, x0, y_cota_bot2)
-        dwg.dim.DimHorizontal(x_inicio_l2, y_planta_bot, x_viga_p1_ext, y_planta_bot, x_inicio_l2, y_cota_bot2)
 
         # Cotas Verticais à Direita (Larguras)
         x_cota_dir1 = x_viga_p1_ext + 35.0
