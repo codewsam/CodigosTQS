@@ -281,7 +281,8 @@ def pedir_dados_janela_windows():
                         "patamar_chegada": temPatChegada ? parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')) : 0.0,
                         "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
                         "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
-                        "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.'))
+                        "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.')),
+                        "largura_escada": parseFloat(document.getElementById('largura_escada').value.replace(',', '.')),
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -320,6 +321,7 @@ def pedir_dados_janela_windows():
                     </div>
                     <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
                     <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
+                    <div class="campo"><label>Largura da Escada (cm):</label><input type="text" id="largura_escada" value="100"></div>
 
                     <div class="campo" style="margin-top: 8px;">
                         <label>Alterar espelho do primeiro e último degrau?</label>
@@ -368,7 +370,6 @@ def pedir_dados_janela_windows():
                 </div>
             </div>
         </div>
-
         <div class="btns">
             <button onclick="window.close()">Cancelar</button>
             <button class="btn-gerar" onclick="confirmar()">Gerar Escada</button>
@@ -437,6 +438,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     espessura = float(dados["espessura"])
     viga_largura = float(dados["viga_largura"])
     viga_altura = float(dados["viga_altura"])
+    largura_escada = float(dados.get("largura_escada", 100.0))
 
     alterar_extremos = dados.get("alterar_extremos", False)
     if isinstance(alterar_extremos, str):
