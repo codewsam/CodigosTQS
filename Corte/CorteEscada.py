@@ -249,6 +249,42 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
+                                    function toggleVao() {{
+                var temVao = document.getElementById('tem_vao_lances').checked;
+                var box = document.getElementById('box_vao_lances');
+                if (box) {{
+                    box.style.display = temVao ? "flex" : "none";
+                }}
+            }}
+
+            function togglePlanta() {{
+                var temPlanta = document.getElementById('desenhar_planta').checked;
+                var box = document.getElementById('box_opcoes_planta');
+                if (box) {{
+                    box.style.display = temPlanta ? "block" : "none";
+                }}
+                atualizarCamposPlanta();
+            }}
+
+            function atualizarCamposPlanta() {{
+                var numLances = parseInt(document.getElementById('num_lances').value);
+                var box1 = document.getElementById('box_planta_1lance');
+                var boxMulti = document.getElementById('box_planta_multilance');
+                var boxL3 = document.getElementById('box_planta_l3');
+                if (box1 && boxMulti) {{
+                    if (numLances === 1) {{
+                        box1.style.display = "block";
+                        boxMulti.style.display = "none";
+                    }} else {{
+                        box1.style.display = "none";
+                        boxMulti.style.display = "block";
+                        if (boxL3) {{
+                            boxL3.style.display = (numLances === 3) ? "flex" : "none";
+                        }}
+                    }}
+                }}
+            }}
+
             function confirmar() {{
                 try {{
                     var fso = new ActiveXObject("Scripting.FileSystemObject");
@@ -282,7 +318,12 @@ def pedir_dados_janela_windows():
                         "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
                         "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
                         "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.')),
-                        "largura_escada": parseFloat(document.getElementById('largura_escada').value.replace(',', '.')),
+                        "desenhar_planta": document.getElementById('desenhar_planta') ? document.getElementById('desenhar_planta').checked : false,
+                        "largura_lance_1": (numLances === 1) ? (parseFloat(document.getElementById('largura_escada_1').value.replace(',', '.')) || 100.0) : (parseFloat(document.getElementById('largura_lance_1').value.replace(',', '.')) || 120.0),
+                        "largura_lance_2": (numLances >= 2) ? (parseFloat(document.getElementById('largura_lance_2').value.replace(',', '.')) || 105.5) : 0.0,
+                        "largura_lance_3": (numLances === 3) ? (parseFloat(document.getElementById('largura_lance_3').value.replace(',', '.')) || 100.0) : 0.0,
+                        "tem_vao_lances": document.getElementById('tem_vao_lances') ? document.getElementById('tem_vao_lances').checked : false,
+                        "vao_lances": (numLances >= 2 && document.getElementById('tem_vao_lances') && document.getElementById('tem_vao_lances').checked) ? (parseFloat(document.getElementById('vao_lances').value.replace(',', '.')) || 10.0) : 0.0,
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -294,7 +335,7 @@ def pedir_dados_janela_windows():
             }}
         </script>
     </head>
-    <body onload="toggleLances(); togglePatamarPartida(); togglePatamarChegada(); toggleExtremos();">
+    <body onload="toggleVao(); togglePlanta(); toggleLances(); togglePatamarPartida(); togglePatamarChegada(); toggleExtremos();">
         <div class="topbar">
             <div class="icon">📐</div>
             <div>
@@ -321,7 +362,6 @@ def pedir_dados_janela_windows():
                     </div>
                     <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
                     <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
-                    <div class="campo"><label>Largura da Escada (cm):</label><input type="text" id="largura_escada" value="100"></div>
 
                     <div class="campo" style="margin-top: 8px;">
                         <label>Alterar espelho do primeiro e último degrau?</label>
@@ -360,6 +400,36 @@ def pedir_dados_janela_windows():
                         <input type="checkbox" id="tem_patamar_chegada" checked onchange="togglePatamarChegada()">
                     </div>
                     <div class="campo" id="box_patamar_chegada"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
+                </div>
+
+                                <div class="card">
+                    <h3>Planta da Escada</h3>
+                    <div class="campo">
+                        <label>Desenhar Planta da Escada?</label>
+                        <input type="checkbox" id="desenhar_planta" checked onchange="togglePlanta()">
+                    </div>
+
+                    <div id="box_opcoes_planta" class="sec-opcional" style="margin-top: 6px;">
+                        <div id="box_planta_1lance" style="display:none;">
+                            <div class="campo"><label>Largura da Escada (cm):</label><input type="text" id="largura_escada_1" value="100"></div>
+                        </div>
+
+                        <div id="box_planta_multilance">
+                            <div class="campo"><label>Largura Lance 1 (cm):</label><input type="text" id="largura_lance_1" value="120"></div>
+                            <div class="campo"><label>Largura Lance 2 (cm):</label><input type="text" id="largura_lance_2" value="105.5"></div>
+                            <div class="campo" id="box_planta_l3" style="display:none;"><label>Largura Lance 3 (cm):</label><input type="text" id="largura_lance_3" value="100"></div>
+                            
+                            <div class="campo" style="margin-top: 6px;">
+                                <label>Tem vão entre lances?</label>
+                                <input type="checkbox" id="tem_vao_lances" onchange="toggleVao()">
+                            </div>
+                            <div id="box_vao_lances" class="campo" style="display:none;">
+                                <label>Vão entre lances (cm):</label>
+                                <input type="text" id="vao_lances" value="10">
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 </div>
 
                 <div class="card">
@@ -800,6 +870,277 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 # ==============================================================================
 # COMANDO PRINCIPAL EXECUTADO PELO TQS
 # ==============================================================================
+# ==============================================================================
+# DESENHO DA PLANTA DA ESCADA
+# ==============================================================================
+def desenhar_planta_escada(dwg, x0, y0, dados):
+    """Desenha a vista em planta (forma) da escada com cotas completas, vigas e anotacoes."""
+    num_lances = dados.get("num_lances", 2)
+    piso = float(dados["piso"])
+    viga_largura = float(dados["viga_largura"])
+    viga_altura = float(dados["viga_altura"])
+
+    largura_l1 = float(dados.get("largura_lance_1", 120.0))
+    largura_l2 = float(dados.get("largura_lance_2", 105.5))
+    largura_l3 = float(dados.get("largura_lance_3", 100.0))
+    vao_lances = float(dados.get("vao_lances", 0.0))
+
+    tem_patamar_partida = dados.get("tem_patamar_partida", True)
+    if isinstance(tem_patamar_partida, str):
+        tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
+
+    tem_patamar_chegada = dados.get("tem_patamar_chegada", True)
+    if isinstance(tem_patamar_chegada, str):
+        tem_patamar_chegada = (tem_patamar_chegada.lower() in ["true", "1", "sim"])
+
+    patamar_partida = float(dados.get("patamar_partida", 150))
+    patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
+    patamar_int_2 = float(dados.get("patamar_intermediario_2", 120))
+    patamar_chegada = float(dados.get("patamar_chegada", 150))
+
+    n1 = int(dados["n_degraus_1"])
+    n2 = int(dados.get("n_degraus_2", 0))
+    n3 = int(dados.get("n_degraus_3", 0))
+
+    draw = dwg.draw
+    draw.level = 241
+    draw.color = 3  # Verde para forma
+
+    dist_offset = viga_altura + 120.0
+    y_planta_top = y0 - dist_offset
+
+    if num_lances == 1:
+        # ======================================================================
+        # PLANTA: 1 LANCE
+        # ======================================================================
+        y_planta_bot = y_planta_top - largura_l1
+
+        if tem_patamar_partida:
+            x_partida = x0 - patamar_partida
+            x_l1_esq = x_partida - viga_largura
+        else:
+            x_partida = x0
+            x_l1_esq = x0
+
+        x_fim_deg_l1 = x0 + (n1 - 1) * piso
+
+        if tem_patamar_chegada:
+            x_fim_chegada = x_fim_deg_l1 + patamar_chegada
+            x_l1_dir = x_fim_chegada + viga_largura
+        else:
+            x_fim_chegada = x_fim_deg_l1
+            x_l1_dir = x_fim_deg_l1
+
+        # Bordas horizontais
+        draw.Line(x_l1_esq, y_planta_top, x_l1_dir, y_planta_top)
+        draw.Line(x_l1_esq, y_planta_bot, x_l1_dir, y_planta_bot)
+
+        # Fechamentos verticais
+        draw.Line(x_l1_esq, y_planta_bot, x_l1_esq, y_planta_top)
+        draw.Line(x_l1_dir, y_planta_bot, x_l1_dir, y_planta_top)
+
+        # Degraus
+        for i in range(n1):
+            x_deg = x0 + i * piso
+            draw.Line(x_deg, y_planta_bot, x_deg, y_planta_top)
+
+        # Numeracao dos degraus
+        draw.color = 7  # Branco/Texto
+        for i in range(n1 - 1):
+            x_c = x0 + (i + 0.5) * piso
+            y_c = y_planta_bot + largura_l1 / 2.0
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
+
+        # Seta de subida
+        draw.color = 4  # Ciano/Azul
+        x_seta_start = x0 + piso * 0.5
+        x_seta_end = x_fim_deg_l1 + (patamar_chegada * 0.5 if tem_patamar_chegada else 0.0)
+        y_seta = y_planta_bot + largura_l1 / 2.0
+        draw.Line(x_seta_start, y_seta, x_seta_end, y_seta)
+        draw.Line(x_seta_end, y_seta, x_seta_end - 10.0, y_seta + 5.0)
+        draw.Line(x_seta_end, y_seta, x_seta_end - 10.0, y_seta - 5.0)
+        draw.Text(x_seta_start + 10.0, y_seta + 6.0, 8.0, 0.0, "DESCE")
+
+        # COTAS
+        y_cota_top1 = y_planta_top + 35.0
+        y_cota_top2 = y_planta_top + 70.0
+
+        if tem_patamar_partida:
+            dwg.dim.DimHorizontal(x_l1_esq, y_planta_top, x_partida, y_planta_top, x_l1_esq, y_cota_top1)
+            dwg.dim.DimHorizontal(x_partida, y_planta_top, x0, y_planta_top, x_partida, y_cota_top1)
+
+        for i in range(n1 - 1):
+            x_a = x0 + i * piso
+            x_b = x_a + piso
+            dwg.dim.DimHorizontal(x_a, y_planta_top, x_b, y_planta_top, x_a, y_cota_top1)
+
+        if tem_patamar_chegada:
+            dwg.dim.DimHorizontal(x_fim_deg_l1, y_planta_top, x_fim_chegada, y_planta_top, x_fim_deg_l1, y_cota_top1)
+            dwg.dim.DimHorizontal(x_fim_chegada, y_planta_top, x_l1_dir, y_planta_top, x_fim_chegada, y_cota_top1)
+
+        # Cota total horizontal
+        dwg.dim.DimHorizontal(x_l1_esq, y_planta_top, x_l1_dir, y_planta_top, x_l1_esq, y_cota_top2)
+
+        # Cota vertical (largura)
+        x_cota_dir1 = x_l1_dir + 35.0
+        dwg.dim.DimVertical(x_l1_dir, y_planta_bot, x_l1_dir, y_planta_top, x_cota_dir1, y_planta_bot)
+
+    elif num_lances == 2:
+        # ======================================================================
+        # PLANTA: 2 LANCES (Escada em U)
+        # ======================================================================
+        largura_total = largura_l1 + vao_lances + largura_l2
+        y_planta_bot = y_planta_top - largura_total
+
+        y_l1_topo = y_planta_bot + largura_l1
+        y_l2_base = y_l1_topo + vao_lances
+        y_l2_topo = y_planta_top
+
+        # Lance 1 (Inferior) - Começa em x0
+        x_inicio_l2 = x0 + (n1 - 1) * piso
+
+        # Patamar Intermediário 1 (Direita)
+        x_fim_pat1 = x_inicio_l2 + patamar_int_1
+        x_viga_p1_ext = x_fim_pat1 + viga_largura
+
+        # Lance 2 (Superior) - Sobe para a esquerda até a chegada
+        x_topo_l2 = x_inicio_l2 - (n2 - 1) * piso
+        if tem_patamar_chegada:
+            x_fim_chegada = x_topo_l2 - patamar_chegada
+            x_l2_esq = x_fim_chegada - viga_largura
+        else:
+            x_fim_chegada = x_topo_l2
+            x_l2_esq = x_topo_l2
+
+        # ----------------------------------------------------------------------
+        # 1. LINHAS DE FÔRMA
+        # ----------------------------------------------------------------------
+        draw.level = 241
+        draw.color = 3  # Verde
+
+        # Borda Superior Externa (Lance 2 + Patamar 1)
+        draw.Line(x_l2_esq, y_l2_topo, x_viga_p1_ext, y_l2_topo)
+
+        # Borda Inferior Externa (Lance 1 + Patamar 1)
+        draw.Line(x0, y_planta_bot, x_viga_p1_ext, y_planta_bot)
+
+        # Bordas Internas / Vão da Escada
+        draw.Line(x0, y_l1_topo, x_inicio_l2, y_l1_topo)
+        if vao_lances > 0:
+            draw.Line(x0, y_l2_base, x_inicio_l2, y_l2_base)
+            draw.Line(x_inicio_l2, y_l1_topo, x_inicio_l2, y_l2_base)
+        else:
+            draw.Line(x0, y_l1_topo, x_inicio_l2, y_l1_topo)
+
+        # Fechamento direito (Patamar 1)
+        draw.Line(x_viga_p1_ext, y_planta_bot, x_viga_p1_ext, y_l2_topo)
+
+        # Fechamento esquerdo Lance 1 (1º degrau em x0)
+        draw.Line(x0, y_planta_bot, x0, y_l1_topo)
+
+# Fechamento esquerdo Lance 2 (aberto para ligacao)
+
+        # Degraus Lance 1
+        for i in range(n1):
+            x_deg = x0 + i * piso
+            draw.Line(x_deg, y_planta_bot, x_deg, y_l1_topo)
+
+        # Degraus Lance 2
+        for i in range(n2):
+            x_deg = x_inicio_l2 - i * piso
+            draw.Line(x_deg, y_l2_base, x_deg, y_l2_topo)
+
+        # ----------------------------------------------------------------------
+        # 2. NUMERAÇÃO DOS DEGRAUS E TEXTOS
+        # ----------------------------------------------------------------------
+        draw.color = 7  # Branco/Texto
+        # Lance 1
+        for i in range(n1 - 1):
+            x_c = x0 + (i + 0.5) * piso
+            y_c = y_planta_bot + largura_l1 / 2.0
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
+
+        # Lance 2
+        for j in range(n2 - 1):
+            x_c = x_inicio_l2 - (j + 0.5) * piso
+            y_c = y_l2_base + largura_l2 / 2.0
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{n1 + j + 1:02d}")
+
+
+
+        # Seta e linha de fluxo (SOBE)
+        draw.color = 4  # Ciano/Azul
+        y_m1 = y_planta_bot + largura_l1 / 2.0
+        y_m2 = y_l2_base + largura_l2 / 2.0
+        x_m_start = x0 + piso * 0.5
+        x_m_pat = x_inicio_l2 + patamar_int_1 * 0.5
+        x_m_arr = x_topo_l2 - (patamar_chegada * 0.5 if tem_patamar_chegada else 20.0)
+
+        draw.Line(x_m_start, y_m1, x_m_pat, y_m1)
+        draw.Line(x_m_pat, y_m1, x_m_pat, y_m2)
+        draw.Line(x_m_pat, y_m2, x_m_arr, y_m2)
+        # Seta apontando para a esquerda
+        draw.Line(x_m_arr, y_m2, x_m_arr + 10.0, y_m2 + 5.0)
+        draw.Line(x_m_arr, y_m2, x_m_arr + 10.0, y_m2 - 5.0)
+        draw.Text(x_m_start + 10.0, y_m1 + 5.0, 8.0, 0.0, "DESCE")
+
+        # ----------------------------------------------------------------------
+        # 3. LINHAS DE COTA (dwg.dim)
+        # ----------------------------------------------------------------------
+        y_cota_top1 = y_l2_topo + 35.0
+        y_cota_top2 = y_l2_topo + 70.0
+
+        # Linha 1 de Cotas Superiores (Parciais)
+        # Viga de Chegada
+        if tem_patamar_chegada:
+            dwg.dim.DimHorizontal(x_l2_esq, y_l2_topo, x_fim_chegada, y_l2_topo, x_l2_esq, y_cota_top1)
+            dwg.dim.DimHorizontal(x_fim_chegada, y_l2_topo, x_topo_l2, y_l2_topo, x_fim_chegada, y_cota_top1)
+
+        # Degraus Lance 2
+        for i in range(n2 - 1):
+            x_a = x_topo_l2 + i * piso
+            x_b = x_a + piso
+            dwg.dim.DimHorizontal(x_a, y_l2_topo, x_b, y_l2_topo, x_a, y_cota_top1)
+
+        # Patamar Intermediário 1
+        dwg.dim.DimHorizontal(x_inicio_l2, y_l2_topo, x_fim_pat1, y_l2_topo, x_inicio_l2, y_cota_top1)
+
+        # Viga do Patamar Intermediário
+        dwg.dim.DimHorizontal(x_fim_pat1, y_l2_topo, x_viga_p1_ext, y_l2_topo, x_fim_pat1, y_cota_top1)
+
+        # Linha 2 de Cotas Superiores (Totais / Acumuladas)
+        dwg.dim.DimHorizontal(x_l2_esq, y_l2_topo, x_inicio_l2, y_l2_topo, x_l2_esq, y_cota_top2)
+        dwg.dim.DimHorizontal(x_inicio_l2, y_l2_topo, x_viga_p1_ext, y_l2_topo, x_inicio_l2, y_cota_top2)
+
+        # Cotas Inferiores (Lance 1)
+        y_cota_bot1 = y_planta_bot - 35.0
+        y_cota_bot2 = y_planta_bot - 70.0
+
+        for i in range(n1 - 1):
+            x_a = x0 + i * piso
+            x_b = x_a + piso
+            dwg.dim.DimHorizontal(x_a, y_planta_bot, x_b, y_planta_bot, x_a, y_cota_bot1)
+
+        dwg.dim.DimHorizontal(x_inicio_l2, y_planta_bot, x_fim_pat1, y_planta_bot, x_inicio_l2, y_cota_bot1)
+        dwg.dim.DimHorizontal(x_fim_pat1, y_planta_bot, x_viga_p1_ext, y_planta_bot, x_fim_pat1, y_cota_bot1)
+
+        # Cota total inferior Lance 1
+        dwg.dim.DimHorizontal(x0, y_planta_bot, x_inicio_l2, y_planta_bot, x0, y_cota_bot2)
+        dwg.dim.DimHorizontal(x_inicio_l2, y_planta_bot, x_viga_p1_ext, y_planta_bot, x_inicio_l2, y_cota_bot2)
+
+        # Cotas Verticais à Direita (Larguras)
+        x_cota_dir1 = x_viga_p1_ext + 35.0
+        x_cota_dir2 = x_viga_p1_ext + 70.0
+
+        dwg.dim.DimVertical(x_viga_p1_ext, y_planta_bot, x_viga_p1_ext, y_l1_topo, x_cota_dir1, y_planta_bot)
+        if vao_lances > 0:
+            dwg.dim.DimVertical(x_viga_p1_ext, y_l1_topo, x_viga_p1_ext, y_l2_base, x_cota_dir1, y_l1_topo)
+        dwg.dim.DimVertical(x_viga_p1_ext, y_l2_base, x_viga_p1_ext, y_l2_topo, x_cota_dir1, y_l2_base)
+
+        # Cota Vertical Total (Largura Total da Escada)
+        dwg.dim.DimVertical(x_viga_p1_ext, y_planta_bot, x_viga_p1_ext, y_l2_topo, x_cota_dir2, y_planta_bot)
+
+
 def meucmd(eag, tqsjan):
     """Função principal acionada pelo menu TQS."""
     dados = pedir_dados_janela_windows()
@@ -814,6 +1155,8 @@ def meucmd(eag, tqsjan):
         return
 
     desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
+    if dados.get("desenhar_planta", True):
+        desenhar_planta_escada(tqsjan.dwg, x0, y0, dados)
     tqsjan.ZoomTotal()
 
     if dados.get("alterar_extremos"):
