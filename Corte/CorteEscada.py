@@ -202,7 +202,7 @@ def pedir_dados_janela_windows():
             .btn-gerar:hover {{ background: linear-gradient(135deg, #004494 0%, #00306b 100%); }}
         </style>
         <script>
-            window.resizeTo(1000, 720);
+            window.resizeTo(1200, 920);
 
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
