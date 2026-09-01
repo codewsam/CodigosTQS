@@ -906,225 +906,350 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
     draw.level = 241
     draw.color = 3  # Verde para forma
 
-    dist_offset = viga_altura + 120.0
+    dist_offset = viga_altura + 140.0
     y_planta_top = y0 - dist_offset
 
     if num_lances == 1:
         # ======================================================================
         # PLANTA: 1 LANCE
         # ======================================================================
-        y_planta_bot = y_planta_top - largura_l1
+        y_min_int = y_planta_top - largura_l1
+        y_max_int = y_planta_top
+        y_min_ext = y_min_int - viga_largura
+        y_max_ext = y_max_int + viga_largura
 
+        x_deg_ini = x0
+        x_deg_fim = x0 + (n1 - 1) * piso
+
+        pat_esq = patamar_partida if tem_patamar_partida else 0.0
+        pat_dir = patamar_chegada if tem_patamar_chegada else 0.0
+
+        x_min_int = x_deg_ini - pat_esq
+        x_min_ext = x_min_int - viga_largura
+        x_max_int = x_deg_fim + pat_dir
+        x_max_ext = x_max_int + viga_largura
+
+        # Retangulo Externo (Caixa de Escada / Vigas)
+        draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
+        draw.Line(x_max_ext, y_min_ext, x_max_ext, y_max_ext)
+        draw.Line(x_max_ext, y_max_ext, x_min_ext, y_max_ext)
+        draw.Line(x_min_ext, y_max_ext, x_min_ext, y_min_ext)
+
+        # Retangulo Interno
+        draw.Line(x_min_int, y_min_int, x_max_int, y_min_int)
+        draw.Line(x_max_int, y_min_int, x_max_int, y_max_int)
+        draw.Line(x_max_int, y_max_int, x_min_int, y_max_int)
+        draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
+
+        # Linhas divisorias de patamares
         if tem_patamar_partida:
-            x_partida = x0 - patamar_partida
-            x_l1_esq = x_partida - viga_largura
-        else:
-            x_partida = x0
-            x_l1_esq = x0
-
-        x_fim_deg_l1 = x0 + (n1 - 1) * piso
-
+            draw.Line(x_deg_ini, y_min_int, x_deg_ini, y_max_int)
         if tem_patamar_chegada:
-            x_fim_chegada = x_fim_deg_l1 + patamar_chegada
-            x_l1_dir = x_fim_chegada + viga_largura
-        else:
-            x_fim_chegada = x_fim_deg_l1
-            x_l1_dir = x_fim_deg_l1
-
-        # Bordas horizontais
-        draw.Line(x_l1_esq, y_planta_top, x_l1_dir, y_planta_top)
-        draw.Line(x_l1_esq, y_planta_bot, x_l1_dir, y_planta_bot)
-
-        # Fechamentos verticais
-        draw.Line(x_l1_esq, y_planta_bot, x_l1_esq, y_planta_top)
-        draw.Line(x_l1_dir, y_planta_bot, x_l1_dir, y_planta_top)
+            draw.Line(x_deg_fim, y_min_int, x_deg_fim, y_max_int)
 
         # Degraus
-        for i in range(n1):
-            x_deg = x0 + i * piso
-            draw.Line(x_deg, y_planta_bot, x_deg, y_planta_top)
+        for i in range(1, n1 - 1):
+            x_deg = x_deg_ini + i * piso
+            draw.Line(x_deg, y_min_int, x_deg, y_max_int)
 
         # Numeracao dos degraus
         draw.color = 7  # Branco/Texto
         for i in range(n1 - 1):
-            x_c = x0 + (i + 0.5) * piso
-            y_c = y_planta_bot + largura_l1 / 2.0
+            x_c = x_deg_ini + (i + 0.5) * piso
+            y_c = y_min_int + largura_l1 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
-        # Seta de subida
-        draw.color = 4  #Azul
-        x_seta_start = x0 + piso * 0.5
-        x_seta_end = x_fim_deg_l1 + (patamar_chegada * 0.5 if tem_patamar_chegada else 0.0)
-        y_seta = y_planta_bot + largura_l1 / 2.0
+        # Seta de fluxo
+        draw.color = 4  # Azul / Ciano
+        x_seta_start = x_deg_ini + piso * 0.5
+        x_seta_end = x_deg_fim + (pat_dir * 0.5 if tem_patamar_chegada else 0.0)
+        y_seta = y_min_int + largura_l1 / 2.0
         draw.Line(x_seta_start, y_seta, x_seta_end, y_seta)
         draw.Line(x_seta_end, y_seta, x_seta_end - 10.0, y_seta + 5.0)
         draw.Line(x_seta_end, y_seta, x_seta_end - 10.0, y_seta - 5.0)
         draw.Text(x_seta_start + 10.0, y_seta + 6.0, 8.0, 0.0, "DESCE")
 
         # COTAS
-        y_cota_top1 = y_planta_top + 35.0
-        y_cota_top2 = y_planta_top + 70.0
+        y_cota_top1 = y_max_ext + 35.0
+        y_cota_top2 = y_max_ext + 70.0
 
+        # Cotas parciais
+        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
         if tem_patamar_partida:
-            dwg.dim.DimHorizontal(x_l1_esq, y_planta_top, x_partida, y_planta_top, x_l1_esq, y_cota_top1)
-            dwg.dim.DimHorizontal(x_partida, y_planta_top, x0, y_planta_top, x_partida, y_cota_top1)
+            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_ini, y_max_ext, x_min_int, y_cota_top1)
 
         for i in range(n1 - 1):
-            x_a = x0 + i * piso
+            x_a = x_deg_ini + i * piso
             x_b = x_a + piso
-            dwg.dim.DimHorizontal(x_a, y_planta_top, x_b, y_planta_top, x_a, y_cota_top1)
+            dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
 
         if tem_patamar_chegada:
-            dwg.dim.DimHorizontal(x_fim_deg_l1, y_planta_top, x_fim_chegada, y_planta_top, x_fim_deg_l1, y_cota_top1)
-            dwg.dim.DimHorizontal(x_fim_chegada, y_planta_top, x_l1_dir, y_planta_top, x_fim_chegada, y_cota_top1)
+            dwg.dim.DimHorizontal(x_deg_fim, y_max_ext, x_max_int, y_max_ext, x_deg_fim, y_cota_top1)
+        dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
 
         # Cota total horizontal
-        dwg.dim.DimHorizontal(x_l1_esq, y_planta_top, x_l1_dir, y_planta_top, x_l1_esq, y_cota_top2)
+        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
 
-        # Cota vertical (largura)
-        x_cota_dir1 = x_l1_dir + 35.0
-        dwg.dim.DimVertical(x_l1_dir, y_planta_bot, x_l1_dir, y_planta_top, x_cota_dir1, y_planta_bot)
+        # Cotas verticais (largura)
+        x_cota_dir1 = x_max_ext + 35.0
+        x_cota_dir2 = x_max_ext + 70.0
+        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_min_int, x_cota_dir1, y_min_ext)
+        dwg.dim.DimVertical(x_max_ext, y_min_int, x_max_ext, y_max_int, x_cota_dir1, y_min_int)
+        dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
+        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
 
     elif num_lances == 2:
         # ======================================================================
-        # PLANTA: 2 LANCES (Escada em U)
+        # PLANTA: 2 LANCES (Escada em U Simetrica com Vigas Envolventes)
         # ======================================================================
         largura_total = largura_l1 + vao_lances + largura_l2
-        y_planta_bot = y_planta_top - largura_total
+        y_min_int = y_planta_top - largura_total
+        y_max_int = y_planta_top
+        y_min_ext = y_min_int - viga_largura
+        y_max_ext = y_max_int + viga_largura
 
-        y_l1_topo = y_planta_bot + largura_l1
+        y_l1_topo = y_min_int + largura_l1
         y_l2_base = y_l1_topo + vao_lances
-        y_l2_topo = y_planta_top
+        y_l2_topo = y_max_int
 
-        # Lance 1 (Inferior) - Começa em x0
-        x_inicio_l2 = x0 + (n1 - 1) * piso
+        # Degraus
+        num_deg_flight = max(n1 - 1, n2 - 1)
+        x_deg_ini = x0
+        x_deg_fim = x0 + num_deg_flight * piso
 
-        # Patamar Intermediário 1 (Direita)
-        x_fim_pat1 = x_inicio_l2 + patamar_int_1
-        x_viga_p1_ext = x_fim_pat1 + viga_largura
+        # Patamares
+        pat_esq = max(patamar_partida if tem_patamar_partida else 0.0, patamar_chegada if tem_patamar_chegada else 0.0)
+        pat_dir = patamar_int_1
 
-        # Lance 2 (Superior) - Sobe para a esquerda até a chegada
-        x_topo_l2 = x_inicio_l2 - (n2 - 1) * piso
-        if tem_patamar_chegada:
-            x_fim_chegada = x_topo_l2 - patamar_chegada
-            x_l2_esq = x_fim_chegada - viga_largura
-        else:
-            x_fim_chegada = x_topo_l2
-            x_l2_esq = x_topo_l2
+        x_min_int = x_deg_ini - pat_esq
+        x_min_ext = x_min_int - viga_largura
+
+        x_max_int = x_deg_fim + pat_dir
+        x_max_ext = x_max_int + viga_largura
 
         # ----------------------------------------------------------------------
-        # 1. LINHAS DE FÔRMA
+        # 1. LINHAS DE FORMA (Green / Level 241 / Color 3)
         # ----------------------------------------------------------------------
         draw.level = 241
-        draw.color = 3  # Verde
+        draw.color = 3
 
-        # Borda Superior Externa (Lance 2 + Patamar 1)
-        draw.Line(x_l2_esq, y_l2_topo, x_viga_p1_ext, y_l2_topo)
+        # Retangulo Externo Completo (Vigas Perimetrais da Caixa de Escada)
+        draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
+        draw.Line(x_max_ext, y_min_ext, x_max_ext, y_max_ext)
+        draw.Line(x_max_ext, y_max_ext, x_min_ext, y_max_ext)
+        draw.Line(x_min_ext, y_max_ext, x_min_ext, y_min_ext)
 
-        # Borda Inferior Externa (Lance 1 + Patamar 1)
-        draw.Line(x0, y_planta_bot, x_viga_p1_ext, y_planta_bot)
+        # Retangulo Interno Completo (Borda Interna das Vigas)
+        draw.Line(x_min_int, y_min_int, x_max_int, y_min_int)
+        draw.Line(x_max_int, y_min_int, x_max_int, y_max_int)
+        draw.Line(x_max_int, y_max_int, x_min_int, y_max_int)
+        draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
 
-        # Bordas Internas / Vão da Escada
-        draw.Line(x0, y_l1_topo, x_inicio_l2, y_l1_topo)
+        # Divisorias verticais do Patamar Esquerdo (com os lances)
+        draw.Line(x_deg_ini, y_min_int, x_deg_ini, y_l1_topo)
+        draw.Line(x_deg_ini, y_l2_base, x_deg_ini, y_max_int)
+
+        # Divisorias verticais do Patamar Direito (com os lances)
+        draw.Line(x_deg_fim, y_min_int, x_deg_fim, y_l1_topo)
+        draw.Line(x_deg_fim, y_l2_base, x_deg_fim, y_max_int)
+
+        # Vao Central entre Lances
+        draw.Line(x_deg_ini, y_l1_topo, x_deg_fim, y_l1_topo)
         if vao_lances > 0:
-            draw.Line(x0, y_l2_base, x_inicio_l2, y_l2_base)
-            draw.Line(x_inicio_l2, y_l1_topo, x_inicio_l2, y_l2_base)
-        else:
-            draw.Line(x0, y_l1_topo, x_inicio_l2, y_l1_topo)
+            draw.Line(x_deg_ini, y_l2_base, x_deg_fim, y_l2_base)
+            draw.Line(x_deg_ini, y_l1_topo, x_deg_ini, y_l2_base)
+            draw.Line(x_deg_fim, y_l1_topo, x_deg_fim, y_l2_base)
 
-        # Fechamento direito (Patamar 1)
-        draw.Line(x_viga_p1_ext, y_planta_bot, x_viga_p1_ext, y_l2_topo)
+        # Degraus Lance 1 (Inferior)
+        for i in range(1, n1 - 1):
+            x_deg = x_deg_ini + i * piso
+            draw.Line(x_deg, y_min_int, x_deg, y_l1_topo)
 
-        # Fechamento esquerdo Lance 1 (1º degrau em x0)
-        draw.Line(x0, y_planta_bot, x0, y_l1_topo)
-
-# Fechamento esquerdo Lance 2 (aberto para ligacao)
-
-        # Degraus Lance 1
-        for i in range(n1):
-            x_deg = x0 + i * piso
-            draw.Line(x_deg, y_planta_bot, x_deg, y_l1_topo)
-
-        # Degraus Lance 2
-        for i in range(n2):
-            x_deg = x_inicio_l2 - i * piso
-            draw.Line(x_deg, y_l2_base, x_deg, y_l2_topo)
+        # Degraus Lance 2 (Superior)
+        for j in range(1, n2 - 1):
+            x_deg = x_deg_ini + j * piso
+            draw.Line(x_deg, y_l2_base, x_deg, y_max_int)
 
         # ----------------------------------------------------------------------
-        # 2. NUMERAÇÃO DOS DEGRAUS E TEXTOS
+        # 2. NUMERACAO DOS DEGRAUS E TEXTOS
         # ----------------------------------------------------------------------
         draw.color = 7  # Branco/Texto
-        # Lance 1
+
+        # Numeracao Lance 1 (01, 02, 03... da esquerda para a direita)
         for i in range(n1 - 1):
-            x_c = x0 + (i + 0.5) * piso
-            y_c = y_planta_bot + largura_l1 / 2.0
+            x_c = x_deg_ini + (i + 0.5) * piso
+            y_c = y_min_int + largura_l1 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
-        # Lance 2
+        # Numeracao Lance 2 (15, 14, 13... da esquerda para a direita)
         for j in range(n2 - 1):
-            x_c = x_inicio_l2 - (j + 0.5) * piso
+            x_c = x_deg_ini + (j + 0.5) * piso
             y_c = y_l2_base + largura_l2 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{n1 + j + 1:02d}")
+            num_deg = (n1 + (n2 - 1) - 1) - j
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
 
-
-
-        # Seta e linha de fluxo (SOBE)
+        # Seta e Linha de Fluxo
         draw.color = 4  # Ciano/Azul
-        y_m1 = y_planta_bot + largura_l1 / 2.0
+        y_m1 = y_min_int + largura_l1 / 2.0
         y_m2 = y_l2_base + largura_l2 / 2.0
-        x_m_start = x0 + piso * 0.5
-        x_m_pat = x_inicio_l2 + patamar_int_1 * 0.5
-        x_m_arr = x_topo_l2 - (patamar_chegada * 0.5 if tem_patamar_chegada else 20.0)
+        x_m_start = x_deg_ini + piso * 0.5
+        x_m_pat = x_deg_fim + pat_dir * 0.5
+        x_m_arr = x_min_int + (pat_esq * 0.5 if pat_esq > 0 else -20.0)
 
         draw.Line(x_m_start, y_m1, x_m_pat, y_m1)
         draw.Line(x_m_pat, y_m1, x_m_pat, y_m2)
         draw.Line(x_m_pat, y_m2, x_m_arr, y_m2)
-        # Seta apontando para a esquerda
-        draw.Line(x_m_arr, y_m2, x_m_arr + 10.0, y_m2 + 5.0)
-        draw.Line(x_m_arr, y_m2, x_m_arr + 10.0, y_m2 - 5.0)
-        draw.Text(x_m_start + 10.0, y_m1 + 5.0, 8.0, 0.0, "DESCE")
+
+        # Seta apontando para a esquerda na chegada
+        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 + 6.0)
+        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 - 6.0)
+
+        # Texto DESCE
+        draw.Text(x_deg_ini + piso * 0.8, y_m1 + 6.0, 8.0, 0.0, "DESCE")
 
         # ----------------------------------------------------------------------
         # 3. LINHAS DE COTA (dwg.dim)
         # ----------------------------------------------------------------------
-        y_cota_top1 = y_l2_topo + 35.0
-        y_cota_top2 = y_l2_topo + 70.0
+        y_cota_top1 = y_max_ext + 35.0
+        y_cota_top2 = y_max_ext + 70.0
 
         # Linha 1 de Cotas Superiores (Parciais)
-        # Viga de Chegada
-        if tem_patamar_chegada:
-            dwg.dim.DimHorizontal(x_l2_esq, y_l2_topo, x_fim_chegada, y_l2_topo, x_l2_esq, y_cota_top1)
-            dwg.dim.DimHorizontal(x_fim_chegada, y_l2_topo, x_topo_l2, y_l2_topo, x_fim_chegada, y_cota_top1)
+        # Viga Esquerda
+        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
 
-        # Degraus Lance 2
-        for i in range(n2 - 1):
-            x_a = x_topo_l2 + i * piso
+        # Patamar Esquerdo
+        if pat_esq > 0:
+            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_ini, y_max_ext, x_min_int, y_cota_top1)
+
+        # Degraus
+        for i in range(num_deg_flight):
+            x_a = x_deg_ini + i * piso
             x_b = x_a + piso
-            dwg.dim.DimHorizontal(x_a, y_l2_topo, x_b, y_l2_topo, x_a, y_cota_top1)
+            dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
 
-        # Patamar Intermediário 1
-        dwg.dim.DimHorizontal(x_inicio_l2, y_l2_topo, x_fim_pat1, y_l2_topo, x_inicio_l2, y_cota_top1)
+        # Patamar Direito (Intermediario 1)
+        dwg.dim.DimHorizontal(x_deg_fim, y_max_ext, x_max_int, y_max_ext, x_deg_fim, y_cota_top1)
 
-        # Viga do Patamar Intermediário
-        dwg.dim.DimHorizontal(x_fim_pat1, y_l2_topo, x_viga_p1_ext, y_l2_topo, x_fim_pat1, y_cota_top1)
+        # Viga Direita
+        dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
 
-        # Linha 2 de Cotas Superiores (Totais / Acumuladas)
-        dwg.dim.DimHorizontal(x_l2_esq, y_l2_topo, x_inicio_l2, y_l2_topo, x_l2_esq, y_cota_top2)
-        dwg.dim.DimHorizontal(x_inicio_l2, y_l2_topo, x_viga_p1_ext, y_l2_topo, x_inicio_l2, y_cota_top2)
+        # Linha 2 de Cotas Superiores (Acumuladas / Totais)
+        if pat_esq > 0:
+            dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_deg_ini, y_max_ext, x_min_ext, y_cota_top2)
+            dwg.dim.DimHorizontal(x_deg_ini, y_max_ext, x_max_ext, y_max_ext, x_deg_ini, y_cota_top2)
+        else:
+            dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
 
+        # Cotas Verticais a Direita
+        x_cota_dir1 = x_max_ext + 35.0
+        x_cota_dir2 = x_max_ext + 70.0
 
+        # Viga Inferior
+        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_min_int, x_cota_dir1, y_min_ext)
 
-        # Cotas Verticais à Direita (Larguras)
-        x_cota_dir1 = x_viga_p1_ext + 35.0
-        x_cota_dir2 = x_viga_p1_ext + 70.0
+        # Lance 1
+        dwg.dim.DimVertical(x_max_ext, y_min_int, x_max_ext, y_l1_topo, x_cota_dir1, y_min_int)
 
-        dwg.dim.DimVertical(x_viga_p1_ext, y_planta_bot, x_viga_p1_ext, y_l1_topo, x_cota_dir1, y_planta_bot)
+        # Vao entre Lances
         if vao_lances > 0:
-            dwg.dim.DimVertical(x_viga_p1_ext, y_l1_topo, x_viga_p1_ext, y_l2_base, x_cota_dir1, y_l1_topo)
-        dwg.dim.DimVertical(x_viga_p1_ext, y_l2_base, x_viga_p1_ext, y_l2_topo, x_cota_dir1, y_l2_base)
+            dwg.dim.DimVertical(x_max_ext, y_l1_topo, x_max_ext, y_l2_base, x_cota_dir1, y_l1_topo)
 
-        # Cota Vertical Total (Largura Total da Escada)
-        dwg.dim.DimVertical(x_viga_p1_ext, y_planta_bot, x_viga_p1_ext, y_l2_topo, x_cota_dir2, y_planta_bot)
+        # Lance 2
+        dwg.dim.DimVertical(x_max_ext, y_l2_base, x_max_ext, y_max_int, x_cota_dir1, y_l2_base)
+
+        # Viga Superior
+        dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
+
+        # Cota Vertical Total
+        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
+
+    elif num_lances == 3:
+        # ======================================================================
+        # PLANTA: 3 LANCES
+        # ======================================================================
+        largura_total = largura_l1 + vao_lances + largura_l2 + vao_lances + largura_l3
+        y_min_int = y_planta_top - largura_total
+        y_max_int = y_planta_top
+        y_min_ext = y_min_int - viga_largura
+        y_max_ext = y_max_int + viga_largura
+
+        x_deg_ini = x0
+        num_deg_max = max(n1 - 1, n2 - 1, n3 - 1)
+        x_deg_fim = x0 + num_deg_max * piso
+
+        pat_esq = max(patamar_partida if tem_patamar_partida else 0.0, patamar_int_2)
+        pat_dir = max(patamar_int_1, patamar_chegada if tem_patamar_chegada else 0.0)
+
+        x_min_int = x_deg_ini - pat_esq
+        x_min_ext = x_min_int - viga_largura
+        x_max_int = x_deg_fim + pat_dir
+        x_max_ext = x_max_int + viga_largura
+
+        # Retangulo Externo
+        draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
+        draw.Line(x_max_ext, y_min_ext, x_max_ext, y_max_ext)
+        draw.Line(x_max_ext, y_max_ext, x_min_ext, y_max_ext)
+        draw.Line(x_min_ext, y_max_ext, x_min_ext, y_min_ext)
+
+        # Retangulo Interno
+        draw.Line(x_min_int, y_min_int, x_max_int, y_min_int)
+        draw.Line(x_max_int, y_min_int, x_max_int, y_max_int)
+        draw.Line(x_max_int, y_max_int, x_min_int, y_max_int)
+        draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
+
+        y_l1_topo = y_min_int + largura_l1
+        y_l2_base = y_l1_topo + vao_lances
+        y_l2_topo = y_l2_base + largura_l2
+        y_l3_base = y_l2_topo + vao_lances
+
+        draw.Line(x_deg_ini, y_min_int, x_deg_ini, y_l1_topo)
+        draw.Line(x_deg_ini, y_l2_base, x_deg_ini, y_l2_topo)
+        draw.Line(x_deg_ini, y_l3_base, x_deg_ini, y_max_int)
+
+        draw.Line(x_deg_fim, y_min_int, x_deg_fim, y_l1_topo)
+        draw.Line(x_deg_fim, y_l2_base, x_deg_fim, y_l2_topo)
+        draw.Line(x_deg_fim, y_l3_base, x_deg_fim, y_max_int)
+
+        for i in range(1, n1 - 1):
+            x_deg = x_deg_ini + i * piso
+            draw.Line(x_deg, y_min_int, x_deg, y_l1_topo)
+        for j in range(1, n2 - 1):
+            x_deg = x_deg_ini + j * piso
+            draw.Line(x_deg, y_l2_base, x_deg, y_l2_topo)
+        for k in range(1, n3 - 1):
+            x_deg = x_deg_ini + k * piso
+            draw.Line(x_deg, y_l3_base, x_deg, y_max_int)
+
+        # COTAS
+        y_cota_top1 = y_max_ext + 35.0
+        y_cota_top2 = y_max_ext + 70.0
+
+        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
+        if pat_esq > 0:
+            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_ini, y_max_ext, x_min_int, y_cota_top1)
+        for i in range(num_deg_max):
+            x_a = x_deg_ini + i * piso
+            x_b = x_a + piso
+            dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
+        if pat_dir > 0:
+            dwg.dim.DimHorizontal(x_deg_fim, y_max_ext, x_max_int, y_max_ext, x_deg_fim, y_cota_top1)
+        dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
+
+        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
+
+        x_cota_dir1 = x_max_ext + 35.0
+        x_cota_dir2 = x_max_ext + 70.0
+        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_min_int, x_cota_dir1, y_min_ext)
+        dwg.dim.DimVertical(x_max_ext, y_min_int, x_max_ext, y_l1_topo, x_cota_dir1, y_min_int)
+        if vao_lances > 0:
+            dwg.dim.DimVertical(x_max_ext, y_l1_topo, x_max_ext, y_l2_base, x_cota_dir1, y_l1_topo)
+        dwg.dim.DimVertical(x_max_ext, y_l2_base, x_max_ext, y_l2_topo, x_cota_dir1, y_l2_base)
+        if vao_lances > 0:
+            dwg.dim.DimVertical(x_max_ext, y_l2_topo, x_max_ext, y_l3_base, x_cota_dir1, y_l2_topo)
+        dwg.dim.DimVertical(x_max_ext, y_l3_base, x_max_ext, y_max_int, x_cota_dir1, y_l3_base)
+        dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
+
+        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
 
 
 def meucmd(eag, tqsjan):
