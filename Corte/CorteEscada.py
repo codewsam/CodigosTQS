@@ -1133,12 +1133,8 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         # Viga Direita
         dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
 
-        # Linha 2 de Cotas Superiores (Acumuladas / Totais)
-        if pat_esq > 0:
-            dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_deg_ini, y_max_ext, x_min_ext, y_cota_top2)
-            dwg.dim.DimHorizontal(x_deg_ini, y_max_ext, x_max_ext, y_max_ext, x_deg_ini, y_cota_top2)
-        else:
-            dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
+        # Linha 2 de Cotas Superiores (Cota Total da Caixa da Escada)
+        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
 
         # Cotas Verticais a Direita
         x_cota_dir1 = x_max_ext + 35.0
