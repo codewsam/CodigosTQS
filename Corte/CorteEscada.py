@@ -1252,6 +1252,39 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 # ==============================================================================
 # DESENHO DO CORTE DO 1º LANCE ISOLADO (EMBAIXO DA PLANTA)
 # ==============================================================================
+
+# ==============================================================================
+# DESENHO DO SIMBOLO/TITULO DO CORTE (CORTE A-A / ESCALA)
+# ==============================================================================
+def desenhar_indicacao_corte(dwg, x_pos, y_pos, titulo="CORTE A-A", escala="ESCALA: 1/20"):
+    """Desenha o rotulo padrao de corte com circulo, titulo amarelo, linha divisoria e escala."""
+    draw = dwg.draw
+    draw.level = 241
+
+    raio = 13.0
+    xc = x_pos
+    yc = y_pos
+
+    # 1. Circulo lateral
+    draw.color = 1  # Laranja / Marrom
+    draw.Circle(xc, yc, raio)
+
+    # 2. Textos e Linha
+    x_texto = xc + raio + 14.0
+
+    # Titulo "CORTE A-A"
+    draw.color = 2  # Amarelo
+    draw.Text(x_texto, yc + 3.0, 13.0, 0.0, titulo)
+
+    # Linha horizontal sob o titulo
+    largura_linha = max(len(titulo) * 11.5, 115.0)
+    draw.color = 2  # Amarelo
+    draw.Line(x_texto, yc, x_texto + largura_linha, yc)
+
+    # Subtitulo "ESCALA: 1/20"
+    draw.color = 1  # Laranja / Marrom
+    draw.Text(x_texto, yc - 12.0, 8.5, 0.0, escala)
+
 def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
     """Desenha o corte do primeiro lance isolado (com patamar intermediario e viga superior a direita)."""
     piso = float(dados["piso"])
@@ -1353,6 +1386,11 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
     draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
     draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
     draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
+
+    # Indicacao de corte abaixo do 1º lance
+    x_rotulo = x0 - 40.0
+    y_rotulo = (y0 - viga_altura) - 90.0
+    desenhar_indicacao_corte(dwg, x_rotulo, y_rotulo, "CORTE A-A", "ESCALA: 1/20")
 
 
 def meucmd(eag, tqsjan):
