@@ -1389,7 +1389,7 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
 
     # Indicacao de corte abaixo do 1º lance
     x_rotulo = x0 - 40.0
-    y_rotulo = (y0 - viga_altura) - 90.0
+    y_rotulo = (y0 - viga_altura) - 120.0
     desenhar_indicacao_corte(dwg, x_rotulo, y_rotulo, "CORTE A-A", "ESCALA: 1/20")
 
 
