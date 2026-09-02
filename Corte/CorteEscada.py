@@ -849,7 +849,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
     draw.color = -1
     draw.style = -1  # Verde para forma
 
-    dist_offset = viga_altura + 190.0
+    dist_offset = viga_altura + 290.0
     y_planta_top = y0 - dist_offset
 
     if num_lances == 1:
@@ -1201,32 +1201,47 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 # DESENHO DO SIMBOLO/TITULO DO CORTE (CORTE A-A / ESCALA)
 # ==============================================================================
 def desenhar_indicacao_corte(dwg, x_pos, y_pos, titulo="CORTE A-A", escala="ESCALA: 1/20"):
-    """Desenha o rotulo padrao de corte com circulo, titulo amarelo, linha divisoria e escala."""
+    """Desenha o rotulo padrao de corte com circulo duplo (niveis 243 e 255), titulo (245), linha e texto (243)."""
     draw = dwg.draw
-    draw.level = 241
 
-    raio = 13.0
+    raio_ext = 13.5
+    raio_int = 12.0
     xc = x_pos
     yc = y_pos
 
-    # 1. Circulo lateral
-    draw.color = 1  # Laranja / Marrom
-    draw.Circle(xc, yc, raio)
+    # 1. Circulo Interno (Nivel 255)
+    draw.level = 255
+    draw.color = -1
+    draw.style = -1
+    draw.Circle(xc, yc, raio_int)
 
-    # 2. Textos e Linha
-    x_texto = xc + raio + 14.0
+    # 2. Circulo Externo (Nivel 243)
+    draw.level = 243
+    draw.color = -1
+    draw.style = -1
+    draw.Circle(xc, yc, raio_ext)
 
-    # Titulo "CORTE A-A"
-    draw.color = 2  # Amarelo
+    # 3. Linha divisoria que toca no circulo (Nivel 243)
+    x_ini_linha = xc + raio_ext
+    x_texto = xc + raio_ext + 10.0
+    largura_linha = max(len(titulo) * 11.5, 115.0)
+    x_fim_linha = x_texto + largura_linha
+
+    draw.level = 243
+    draw.color = -1
+    draw.style = -1
+    draw.Line(x_ini_linha, yc, x_fim_linha, yc)
+
+    # 4. Titulo "CORTE A-A" (Nivel 245)
+    draw.level = 245
+    draw.color = -1
+    draw.style = -1
     draw.Text(x_texto, yc + 3.0, 13.0, 0.0, titulo)
 
-    # Linha horizontal sob o titulo
-    largura_linha = max(len(titulo) * 11.5, 115.0)
-    draw.color = 2  # Amarelo
-    draw.Line(x_texto, yc, x_texto + largura_linha, yc)
-
-    # Subtitulo "ESCALA: 1/20"
-    draw.color = 1  # Laranja / Marrom
+    # 5. Texto da Escala "ESCALA: 1/20" (Nivel 243)
+    draw.level = 243
+    draw.color = -1
+    draw.style = -1
     draw.Text(x_texto, yc - 12.0, 8.5, 0.0, escala)
 
 def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
