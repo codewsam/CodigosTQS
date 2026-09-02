@@ -539,12 +539,14 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     n3 = int(dados.get("n_degraus_3", 0))
 
     draw = dwg.draw
-    draw.level = 241
-    draw.color = 3
 
     # --------------------------------------------------------------------------
-    # 1. LANCE 1 (Sobe para a Direita: +X, +Y)
+    # 1. LANCE 1 (NIVEL 241) - Apenas a parte de baixo (Viga Partida, Degraus e Fundo Lance 1)
     # --------------------------------------------------------------------------
+    draw.level = 241
+    draw.color = -1
+    draw.style = -1
+
     if num_lances == 1:
         if n1 > 1:
             y_topo_l1 = y0 + espelho_primeiro + (n1 - 2) * espelho + espelho_ultimo
@@ -559,7 +561,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     x, y = x0, y0
     for i in range(n1):
         if num_lances > 1 and i == n1 - 1:
-            # O último espelho sobe apenas até a face de baixo do patamar 1
             if y < y_fundo_pat1:
                 draw.Line(x, y, x, y_fundo_pat1)
             y = y_topo_l1
@@ -580,7 +581,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     x_inicio_l2 = x
 
-    # Linha paralela de fundo do Lance 1 (referenciada aos cantos reentrantes)
+    # Linha inclinada paralela de fundo do Lance 1
     p1x, p1y = x0 + piso, y0 + espelho_primeiro
     p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
     f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
@@ -588,14 +589,13 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     if tem_patamar_partida:
         x_partida = x0 - patamar_partida
         y_partida = y0
-        draw.Line(x_partida, y_partida, x0, y0)  # Topo patamar de partida
+        draw.Line(x_partida, y_partida, x0, y0)
 
-        # Interseção do fundo do Lance 1 com a horizontal inferior de partida
         y_base_partida = y0 - espessura
         x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
         draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
 
-        # Viga de Saída / Partida (Lado Esquerdo Inferior)
+        # Viga de Partida
         x_viga_s_ini = x_partida - viga_largura
         x_viga_s_meio = x_partida
         y_viga_s_topo = y0
@@ -610,67 +610,60 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         x_fundo_l1_ini = x_base_partida_fim
         y_fundo_l1_ini = y_base_partida
     else:
-        # Viga de Partida Direta no 1º Degrau (Sem Patamar)
         x_viga_s_ini = x0 - viga_largura
         y_viga_s_topo = y0
         y_viga_s_base = y0 - viga_altura
-
-        # Ponto onde o fundo inclinado do lance 1 encontra x0 (face direita da viga)
         y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
 
-        # Topo da viga
         draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-        # Face esquerda da viga
         draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-        # Fundo da viga
         draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-        # Face direita da viga (apenas da base até o encontro com o fundo da escada)
         draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
 
         x_fundo_l1_ini = x0
         y_fundo_l1_ini = y_fundo_no_x0
 
-    # ==========================================================================
-    # CASO 1 LANCE
-    # ==========================================================================
+    # Linha inclinada de fundo do Lance 1 (NIVEL 241)
+    x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
+    draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_pat1)
+
+    # Caso seja 1 lance apenas
     if num_lances == 1:
+        x_fim_pat1 = x_inicio_l2 + (patamar_chegada if tem_patamar_chegada else 0.0)
+        x_viga_p1_ext = x_fim_pat1 + viga_largura
         if tem_patamar_chegada:
-            x_fim_chegada = x_inicio_l2 + patamar_chegada
-            draw.Line(x_inicio_l2, y_topo_l1, x_fim_chegada, y_topo_l1)
-
-            y_fundo_chegada = y_topo_l1 - espessura
-            x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
-
-            draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
-            draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
-
-            # Viga de Chegada (Lado Direito Superior)
-            x_viga_c_ext = x_fim_chegada + viga_largura
-            draw.Line(x_fim_chegada, y_topo_l1, x_viga_c_ext, y_topo_l1)
-            draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_chegada, y_topo_l1 - viga_altura)
-            draw.Line(x_fim_chegada, y_topo_l1 - viga_altura, x_fim_chegada, y_fundo_chegada)
+            draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
+            draw.Line(x_fundo_l1_fim, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
+            draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+            draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+            draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+            draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
         else:
-            # Viga de Chegada Direta no Último Degrau (Sem Patamar)
-            x_viga_c_ext = x_inicio_l2 + viga_largura
             y_fundo_no_xtopo = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x_inicio_l2)
-
-            # Topo da viga
-            draw.Line(x_inicio_l2, y_topo_l1, x_viga_c_ext, y_topo_l1)
-            # Face direita da viga
-            draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-            # Fundo da viga
-            draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_inicio_l2, y_topo_l1 - viga_altura)
-            # Face esquerda da viga (do fundo da viga até o fundo inclinado do lance 1)
+            draw.Line(x_inicio_l2, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+            draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+            draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_inicio_l2, y_topo_l1 - viga_altura)
             draw.Line(x_inicio_l2, y_topo_l1 - viga_altura, x_inicio_l2, y_fundo_no_xtopo)
-
-            # Fundo do Lance 1 vai até x_inicio_l2
             draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_inicio_l2, y_fundo_no_xtopo)
         return
 
     # --------------------------------------------------------------------------
-    # 2. LANCE 2 (Sobe para a Esquerda: -X, +Y)
+    # 2. LANCE 2 (NIVEL 242) - Patamar Intermediario, Degraus Lance 2, Fundo e Chegada
     # --------------------------------------------------------------------------
+    draw.level = 242
+    draw.color = -1
+    draw.style = -1
+
+    # Patamar Intermediario 1 e Viga Direita (NIVEL 242)
+    x_fim_pat1 = x_inicio_l2 + patamar_int_1
+    x_viga_p1_ext = x_fim_pat1 + viga_largura
+
+    draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
+    draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+    draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+    draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
+
     x, y = x_inicio_l2, y_topo_l1
     if num_lances == 2:
         if n2 > 1:
@@ -685,7 +678,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # Degraus Lance 2
     for i in range(n2):
         if num_lances == 3 and i == n2 - 1:
-            # O último espelho sobe apenas até a face de baixo do patamar 2
             if y < y_fundo_pat2:
                 draw.Line(x, y, x, y_fundo_pat2)
             y = y_topo_l2
@@ -709,33 +701,14 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     p2_2x, p2_2y = x_inicio_l2 - (n2 - 1) * piso, y_topo_l1 + (n2 - 1) * espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
     f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
 
-    # --------------------------------------------------------------------------
-    # 1º PATAMAR INTERMEDIÁRIO (À DIREITA)
-    # --------------------------------------------------------------------------
-    x_fim_pat1 = x_inicio_l2 + patamar_int_1
-
-    # Topo do Patamar 1 (do primeiro espelho do Lance 2 até a viga da direita)
-    draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
-
-    # Fundo do Lance 1 encontra a linha de baixo do patamar 1
-    x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
-    draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_pat1)
-
-    # O Fundo do Lance 2 desce até a cota de baixo do patamar (y_fundo_pat1)
+    # O Fundo do Lance 2 desce ate a cota de baixo do patamar (y_fundo_pat1)
     x_fundo_l2_no_pat1 = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat1)
 
-    # Linha de BAIXO do patamar 1: vai desde o encontro com o fundo do Lance 2 até a viga da direita
+    # Linha de BAIXO do patamar 1 (Nivel 242)
     draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
 
-    # Viga do 1º Patamar Intermediário (Lado Direito)
-    x_viga_p1_ext = x_fim_pat1 + viga_largura
-    draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-    draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-    draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
-
     # ==========================================================================
-    # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior à esquerda
+    # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior a esquerda
     # ==========================================================================
     if num_lances == 2:
         if tem_patamar_chegada:
@@ -745,7 +718,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
             y_fundo_chegada = y_topo_l2 - espessura
             x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
 
-            # Fundo do Lance 2 vai desde a cota de baixo do patamar 1 até a chegada superior
             draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
             draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
@@ -756,25 +728,18 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
             draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
             draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
         else:
-            # Viga de Chegada Direta no Último Degrau (Sem Patamar)
             x_viga_c_ext = x_topo_l2 - viga_largura
             y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
 
-            # Topo da viga
             draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            # Face esquerda da viga
             draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            # Fundo da viga
             draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
-            # Face direita da viga (do fundo da viga até o fundo inclinado do lance 2)
             draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
-
-            # Fundo do Lance 2 vai desde o patamar 1 até x_topo_l2
             draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
         return
 
     # ==========================================================================
-    # CASO 3 LANCES: 2º Patamar Intermediário (à esquerda) e Lance 3 (+X, +Y)
+    # CASO 3 LANCES: 2º Patamar Intermediario (a esquerda) e Lance 3 (+X, +Y)
     # ==========================================================================
     x_inicio_l3 = x_topo_l2
     x, y = x_inicio_l3, y_topo_l2
@@ -784,7 +749,6 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     else:
         y_topo_l3 = y_topo_l2 + (espelho_ultimo if n3 == 1 else 0)
 
-    # Degraus Lance 3 (Sobe para a Direita a partir de x_inicio_l3, y_topo_l2)
     for i in range(n3):
         if i == n3 - 1:
             h_esp = espelho_ultimo
@@ -799,30 +763,20 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     x_topo_l3 = x
 
-    # Linha paralela de fundo do Lance 3
     p3_1x, p3_1y = x_inicio_l3 + piso, y_topo_l2 + espelho
     p3_2x, p3_2y = x_inicio_l3 + (n3 - 1) * piso, y_topo_l2 + (n3 - 1) * espelho if n3 > 1 else (p3_1x + piso, p3_1y + espelho)
     f3_x1, f3_y1, f3_x2, f3_y2 = obter_fundo_lance(p3_1x, p3_1y, p3_2x, p3_2y, espessura)
 
-    # --------------------------------------------------------------------------
-    # 2º PATAMAR INTERMEDIÁRIO (À ESQUERDA)
-    # --------------------------------------------------------------------------
     x_fim_pat2 = x_inicio_l3 - patamar_int_2
 
-    # Topo do Patamar 2 (do primeiro espelho do Lance 3 até a viga da esquerda)
     draw.Line(x_inicio_l3, y_topo_l2, x_fim_pat2, y_topo_l2)
 
-    # Fundo do Lance 2 encontra a linha de baixo do patamar 2
     x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat2)
     draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_pat2)
 
-    # O Fundo do Lance 3 desce até a cota de baixo do patamar 2 (y_fundo_pat2)
     x_fundo_l3_no_pat2 = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_pat2)
-
-    # Linha de BAIXO do patamar 2: vai desde a viga até o fundo do Lance 3
     draw.Line(x_fim_pat2, y_fundo_pat2, x_fundo_l3_no_pat2, y_fundo_pat2)
 
-    # Viga do 2º Patamar Intermediário (Lado Esquerdo)
     x_viga_p2_ext = x_fim_pat2 - viga_largura
     draw.Line(x_fim_pat2, y_topo_l2, x_viga_p2_ext, y_topo_l2)
     draw.Line(x_viga_p2_ext, y_topo_l2, x_viga_p2_ext, y_topo_l2 - viga_altura)
@@ -836,40 +790,28 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
         x_fim_chegada = x_topo_l3 + patamar_chegada
         draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
 
-        # Fundo do Lance 3 vai desde o patamar 2 até a chegada superior
         y_fundo_chegada = y_topo_l3 - espessura
         x_fundo_l3_fim = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_chegada)
 
         draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_fundo_l3_fim, y_fundo_chegada)
         draw.Line(x_fundo_l3_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-        # Viga de Chegada Superior (Lado Direito)
         x_viga_c_ext = x_fim_chegada + viga_largura
         draw.Line(x_fim_chegada, y_topo_l3, x_viga_c_ext, y_topo_l3)
         draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
         draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_fim_chegada, y_topo_l3 - viga_altura)
         draw.Line(x_fim_chegada, y_topo_l3 - viga_altura, x_fim_chegada, y_fundo_chegada)
     else:
-        # Viga de Chegada Direta no Último Degrau (Sem Patamar)
         x_viga_c_ext = x_topo_l3 + viga_largura
         y_fundo_no_xtopo3 = calcular_y_no_x(f3_x1, f3_y1, f3_x2, f3_y2, x_topo_l3)
 
-        # Topo da viga
         draw.Line(x_topo_l3, y_topo_l3, x_viga_c_ext, y_topo_l3)
-        # Face direita da viga
         draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
-        # Fundo da viga
         draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_topo_l3, y_topo_l3 - viga_altura)
-        # Face esquerda da viga (do fundo da viga até o fundo inclinado do lance 3)
         draw.Line(x_topo_l3, y_topo_l3 - viga_altura, x_topo_l3, y_fundo_no_xtopo3)
-
-        # Fundo do Lance 3 vai desde o patamar 2 até x_topo_l3
         draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_topo_l3, y_fundo_no_xtopo3)
 
 
-# ==============================================================================
-# COMANDO PRINCIPAL EXECUTADO PELO TQS
-# ==============================================================================
 # ==============================================================================
 # DESENHO DA PLANTA DA ESCADA
 # ==============================================================================
@@ -903,8 +845,9 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
     n3 = int(dados.get("n_degraus_3", 0))
 
     draw = dwg.draw
-    draw.level = 241
-    draw.color = 3  # Verde para forma
+    draw.level = 242
+    draw.color = -1
+    draw.style = -1  # Verde para forma
 
     dist_offset = viga_altura + 190.0
     y_planta_top = y0 - dist_offset
@@ -1028,10 +971,11 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         x_max_ext = x_max_int + viga_largura
 
         # ----------------------------------------------------------------------
-        # 1. LINHAS DE FORMA (Green / Level 241 / Color 3)
+        # 1. LINHAS DE FORMA (Nivel 242, Cor por nivel, Estilo -1)
         # ----------------------------------------------------------------------
-        draw.level = 241
-        draw.color = 3
+        draw.level = 242
+        draw.color = -1
+        draw.style = -1
 
         # Retangulo Externo Completo (Vigas Perimetrais da Caixa de Escada)
         draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
@@ -1308,8 +1252,9 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
     n1 = int(dados["n_degraus_1"])
 
     draw = dwg.draw
-    draw.level = 241
-    draw.color = 3
+    draw.level = 242
+    draw.color = -1
+    draw.style = -1
 
     # Altura do topo do Lance 1
     y_topo_l1 = y0 + espelho_primeiro + (n1 - 1) * espelho
