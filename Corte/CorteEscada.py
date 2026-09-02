@@ -736,6 +736,11 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
             draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
             draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
             draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
+
+        # Indicacao do Corte de 2 lances (CORTE B-B)
+        x_rotulo_bb = x0 - 40.0
+        y_rotulo_bb = (y0 - viga_altura) - 120.0
+        desenhar_indicacao_corte(dwg, x_rotulo_bb, y_rotulo_bb, "CORTE B-B", "ESCALA: 1/20")
         return
 
     # ==========================================================================
@@ -941,6 +946,11 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
         dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
 
+        # Indicacao de PLANTA BAIXA
+        x_rotulo_planta = x_min_ext + 10.0
+        y_rotulo_planta = y_min_ext - 60.0
+        desenhar_indicacao_corte(dwg, x_rotulo_planta, y_rotulo_planta, "PLANTA BAIXA", "ESCALA: 1/20")
+
     elif num_lances == 2:
         # ======================================================================
         # PLANTA: 2 LANCES (Escada em U Simetrica com Vigas Envolventes)
@@ -1102,6 +1112,11 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 
         # Cota Vertical Total
         dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
+
+        # Indicacao de PLANTA BAIXA
+        x_rotulo_planta = x_min_ext + 10.0
+        y_rotulo_planta = y_min_ext - 60.0
+        desenhar_indicacao_corte(dwg, x_rotulo_planta, y_rotulo_planta, "PLANTA BAIXA", "ESCALA: 1/20")
 
     elif num_lances == 3:
         # ======================================================================
@@ -1393,7 +1408,7 @@ def meucmd(eag, tqsjan):
             altura_l1 = espelho_primeiro + (n1 - 1) * espelho
 
             # Folga abaixo da planta para o topo do 1º lance
-            dist_offset_l1 = viga_altura + 140.0
+            dist_offset_l1 = viga_altura + 240.0
             y0_lance1 = y_min_ext - dist_offset_l1 - altura_l1
 
             desenhar_perfil_lance1_isolado(tqsjan.dwg, x0, y0_lance1, dados)
