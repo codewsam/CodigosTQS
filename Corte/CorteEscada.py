@@ -906,7 +906,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
     draw.level = 241
     draw.color = 3  # Verde para forma
 
-    dist_offset = viga_altura + 140.0
+    dist_offset = viga_altura + 190.0
     y_planta_top = y0 - dist_offset
 
     if num_lances == 1:
@@ -1248,27 +1248,163 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
 
 
+
+# ==============================================================================
+# DESENHO DO CORTE DO 1º LANCE ISOLADO (EMBAIXO DA PLANTA)
+# ==============================================================================
+def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
+    """Desenha o corte do primeiro lance isolado (com patamar intermediario e viga superior a direita)."""
+    piso = float(dados["piso"])
+    espelho = float(dados["espelho"])
+    espessura = float(dados["espessura"])
+    viga_largura = float(dados["viga_largura"])
+    viga_altura = float(dados["viga_altura"])
+
+    alterar_extremos = dados.get("alterar_extremos", False)
+    if isinstance(alterar_extremos, str):
+        alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
+
+    espelho_primeiro = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
+
+    tem_patamar_partida = dados.get("tem_patamar_partida", True)
+    if isinstance(tem_patamar_partida, str):
+        tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
+
+    patamar_partida = float(dados.get("patamar_partida", 150))
+    patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
+    n1 = int(dados["n_degraus_1"])
+
+    draw = dwg.draw
+    draw.level = 241
+    draw.color = 3
+
+    # Altura do topo do Lance 1
+    y_topo_l1 = y0 + espelho_primeiro + (n1 - 1) * espelho
+    y_fundo_pat1 = y_topo_l1 - espessura
+
+    # Degraus Lance 1
+    x, y = x0, y0
+    for i in range(n1):
+        h_esp = espelho_primeiro if i == 0 else espelho
+        draw.Line(x, y, x, y + h_esp)
+        y += h_esp
+        if i < n1 - 1:
+            draw.Line(x, y, x + piso, y)
+            x += piso
+
+    x_fim_deg_l1 = x
+
+    # Linha paralela de fundo do Lance 1
+    p1x, p1y = x0 + piso, y0 + espelho_primeiro
+    p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
+    f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
+
+    # Patamar de Partida (Lado Esquerdo Inferior)
+    if tem_patamar_partida:
+        x_partida = x0 - patamar_partida
+        y_partida = y0
+        draw.Line(x_partida, y_partida, x0, y0)
+
+        y_base_partida = y0 - espessura
+        x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
+        draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
+
+        # Viga de Saida / Partida
+        x_viga_s_ini = x_partida - viga_largura
+        x_viga_s_meio = x_partida
+        y_viga_s_topo = y0
+        y_viga_s_base = y0 - viga_altura
+        y_viga_s_corte = y0 - espessura
+
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+        draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+        draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
+
+        x_fundo_l1_ini = x_base_partida_fim
+        y_fundo_l1_ini = y_base_partida
+    else:
+        x_viga_s_ini = x0 - viga_largura
+        y_viga_s_topo = y0
+        y_viga_s_base = y0 - viga_altura
+        y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
+
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+        draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
+        draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
+
+        x_fundo_l1_ini = x0
+        y_fundo_l1_ini = y_fundo_no_x0
+
+    # Patamar Intermediario / Chegada do Lance 1 (Lado Direito Superior)
+    x_fim_pat1 = x_fim_deg_l1 + patamar_int_1
+    draw.Line(x_fim_deg_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
+
+    y_fundo_chegada = y_topo_l1 - espessura
+    x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
+
+    draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
+    draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_pat1, y_fundo_chegada)
+
+    # Viga de Apoio do Patamar Intermediario (Lado Direito Superior)
+    x_viga_c_ext = x_fim_pat1 + viga_largura
+    draw.Line(x_fim_pat1, y_topo_l1, x_viga_c_ext, y_topo_l1)
+    draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+    draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
+
+
 def meucmd(eag, tqsjan):
-    """Função principal acionada pelo menu TQS."""
+    """Funcao principal acionada pelo menu TQS."""
     dados = pedir_dados_janela_windows()
 
     if dados is None:
-        TQSUtil.writef("Operação cancelada pelo utilizador.")
+        TQSUtil.writef("Operacao cancelada pelo utilizador.")
         return
 
     icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Clique no ponto inicial da escada")
     if icod == -1:
-        TQSUtil.writef("Operação cancelada.")
+        TQSUtil.writef("Operacao cancelada.")
         return
 
     desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
     if dados.get("desenhar_planta", True):
         desenhar_planta_escada(tqsjan.dwg, x0, y0, dados)
+
+        # Se for escada de 2 lances, desenha tambem o corte do 1º lance isolado abaixo da planta
+        if dados.get("num_lances", 2) == 2:
+            largura_l1 = float(dados.get("largura_lance_1", 120.0))
+            largura_l2 = float(dados.get("largura_lance_2", 105.5))
+            vao_lances = float(dados.get("vao_lances", 0.0))
+            largura_total = largura_l1 + vao_lances + largura_l2
+            viga_largura = float(dados.get("viga_largura", 20.0))
+            viga_altura = float(dados.get("viga_altura", 40.0))
+
+            dist_offset = viga_altura + 190.0
+            y_planta_top = y0 - dist_offset
+            y_planta_bot = y_planta_top - largura_total
+            y_min_ext = y_planta_bot - viga_largura
+
+            n1 = int(dados["n_degraus_1"])
+            espelho = float(dados["espelho"])
+            alterar_extremos = dados.get("alterar_extremos", False)
+            if isinstance(alterar_extremos, str):
+                alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
+            espelho_primeiro = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
+            altura_l1 = espelho_primeiro + (n1 - 1) * espelho
+
+            # Folga abaixo da planta para o topo do 1º lance
+            dist_offset_l1 = viga_altura + 140.0
+            y0_lance1 = y_min_ext - dist_offset_l1 - altura_l1
+
+            desenhar_perfil_lance1_isolado(tqsjan.dwg, x0, y0_lance1, dados)
+
     tqsjan.ZoomTotal()
 
     if dados.get("alterar_extremos"):
         TQSUtil.writef(
-            "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho Geral=%.1f cm, 1º=%.1f cm, Último=%.1f cm)"
+            "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho Geral=%.1f cm, 1º=%.1f cm, Ultimo=%.1f cm)"
             % (dados["num_lances"], dados["piso"], dados["espelho"], dados["espelho_primeiro"], dados["espelho_ultimo"])
         )
     else:
