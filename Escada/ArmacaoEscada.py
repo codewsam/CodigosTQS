@@ -267,7 +267,8 @@ def identificar_geometria_escada(linhas):
     patamar_partida = 0.0
     for h in horizontais:
         if abs(h[1] - x0) < 0.5 and abs(h[2] - y0) < 0.5:
-            patamar_partida = h[3]
+            if h[3] >= 40.0:  # Patamar real tem pelo menos 40 cm (evita confundir com o topo da viga)
+                patamar_partida = h[3]
             break
 
     # 5. Patamar de Chegada (horizontal que começa no topo da escada)
@@ -276,7 +277,8 @@ def identificar_geometria_escada(linhas):
     patamar_chegada = 0.0
     for h in horizontais:
         if abs(h[0] - x_topo) < 0.5 and abs(h[2] - y_topo) < 0.5:
-            patamar_chegada = h[3]
+            if h[3] >= 40.0:  # Patamar real tem pelo menos 40 cm
+                patamar_chegada = h[3]
             break
 
     # 6. Espessura da Laje (distancia da linha inclinada ao canto interno)
@@ -343,6 +345,13 @@ def calcular_x_no_y(x1, y1, x2, y2, y_alvo):
     return x1
 
 
+def calcular_y_no_x(x1, y1, x2, y2, x_alvo):
+    if abs(x2 - x1) > 1e-9:
+        t = (x_alvo - x1) / (x2 - x1)
+        return y1 + t * (y2 - y1)
+    return y1
+
+
 # ==============================================================================
 # DESENHO DO FERRO PRINCIPAL MAIOR (N1)
 # ==============================================================================
@@ -375,46 +384,41 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
     # --------------------------------------------------------------------------
     # PONTOS DO FERRO:
     # --------------------------------------------------------------------------
-    # Na viga esquerda: vai ate a face esquerda da viga inferior e desce
     x_viga_inf = (x0 - pat_part - viga_l) + cobr
-    y_fundo_pat_part = y0 - espessura + cobr
     y_gancho_inf_base = y0 - viga_h + cobr
 
-    # Ponto 1: Ponta inferior do gancho na viga esquerda
-    pt1_x = x_viga_inf
-    pt1_y = y_gancho_inf_base
-
-    # Ponto 2: Canto do L invertido na viga esquerda
-    pt2_x = x_viga_inf
-    pt2_y = y_fundo_pat_part
-
-    # Ponto 3: Encontro do fundo horizontal do patamar com o fundo inclinado
-    pt3_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_fundo_pat_part)
-    pt3_y = y_fundo_pat_part
-
-    # Ponto 4: O ferro sobe pelo fundo inclinado e vai até o TOPO do patamar de chegada
+    # Ponto no encontro com o patamar de chegada superior
     y_topo_arm = y_topo - cobr
-    pt4_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_topo_arm)
-    pt4_y = y_topo_arm
+    pt_topo_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_topo_arm)
 
-    # Ponto 5: Canto superior do L invertido na viga de chegada à direita
+    # Canto superior e gancho na viga de chegada à direita
     x_viga_sup = x_topo + pat_cheg + viga_l - cobr
-    pt5_x = x_viga_sup
-    pt5_y = y_topo_arm
-
-    # Ponto 6: Ponta inferior do gancho descendo na viga de chegada (L invertido)
     y_gancho_sup_base = y_topo - viga_h + cobr
-    pt6_x = x_viga_sup
-    pt6_y = y_gancho_sup_base
 
-    pontos_ferro = [
-        (pt1_x, pt1_y),
-        (pt2_x, pt2_y),
-        (pt3_x, pt3_y),
-        (pt4_x, pt4_y),
-        (pt5_x, pt5_y),
-        (pt6_x, pt6_y)
-    ]
+    if pat_part > 0:
+        # Com patamar de partida: corre pelo fundo do patamar
+        y_fundo_pat_part = y0 - espessura + cobr
+        pt3_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_fundo_pat_part)
+
+        pontos_ferro = [
+            (x_viga_inf, y_gancho_inf_base),
+            (x_viga_inf, y_fundo_pat_part),
+            (pt3_x, y_fundo_pat_part),
+            (pt_topo_x, y_topo_arm),
+            (x_viga_sup, y_topo_arm),
+            (x_viga_sup, y_gancho_sup_base)
+        ]
+    else:
+        # Sem patamar de partida: a reta inclinada vai direta até a face esquerda da viga
+        y_inc_inf = calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, x_viga_inf)
+
+        pontos_ferro = [
+            (x_viga_inf, y_gancho_inf_base),
+            (x_viga_inf, y_inc_inf),
+            (pt_topo_x, y_topo_arm),
+            (x_viga_sup, y_topo_arm),
+            (x_viga_sup, y_gancho_sup_base)
+        ]
 
     # --- Criar Objeto SmartRebar do TQS (Nível 220) ---
     try:
