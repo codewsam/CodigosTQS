@@ -548,6 +548,89 @@ def desenhar_ferro_no_superior(dwg, geo, dados_ferros):
 
 
 # ==============================================================================
+# DESENHO DO TERCEIRO FERRO - BORDO / CANTO DO PATAMAR SUPERIOR (N3)
+# ==============================================================================
+def desenhar_ferro_bordo_patamar(dwg, geo, dados_ferros):
+    """Calcula e desenha o ferro em L de reforço do bordo do patamar superior (N3)."""
+    x0 = geo["x0"]
+    y0 = geo["y0"]
+    n_deg = geo["n_degraus"]
+    piso = geo["piso"]
+    espelho = geo["espelho"]
+    pat_cheg = geo["patamar_chegada"]
+    espessura = geo["espessura"]
+    viga_l = geo["viga_largura"]
+    viga_h = geo["viga_altura"]
+    x_topo = geo["x_topo"]
+    y_topo = geo["y_topo"]
+
+    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    bitola = float(dados_ferros["bitola"])
+    espac = float(dados_ferros["espacamento"])
+    qtd = int(dados_ferros["quantidade"])
+
+    # 1. Reta inclinada do fundo do lance com cobrimento
+    p1x, p1y = x0 + piso, y0 + espelho
+    p2x, p2y = x0 + (n_deg - 1) * piso, y0 + (n_deg - 1) * espelho
+    dist_fundo = espessura - cobr
+    f_x1, f_y1, f_x2, f_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, dist_fundo)
+
+    # 2. Vértices do "L":
+    x_corner = x_topo
+    y_topo_arm = y_topo - cobr
+
+    # Ponto inferior no encontro da vertical com o fundo inclinado da laje
+    if abs(f_x2 - f_x1) > 1e-9:
+        t = (x_corner - f_x1) / (f_x2 - f_x1)
+        y_bottom = f_y1 + t * (f_y2 - f_y1)
+    else:
+        y_bottom = y_topo_arm - 25.0
+
+    # Comprimento do trecho horizontal no patamar (aprox. 60 cm)
+    l_horiz = 60.0
+    if pat_cheg > 0:
+        l_horiz = min(pat_cheg - viga_l - cobr, 60.0)
+        if l_horiz < 30.0:
+            l_horiz = max(30.0, pat_cheg * 0.5)
+
+    pt1 = (x_corner, y_bottom)
+    pt2 = (x_corner, y_topo_arm)
+    pt3 = (x_corner + l_horiz, y_topo_arm)
+
+    pontos_ferro_n3 = [pt1, pt2, pt3]
+
+    # --- Criar Objeto SmartRebar do TQS (Nível 220) ---
+    try:
+        rebar3 = TQSDwg.SmartRebar(dwg)
+        rebar3.type = TQSDwg.ICPFGN
+        rebar3.diameter = bitola
+        rebar3.spacing = espac
+        rebar3.quantity = qtd
+        try:
+            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                f_mark = dwg.globalrebar.FreeMark()
+                rebar3.mark = f_mark if f_mark > 0 else 3
+            else:
+                rebar3.mark = 3
+        except:
+            rebar3.mark = 3
+
+        for px, py in pontos_ferro_n3:
+            rebar3.GenRebarPoint(px, py, 0.0, 0, 1, -1)
+
+        # 1. Linha do ferro DENTRO da escada (nível 220, cor 4 - ciano)
+        rebar3.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 220, -1, 4)
+
+        # 2. Linha do ferro FORA da escada (ferro discriminado / rebatido)
+        # Posicionado abaixo de N2 para não sobrepor
+        dy_rebatido = -(viga_h + 115.0)
+        rebar3.RebarLine(0.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, 4)
+
+    except Exception as e:
+        TQSUtil.writef("Erro ao gerar SmartRebar N3: %s" % str(e))
+
+
+# ==============================================================================
 # COMANDO PRINCIPAL ACIONADO PELO MENU TQS
 # ==============================================================================
 def meucmd(eag, tqsjan):
@@ -591,9 +674,10 @@ def meucmd(eag, tqsjan):
         TQSUtil.writef("Nao foi possivel identificar o perfil da escada.")
         return
 
-    # 5. Desenhar os ferros inteligentes (N1 e N2)
+    # 5. Desenhar os ferros inteligentes (N1, N2 e N3)
     desenhar_ferro_principal_maior(tqsjan.dwg, geo, dados_ferros)
     desenhar_ferro_no_superior(tqsjan.dwg, geo, dados_ferros)
+    desenhar_ferro_bordo_patamar(tqsjan.dwg, geo, dados_ferros)
     tqsjan.Regen()
 
-    TQSUtil.writef("Ferros N1 e N2 gerados com sucesso!")
+    TQSUtil.writef("Ferros N1, N2 e N3 gerados com sucesso!")
