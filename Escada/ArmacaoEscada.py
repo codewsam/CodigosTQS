@@ -369,16 +369,17 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
     # --------------------------------------------------------------------------
     # PONTOS DO FERRO:
     # --------------------------------------------------------------------------
-    # Ponto 1: Ponta inferior do gancho no lado direito da viga inferior (onde o usuario desenhou em vermelho)
-    x_gancho_esq = (x0 - pat_part) - cobr
+    # Na viga esquerda: vai ate a face esquerda da viga inferior e desce
+    x_viga_inf = (x0 - pat_part - viga_l) + cobr
     y_fundo_pat_part = y0 - espessura + cobr
     y_gancho_inf_base = y0 - viga_h + cobr
 
-    pt1_x = x_gancho_esq
+    # Ponto 1: Ponta inferior do gancho na viga esquerda
+    pt1_x = x_viga_inf
     pt1_y = y_gancho_inf_base
 
-    # Ponto 2: Canto no encontro da face direita da viga com o fundo do patamar
-    pt2_x = x_gancho_esq
+    # Ponto 2: Canto do L invertido na viga esquerda
+    pt2_x = x_viga_inf
     pt2_y = y_fundo_pat_part
 
     # Ponto 3: Encontro do fundo horizontal do patamar com o fundo inclinado
