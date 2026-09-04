@@ -576,7 +576,7 @@ def desenhar_ferro_bordo_patamar(dwg, geo, dados_ferros):
     f_x1, f_y1, f_x2, f_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, dist_fundo)
 
     # 2. Vértices do "L":
-    x_corner = x_topo
+    x_corner = x_topo + cobr
     y_topo_arm = y_topo - cobr
 
     # Ponto inferior no encontro da vertical com o fundo inclinado da laje
