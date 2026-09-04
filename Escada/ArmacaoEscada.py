@@ -416,7 +416,7 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
         (pt6_x, pt6_y)
     ]
 
-    # ---  SmartRebar  ---
+    # --- Criar Objeto SmartRebar do TQS (Nível 220) ---
     try:
         rebar = TQSDwg.SmartRebar(dwg)
         rebar.type = TQSDwg.ICPFGN
@@ -445,7 +445,106 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
         rebar.RebarLine(0.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, 4)
 
     except Exception as e:
-        TQSUtil.writef("Erro ao gerar SmartRebar: %s" % str(e))
+        TQSUtil.writef("Erro ao gerar SmartRebar N1: %s" % str(e))
+
+
+# ==============================================================================
+# DESENHO DO FERRO DO NÓ SUPERIOR / PATAMAR DE CHEGADA (N2)
+# ==============================================================================
+def desenhar_ferro_no_superior(dwg, geo, dados_ferros):
+    """Calcula e desenha o ferro negativo do nó superior / patamar de chegada (N2)."""
+    x0 = geo["x0"]
+    y0 = geo["y0"]
+    n_deg = geo["n_degraus"]
+    piso = geo["piso"]
+    espelho = geo["espelho"]
+    pat_cheg = geo["patamar_chegada"]
+    espessura = geo["espessura"]
+    viga_l = geo["viga_largura"]
+    viga_h = geo["viga_altura"]
+    x_topo = geo["x_topo"]
+    y_topo = geo["y_topo"]
+
+    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    bitola = float(dados_ferros["bitola"])
+    espac = float(dados_ferros["espacamento"])
+    qtd = int(dados_ferros["quantidade"])
+
+    # Ângulo do lance inclinado
+    ang = math.atan2(espelho, piso)
+    cos_a = math.cos(ang)
+    sin_a = math.sin(ang)
+
+    # Vértice de referência dos cantos dos degraus
+    p2x = x0 + (n_deg - 1) * piso
+    p2y = y0 + (n_deg - 1) * espelho
+
+    # Linha inclinada superior com cobrimento (passando rente abaixo dos degraus)
+    ref_x = p2x + cobr * sin_a
+    ref_y = p2y - cobr * cos_a
+
+    # Fundo do patamar de chegada com cobrimento
+    y_fundo_pat_cheg = y_topo - espessura + cobr
+
+    # Encontro da reta inclinada superior com o fundo horizontal do patamar
+    x_kink = ref_x + (y_fundo_pat_cheg - ref_y) / math.tan(ang)
+    y_kink = y_fundo_pat_cheg
+
+    # Ponto de início descendo pela rampa inclinada (aprox. 4 degraus)
+    passo_diag = math.hypot(piso, espelho)
+    comp_anc = min(140.0, max(90.0, 4.0 * passo_diag))
+    pt1_x = x_kink - comp_anc * cos_a
+    pt1_y = y_kink - comp_anc * sin_a
+
+    # Ponto 2: Canto do nó no fundo do patamar
+    pt2_x = x_kink
+    pt2_y = y_kink
+
+    # Ponto 3: Face da viga superior direita
+    x_viga_sup = x_topo + pat_cheg + viga_l - cobr
+    pt3_x = x_viga_sup
+    pt3_y = y_fundo_pat_cheg
+
+    # Ponto 4: Gancho descendo na viga superior direita (L invertido)
+    y_gancho_sup_base = y_topo - viga_h + cobr
+    pt4_x = x_viga_sup
+    pt4_y = y_gancho_sup_base
+
+    pontos_ferro_n2 = [
+        (pt1_x, pt1_y),
+        (pt2_x, pt2_y),
+        (pt3_x, pt3_y),
+        (pt4_x, pt4_y)
+    ]
+
+    # --- Criar Objeto SmartRebar do TQS (Nível 220) ---
+    try:
+        rebar2 = TQSDwg.SmartRebar(dwg)
+        rebar2.type = TQSDwg.ICPFGN
+        rebar2.diameter = bitola
+        rebar2.spacing = espac
+        rebar2.quantity = qtd
+        try:
+            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                f_mark = dwg.globalrebar.FreeMark()
+                rebar2.mark = f_mark if f_mark > 0 else 2
+            else:
+                rebar2.mark = 2
+        except:
+            rebar2.mark = 2
+
+        for px, py in pontos_ferro_n2:
+            rebar2.GenRebarPoint(px, py, 0.0, 0, 1, -1)
+
+        # 1. Linha do ferro DENTRO da escada (nível 220, cor 4 - ciano)
+        rebar2.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 220, -1, 4)
+
+        # 2. Linha do ferro FORA da escada (ferro discriminado / rebatido)
+        dy_rebatido = -(viga_h + 75.0)
+        rebar2.RebarLine(0.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, 4)
+
+    except Exception as e:
+        TQSUtil.writef("Erro ao gerar SmartRebar N2: %s" % str(e))
 
 
 # ==============================================================================
@@ -492,8 +591,9 @@ def meucmd(eag, tqsjan):
         TQSUtil.writef("Nao foi possivel identificar o perfil da escada.")
         return
 
-    # 5. Desenhar o ferro principal maior
+    # 5. Desenhar os ferros inteligentes (N1 e N2)
     desenhar_ferro_principal_maior(tqsjan.dwg, geo, dados_ferros)
+    desenhar_ferro_no_superior(tqsjan.dwg, geo, dados_ferros)
     tqsjan.Regen()
 
-    TQSUtil.writef("Ferro principal maior gerado com sucesso!")
+    TQSUtil.writef("Ferros N1 e N2 gerados com sucesso!")
