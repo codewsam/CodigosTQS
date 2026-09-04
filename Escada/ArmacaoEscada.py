@@ -125,7 +125,7 @@ def pedir_dados_armacao():
             }}
         </style>
         <script>
-            window.resizeTo(420, 360);
+            window.resizeTo(420, 395);
 
             function confirmar() {{
                 try {{
@@ -135,7 +135,8 @@ def pedir_dados_armacao():
                     var dados = {{
                         "bitola": parseFloat(document.getElementById('bitola').value.replace(',', '.')),
                         "espacamento": parseFloat(document.getElementById('espacamento').value.replace(',', '.')),
-                        "quantidade": parseInt(document.getElementById('quantidade').value)
+                        "quantidade": parseInt(document.getElementById('quantidade').value),
+                        "cobrimento": parseFloat(document.getElementById('cobrimento').value.replace(',', '.'))
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -177,6 +178,11 @@ def pedir_dados_armacao():
                 <div class="campo">
                     <label>Quantidade:</label>
                     <input type="text" id="quantidade" value="8">
+                </div>
+
+                <div class="campo">
+                    <label>Cobrimento (cm):</label>
+                    <input type="text" id="cobrimento" value="2.5">
                 </div>
             </div>
 
@@ -355,7 +361,7 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
     x_topo = geo["x_topo"]
     y_topo = geo["y_topo"]
 
-    cobr = 2.5  # Cobrimento padrão (2.5 cm)
+    cobr = float(dados_ferros.get("cobrimento", 2.5))
     bitola = float(dados_ferros["bitola"])
     espac = float(dados_ferros["espacamento"])
     qtd = int(dados_ferros["quantidade"])
@@ -410,33 +416,36 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
         (pt6_x, pt6_y)
     ]
 
-    # --- Desenho Gráfico no Desenho (Nível 241, Cor 4 - Ciano/Azul Claro) ---
-    draw = dwg.draw
-    draw.level = 241
-    draw.color = 4   # Ciano / Azul Claro
-    draw.style = 0   # Linha Contínua
-
-    for i in range(len(pontos_ferro) - 1):
-        pa = pontos_ferro[i]
-        pb = pontos_ferro[i + 1]
-        draw.Line(pa[0], pa[1], pb[0], pb[1])
-
-    # --- Criar Objeto SmartRebar do TQS ---
+    # ---  SmartRebar  ---
     try:
         rebar = TQSDwg.SmartRebar(dwg)
         rebar.type = TQSDwg.ICPFGN
         rebar.diameter = bitola
         rebar.spacing = espac
         rebar.quantity = qtd
-        rebar.mark = 1
+        try:
+            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                f_mark = dwg.globalrebar.FreeMark()
+                rebar.mark = f_mark if f_mark > 0 else 1
+            else:
+                rebar.mark = 1
+        except:
+            rebar.mark = 1
 
         for px, py in pontos_ferro:
             rebar.GenRebarPoint(px, py, 0.0, 0, 1, -1)
 
-        # Inserir no DWG
-        rebar.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 241, -1, 4)
+        # 1. Linha do ferro DENTRO da escada (nível 220, cor 4 - ciano)
+        # identify=0 e identifyBends=0 para manter o perfil limpo
+        rebar.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 220, -1, 4)
+
+        # 2. Linha do ferro FORA da escada (ferro discriminado / rebatido)
+        # Sincronizado com o mesmo objeto SmartRebar, mostrando textos e cotas das dobras
+        dy_rebatido = -(viga_h + 35.0)
+        rebar.RebarLine(0.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, 4)
+
     except Exception as e:
-        pass
+        TQSUtil.writef("Erro ao gerar SmartRebar: %s" % str(e))
 
 
 # ==============================================================================
