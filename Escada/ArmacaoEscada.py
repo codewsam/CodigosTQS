@@ -742,42 +742,44 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
             x += espac_dist
 
     # --------------------------------------------------------------------------
-    # 4. Lance Inclinado (Inferior N1 e Superior N2) - NÃO ENTRA NA VIGA
+    # 4. Ferro N1: Lance Inclinado completo (desde a base até o topo do patamar)
+    # Cobre toda a extensão inclinada, inclusive a subida diagonal na laje de chegada
     # --------------------------------------------------------------------------
     p_base_y = calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, p_base_x)
     pt_topo_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_topo_arm)
     pt_topo_y = y_topo_arm
-
     l_flight = math.hypot(pt_topo_x - p_base_x, pt_topo_y - p_base_y)
 
-    # Início do ferro superior N2 na rampa
-    passo_diag = math.hypot(piso, espelho)
-    comp_anc = min(140.0, max(90.0, 4.0 * passo_diag))
-    s_top_start = l_flight - comp_anc
-
     s = espac_dist
-    while s <= l_flight:
+    while s <= l_flight - 2.0:
         bx = p_base_x + s * ux
         by = p_base_y + s * uy
-
-        # Bolinha inferior (tangente em cima da barra N1)
         cx_inf = bx + r_circ * nx
         cy_inf = by + r_circ * ny
+        adicionar_bolinha(cx_inf, cy_inf)
+        s += espac_dist
 
-        # Para antes de cruzar o fundo do patamar de chegada para não colidir
-        if cy_inf < y_fundo_pat_cheg - 1.0 and bx <= x_topo + 5.0:
-            adicionar_bolinha(cx_inf, cy_inf)
+    # --------------------------------------------------------------------------
+    # 5. Ferro N2: Nó Superior / Rampa Inclinada
+    # Começa onde o ferro N2 realmente nasce na rampa (pt1) até o nó de chegada
+    # --------------------------------------------------------------------------
+    ref_x = p2x + cobr * sin_a
+    ref_y = p2y - cobr * cos_a
+    x_kink = ref_x + (y_fundo_pat_cheg - ref_y) / math.tan(ang)
+    y_kink = y_fundo_pat_cheg
 
-        # Bolinha superior (tangente embaixo da barra N2 nos degraus superiores)
-        if s >= s_top_start:
-            tx = bx + (espessura - 2 * cobr) * nx
-            ty = by + (espessura - 2 * cobr) * ny
-            cx_sup = tx - r_circ * nx
-            cy_sup = ty - r_circ * ny
-            # Para no degrau anterior ao patamar para não sobrepor
-            if cx_sup <= (x_topo - piso) + 5.0:
-                adicionar_bolinha(cx_sup, cy_sup)
+    passo_diag = math.hypot(piso, espelho)
+    comp_anc = min(140.0, max(90.0, 4.0 * passo_diag))
+    pt1_x = x_kink - comp_anc * cos_a
+    pt1_y = y_kink - comp_anc * sin_a
 
+    s = espac_dist
+    while s <= comp_anc - 3.0:
+        x = pt1_x + s * cos_a
+        y = pt1_y + s * sin_a
+        cx_sup = x - r_circ * nx
+        cy_sup = y - r_circ * ny
+        adicionar_bolinha(cx_sup, cy_sup)
         s += espac_dist
 
     # --------------------------------------------------------------------------
