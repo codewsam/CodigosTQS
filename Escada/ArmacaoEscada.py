@@ -125,7 +125,7 @@ def pedir_dados_armacao():
             }}
         </style>
         <script>
-            window.resizeTo(420, 395);
+            window.resizeTo(440, 520);
 
             function confirmar() {{
                 try {{
@@ -136,7 +136,9 @@ def pedir_dados_armacao():
                         "bitola": parseFloat(document.getElementById('bitola').value.replace(',', '.')),
                         "espacamento": parseFloat(document.getElementById('espacamento').value.replace(',', '.')),
                         "quantidade": parseInt(document.getElementById('quantidade').value),
-                        "cobrimento": parseFloat(document.getElementById('cobrimento').value.replace(',', '.'))
+                        "cobrimento": parseFloat(document.getElementById('cobrimento').value.replace(',', '.')),
+                        "bitola_dist": parseFloat(document.getElementById('bitola_dist').value.replace(',', '.')),
+                        "espac_dist": parseFloat(document.getElementById('espac_dist').value.replace(',', '.'))
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -156,10 +158,10 @@ def pedir_dados_armacao():
 
         <div class="container">
             <div class="card">
-                <h3>Parâmetros dos Ferros</h3>
+                <h3>Armadura Principal (Longitudinal)</h3>
                 
                 <div class="campo">
-                    <label>Bitola:</label>
+                    <label>Bitola Principal:</label>
                     <select id="bitola">
                         <option value="5.0">Ø 5.0 mm</option>
                         <option value="6.3">Ø 6.3 mm</option>
@@ -171,18 +173,35 @@ def pedir_dados_armacao():
                 </div>
 
                 <div class="campo">
-                    <label>Espaçamento (cm):</label>
+                    <label>Espaçamento Principal (cm):</label>
                     <input type="text" id="espacamento" value="15">
                 </div>
 
                 <div class="campo">
-                    <label>Quantidade:</label>
+                    <label>Quantidade de Ferros:</label>
                     <input type="text" id="quantidade" value="8">
                 </div>
 
                 <div class="campo">
                     <label>Cobrimento (cm):</label>
                     <input type="text" id="cobrimento" value="2.5">
+                </div>
+
+                <h3 style="margin-top: 10px;">Armadura de Distribuição</h3>
+
+                <div class="campo">
+                    <label>Bitola Distribuição:</label>
+                    <select id="bitola_dist">
+                        <option value="5.0">Ø 5.0 mm</option>
+                        <option value="6.3" selected>Ø 6.3 mm</option>
+                        <option value="8.0">Ø 8.0 mm</option>
+                        <option value="10.0">Ø 10.0 mm</option>
+                    </select>
+                </div>
+
+                <div class="campo">
+                    <label>Espaçamento Distribuição (cm):</label>
+                    <input type="text" id="espac_dist" value="15">
                 </div>
             </div>
 
@@ -635,11 +654,176 @@ def desenhar_ferro_bordo_patamar(dwg, geo, dados_ferros):
 
 
 # ==============================================================================
+# DESENHO DA ARMADURA DE DISTRIBUIÇÃO (TRANSVERSAL EM CORTE - PONTOS VERMELHOS)
+# ==============================================================================
+def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
+    """Calcula e desenha as barras de distribuição em corte ao longo dos ferros longitudinais."""
+    x0 = geo["x0"]
+    y0 = geo["y0"]
+    n_deg = geo["n_degraus"]
+    piso = geo["piso"]
+    espelho = geo["espelho"]
+    pat_part = geo["patamar_partida"]
+    pat_cheg = geo["patamar_chegada"]
+    espessura = geo["espessura"]
+    viga_l = geo["viga_largura"]
+    viga_h = geo["viga_altura"]
+    x_topo = geo["x_topo"]
+    y_topo = geo["y_topo"]
+
+    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    bitola_dist = float(dados_ferros.get("bitola_dist", 6.3))
+    espac_dist = float(dados_ferros.get("espac_dist", 15.0))
+    if espac_dist <= 0:
+        espac_dist = 15.0
+
+    ang = math.atan2(espelho, piso)
+    cos_a = math.cos(ang)
+    sin_a = math.sin(ang)
+    ux, uy = cos_a, sin_a
+    nx, ny = -sin_a, cos_a            # Normal apontando para cima/esquerda (sobre a barra inferior)
+    nx_down, ny_down = sin_a, -cos_a  # Normal apontando para baixo/direita (sob a barra superior)
+
+    # 1. Reta inclinada do fundo do lance
+    p1x, p1y = x0 + piso, y0 + espelho
+    p2x, p2y = x0 + (n_deg - 1) * piso, y0 + (n_deg - 1) * espelho
+    dist_fundo = espessura - cobr
+    f_x1, f_y1, f_x2, f_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, dist_fundo)
+
+    y_topo_arm = y_topo - cobr
+    pt_topo_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_topo_arm)
+
+    pontos_circulos = []
+    r_offset = 1.8  # Afastamento do centro do ponto ao eixo da barra longitudinal
+
+    # --------------------------------------------------------------------------
+    # ZONA 1: Fundo do Lance Inclinado (sobre o ferro N1) - NÃO ENTRA NA VIGA
+    # --------------------------------------------------------------------------
+    if pat_part >= 40.0:
+        x_start_inc = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y0 - espessura + cobr)
+    else:
+        x_start_inc = x0 + 5.0  # Inicia na face da escada, sem entrar na viga
+
+    x_end_inc = pt_topo_x - 5.0
+    if x_end_inc > x_start_inc:
+        p_start = (x_start_inc, calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, x_start_inc))
+        p_end = (x_end_inc, calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, x_end_inc))
+        D = math.hypot(p_end[0] - p_start[0], p_end[1] - p_start[1])
+        n_pts = max(1, int(round(D / espac_dist)))
+        step_s = D / n_pts
+        for k in range(n_pts + 1):
+            s = k * step_s
+            bx = p_start[0] + s * ux
+            by = p_start[1] + s * uy
+            pontos_circulos.append((bx + r_offset * nx, by + r_offset * ny))
+
+    # --------------------------------------------------------------------------
+    # ZONA 2: Patamar de Partida (sobre o ferro N1) - NÃO ENTRA NA VIGA
+    # --------------------------------------------------------------------------
+    if pat_part >= 40.0:
+        x_start_pat1 = (x0 - pat_part) + 5.0
+        x_end_pat1 = x_start_inc - 5.0
+        L_pat1 = x_end_pat1 - x_start_pat1
+        if L_pat1 > 5.0:
+            n_pts = max(1, int(round(L_pat1 / espac_dist)))
+            step_s = L_pat1 / n_pts
+            cy = (y0 - espessura + cobr) + r_offset
+            for k in range(n_pts + 1):
+                pontos_circulos.append((x_start_pat1 + k * step_s, cy))
+
+    # --------------------------------------------------------------------------
+    # ZONA 3: Topo do Lance Inclinado (sob o ferro N2)
+    # --------------------------------------------------------------------------
+    ref_x = p2x + cobr * sin_a
+    ref_y = p2y - cobr * cos_a
+    y_fundo_pat_cheg = y_topo - espessura + cobr
+    x_kink = ref_x + (y_fundo_pat_cheg - ref_y) / math.tan(ang)
+    y_kink = y_fundo_pat_cheg
+    passo_diag = math.hypot(piso, espelho)
+    comp_anc = min(140.0, max(90.0, 4.0 * passo_diag))
+    pt1_n2 = (x_kink - comp_anc * cos_a, y_kink - comp_anc * sin_a)
+    pt2_n2 = (x_kink, y_kink)
+    D_c = math.hypot(pt2_n2[0] - pt1_n2[0], pt2_n2[1] - pt1_n2[1])
+    if D_c > 5.0:
+        n_pts = max(1, int(round(D_c / espac_dist)))
+        step_s = D_c / n_pts
+        for k in range(n_pts + 1):
+            s = k * step_s
+            bx = pt1_n2[0] + s * ux
+            by = pt1_n2[1] + s * uy
+            pontos_circulos.append((bx + r_offset * nx_down, by + r_offset * ny_down))
+
+    # --------------------------------------------------------------------------
+    # ZONA 4: Patamar de Chegada (sob N1/N3 no topo e sobre N2 no fundo) - NÃO ENTRA NA VIGA
+    # --------------------------------------------------------------------------
+    if pat_cheg >= 40.0:
+        x_start_d1 = x_topo + cobr + 5.0
+        x_end_d = (x_topo + pat_cheg) - 5.0  # Para antes da face da viga
+        L_d1 = x_end_d - x_start_d1
+        if L_d1 > 5.0:
+            n_pts = max(1, int(round(L_d1 / espac_dist)))
+            step_s = L_d1 / n_pts
+            cy_top = y_topo_arm - r_offset
+            for k in range(n_pts + 1):
+                pontos_circulos.append((x_start_d1 + k * step_s, cy_top))
+
+        x_start_d2 = x_kink + 5.0
+        L_d2 = x_end_d - x_start_d2
+        if L_d2 > 5.0:
+            n_pts = max(1, int(round(L_d2 / espac_dist)))
+            step_s = L_d2 / n_pts
+            cy_bot = y_fundo_pat_cheg + r_offset
+            for k in range(n_pts + 1):
+                pontos_circulos.append((x_start_d2 + k * step_s, cy_bot))
+
+    # --------------------------------------------------------------------------
+    # DESENHO DOS CÍRCULOS EM CORTE (Nível 220, Cor 1 - Vermelho)
+    # --------------------------------------------------------------------------
+    draw = dwg.draw
+    draw.level = 220
+    draw.color = 1   # Vermelho
+    draw.style = 0
+
+    r_circ = 1.2
+    for cx, cy in pontos_circulos:
+        draw.Circle(cx, cy, r_circ)
+
+    # --------------------------------------------------------------------------
+    # CRIAR OBJETO SMARTREBAR DA DISTRIBUIÇÃO (FERRO RETO N4)
+    # --------------------------------------------------------------------------
+    total_pontos = len(pontos_circulos)
+    if total_pontos > 0:
+        try:
+            rebar_dist = TQSDwg.SmartRebar(dwg)
+            rebar_dist.type = TQSDwg.ICPFRT
+            rebar_dist.diameter = bitola_dist
+            rebar_dist.spacing = espac_dist
+            rebar_dist.quantity = total_pontos
+            try:
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar_dist.mark = f_mark if f_mark > 0 else 4
+                else:
+                    rebar_dist.mark = 4
+            except:
+                rebar_dist.mark = 4
+
+            rebar_dist.straightBarMainLength = 100.0  # Comprimento da barra transversal (largura típica 100cm)
+
+            # Linha discriminada / rebatida fora da escada
+            dy_rebatido = -(viga_h + 155.0)
+            rebar_dist.RebarLine(x0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, 1)
+
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar SmartRebar Distribuicao: %s" % str(e))
+
+
+# ==============================================================================
 # COMANDO PRINCIPAL ACIONADO PELO MENU TQS
 # ==============================================================================
 def meucmd(eag, tqsjan):
     """Funcao chamada pelo botao 'Armar Escada'."""
-    # 1. Coletar dados da armadura (apenas bitola, espacamento e quantidade)
+    # 1. Coletar dados da armadura
     dados_ferros = pedir_dados_armacao()
     if dados_ferros is None:
         TQSUtil.writef("Operacao cancelada.")
@@ -678,10 +862,11 @@ def meucmd(eag, tqsjan):
         TQSUtil.writef("Nao foi possivel identificar o perfil da escada.")
         return
 
-    # 5. Desenhar os ferros inteligentes (N1, N2 e N3)
+    # 5. Desenhar os ferros inteligentes longitudinais e transversais
     desenhar_ferro_principal_maior(tqsjan.dwg, geo, dados_ferros)
     desenhar_ferro_no_superior(tqsjan.dwg, geo, dados_ferros)
     desenhar_ferro_bordo_patamar(tqsjan.dwg, geo, dados_ferros)
+    desenhar_armadura_distribuicao(tqsjan.dwg, geo, dados_ferros)
     tqsjan.Regen()
 
-    TQSUtil.writef("Ferros N1, N2 e N3 gerados com sucesso!")
+    TQSUtil.writef("Armadura completa da escada gerada com sucesso!")
