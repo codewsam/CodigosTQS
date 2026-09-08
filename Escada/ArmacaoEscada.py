@@ -125,7 +125,7 @@ def pedir_dados_armacao():
             }}
         </style>
         <script>
-            window.resizeTo(440, 520);
+            window.resizeTo(420, 460);
 
             function confirmar() {{
                 try {{
@@ -137,7 +137,6 @@ def pedir_dados_armacao():
                         "espacamento": parseFloat(document.getElementById('espacamento').value.replace(',', '.')),
                         "quantidade": parseInt(document.getElementById('quantidade').value),
                         "cobrimento": parseFloat(document.getElementById('cobrimento').value.replace(',', '.')),
-                        "bitola_dist": parseFloat(document.getElementById('bitola_dist').value.replace(',', '.')),
                         "espac_dist": parseFloat(document.getElementById('espac_dist').value.replace(',', '.'))
                     }};
 
@@ -188,16 +187,6 @@ def pedir_dados_armacao():
                 </div>
 
                 <h3 style="margin-top: 10px;">Armadura de Distribuição</h3>
-
-                <div class="campo">
-                    <label>Bitola Distribuição:</label>
-                    <select id="bitola_dist">
-                        <option value="5.0">Ø 5.0 mm</option>
-                        <option value="6.3" selected>Ø 6.3 mm</option>
-                        <option value="8.0">Ø 8.0 mm</option>
-                        <option value="10.0">Ø 10.0 mm</option>
-                    </select>
-                </div>
 
                 <div class="campo">
                     <label>Espaçamento Distribuição (cm):</label>
@@ -672,7 +661,7 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
     y_topo = geo["y_topo"]
 
     cobr = float(dados_ferros.get("cobrimento", 2.5))
-    bitola_dist = float(dados_ferros.get("bitola_dist", 6.3))
+    bitola_dist = 5.0  # Bitola de distribuição automática padrão (Ø 5.0 mm)
     espac_dist = float(dados_ferros.get("espac_dist", 15.0))
     if espac_dist <= 0:
         espac_dist = 15.0
@@ -681,8 +670,7 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
     cos_a = math.cos(ang)
     sin_a = math.sin(ang)
     ux, uy = cos_a, sin_a
-    nx, ny = -sin_a, cos_a            # Normal apontando para cima/esquerda (sobre a barra inferior)
-    nx_down, ny_down = sin_a, -cos_a  # Normal apontando para baixo/direita (sob a barra superior)
+    nx, ny = -sin_a, cos_a            # Normal apontando para cima/esquerda (perpendicular à rampa)
 
     # 1. Reta inclinada do fundo do lance
     p1x, p1y = x0 + piso, y0 + espelho
@@ -691,90 +679,106 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
     f_x1, f_y1, f_x2, f_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, dist_fundo)
 
     y_topo_arm = y_topo - cobr
-    pt_topo_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_topo_arm)
-
-    pontos_circulos = []
-    r_offset = 1.8  # Afastamento do centro do ponto ao eixo da barra longitudinal
-
-    # --------------------------------------------------------------------------
-    # ZONA 1: Fundo do Lance Inclinado (sobre o ferro N1) - NÃO ENTRA NA VIGA
-    # --------------------------------------------------------------------------
-    if pat_part >= 40.0:
-        x_start_inc = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y0 - espessura + cobr)
-    else:
-        x_start_inc = x0 + 5.0  # Inicia na face da escada, sem entrar na viga
-
-    x_end_inc = pt_topo_x - 5.0
-    if x_end_inc > x_start_inc:
-        p_start = (x_start_inc, calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, x_start_inc))
-        p_end = (x_end_inc, calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, x_end_inc))
-        D = math.hypot(p_end[0] - p_start[0], p_end[1] - p_start[1])
-        n_pts = max(1, int(round(D / espac_dist)))
-        step_s = D / n_pts
-        for k in range(n_pts + 1):
-            s = k * step_s
-            bx = p_start[0] + s * ux
-            by = p_start[1] + s * uy
-            pontos_circulos.append((bx + r_offset * nx, by + r_offset * ny))
-
-    # --------------------------------------------------------------------------
-    # ZONA 2: Patamar de Partida (sobre o ferro N1) - NÃO ENTRA NA VIGA
-    # --------------------------------------------------------------------------
-    if pat_part >= 40.0:
-        x_start_pat1 = (x0 - pat_part) + 5.0
-        x_end_pat1 = x_start_inc - 5.0
-        L_pat1 = x_end_pat1 - x_start_pat1
-        if L_pat1 > 5.0:
-            n_pts = max(1, int(round(L_pat1 / espac_dist)))
-            step_s = L_pat1 / n_pts
-            cy = (y0 - espessura + cobr) + r_offset
-            for k in range(n_pts + 1):
-                pontos_circulos.append((x_start_pat1 + k * step_s, cy))
-
-    # --------------------------------------------------------------------------
-    # ZONA 3: Topo do Lance Inclinado (sob o ferro N2)
-    # --------------------------------------------------------------------------
-    ref_x = p2x + cobr * sin_a
-    ref_y = p2y - cobr * cos_a
     y_fundo_pat_cheg = y_topo - espessura + cobr
-    x_kink = ref_x + (y_fundo_pat_cheg - ref_y) / math.tan(ang)
-    y_kink = y_fundo_pat_cheg
-    passo_diag = math.hypot(piso, espelho)
-    comp_anc = min(140.0, max(90.0, 4.0 * passo_diag))
-    pt1_n2 = (x_kink - comp_anc * cos_a, y_kink - comp_anc * sin_a)
-    pt2_n2 = (x_kink, y_kink)
-    D_c = math.hypot(pt2_n2[0] - pt1_n2[0], pt2_n2[1] - pt1_n2[1])
-    if D_c > 5.0:
-        n_pts = max(1, int(round(D_c / espac_dist)))
-        step_s = D_c / n_pts
-        for k in range(n_pts + 1):
-            s = k * step_s
-            bx = pt1_n2[0] + s * ux
-            by = pt1_n2[1] + s * uy
-            pontos_circulos.append((bx + r_offset * nx_down, by + r_offset * ny_down))
+
+    # ==========================================================================
+    # DISTRIBUIÇÃO COORDENADA DOS FERROS (N1, N2 e N3) COM PROTEÇÃO ANTI-SOBREPOSIÇÃO
+    # ==========================================================================
+    pontos_circulos = []
+    r_circ = 1.0    # Raio da bolinha vermelha em corte (1.0 cm)
+
+    def adicionar_bolinha(cx, cy, d_min=5.5):
+        """Garante que nenhuma bolinha fique sobreposta ou a menos de 5.5 cm de outra."""
+        for ex, ey in pontos_circulos:
+            if math.hypot(cx - ex, cy - ey) < d_min:
+                return False
+        pontos_circulos.append((cx, cy))
+        return True
 
     # --------------------------------------------------------------------------
-    # ZONA 4: Patamar de Chegada (sob N1/N3 no topo e sobre N2 no fundo) - NÃO ENTRA NA VIGA
+    # 1. Patamar de Partida (se existir) - NÃO ENTRA NA VIGA
+    # --------------------------------------------------------------------------
+    if pat_part >= 40.0:
+        p_base_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y0 - espessura + cobr)
+        y_fundo_pat_part = y0 - espessura + cobr
+        cy_part = y_fundo_pat_part + r_circ
+
+        x = (x0 - pat_part) + espac_dist
+        while x <= p_base_x - 2.0:
+            adicionar_bolinha(x, cy_part)
+            x += espac_dist
+    else:
+        p_base_x = x0
+
+    # --------------------------------------------------------------------------
+    # 2. Canto do Patamar de Chegada (N3) - 4 bolinhas verticais no espelho
+    # --------------------------------------------------------------------------
+    x_corner = x_topo + cobr
+    y_fundo_lance = calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, x_corner)
+    y_top_c = y_topo_arm - r_circ
+    y_bot_c = y_fundo_lance + r_circ
+
+    if y_top_c > y_bot_c + 10.0:
+        dy_vert = (y_top_c - y_bot_c) / 3.0
+        for i in range(4):
+            adicionar_bolinha(x_corner + r_circ, y_top_c - i * dy_vert)
+    else:
+        adicionar_bolinha(x_corner + r_circ, y_top_c)
+        adicionar_bolinha(x_corner + r_circ, y_top_c - 7.5)
+        adicionar_bolinha(x_corner + r_circ, y_top_c - 15.0)
+
+    # --------------------------------------------------------------------------
+    # 3. Patamar de Chegada (N1 no topo e N2 no fundo) - Pares verticais alinhados
     # --------------------------------------------------------------------------
     if pat_cheg >= 40.0:
-        x_start_d1 = x_topo + cobr + 5.0
-        x_end_d = (x_topo + pat_cheg) - 5.0  # Para antes da face da viga
-        L_d1 = x_end_d - x_start_d1
-        if L_d1 > 5.0:
-            n_pts = max(1, int(round(L_d1 / espac_dist)))
-            step_s = L_d1 / n_pts
-            cy_top = y_topo_arm - r_offset
-            for k in range(n_pts + 1):
-                pontos_circulos.append((x_start_d1 + k * step_s, cy_top))
+        cy_top = y_topo_arm - r_circ
+        cy_bot = y_fundo_pat_cheg + r_circ
+        x_lim_cheg = (x_topo + pat_cheg) - 10.0  # Para antes da face da viga de chegada
 
-        x_start_d2 = x_kink + 5.0
-        L_d2 = x_end_d - x_start_d2
-        if L_d2 > 5.0:
-            n_pts = max(1, int(round(L_d2 / espac_dist)))
-            step_s = L_d2 / n_pts
-            cy_bot = y_fundo_pat_cheg + r_offset
-            for k in range(n_pts + 1):
-                pontos_circulos.append((x_start_d2 + k * step_s, cy_bot))
+        x = x_corner + espac_dist
+        while x <= x_lim_cheg:
+            adicionar_bolinha(x, cy_top)
+            adicionar_bolinha(x, cy_bot)
+            x += espac_dist
+
+    # --------------------------------------------------------------------------
+    # 4. Lance Inclinado (Inferior N1 e Superior N2) - NÃO ENTRA NA VIGA
+    # --------------------------------------------------------------------------
+    p_base_y = calcular_y_no_x(f_x1, f_y1, f_x2, f_y2, p_base_x)
+    pt_topo_x = calcular_x_no_y(f_x1, f_y1, f_x2, f_y2, y_topo_arm)
+    pt_topo_y = y_topo_arm
+
+    l_flight = math.hypot(pt_topo_x - p_base_x, pt_topo_y - p_base_y)
+
+    # Início do ferro superior N2 na rampa
+    passo_diag = math.hypot(piso, espelho)
+    comp_anc = min(140.0, max(90.0, 4.0 * passo_diag))
+    s_top_start = l_flight - comp_anc
+
+    s = espac_dist
+    while s <= l_flight:
+        bx = p_base_x + s * ux
+        by = p_base_y + s * uy
+
+        # Bolinha inferior (tangente em cima da barra N1)
+        cx_inf = bx + r_circ * nx
+        cy_inf = by + r_circ * ny
+
+        # Para antes de cruzar o fundo do patamar de chegada para não colidir
+        if cy_inf < y_fundo_pat_cheg - 1.0 and bx <= x_topo + 5.0:
+            adicionar_bolinha(cx_inf, cy_inf)
+
+        # Bolinha superior (tangente embaixo da barra N2 nos degraus superiores)
+        if s >= s_top_start:
+            tx = bx + (espessura - 2 * cobr) * nx
+            ty = by + (espessura - 2 * cobr) * ny
+            cx_sup = tx - r_circ * nx
+            cy_sup = ty - r_circ * ny
+            # Para no degrau anterior ao patamar para não sobrepor
+            if cx_sup <= (x_topo - piso) + 5.0:
+                adicionar_bolinha(cx_sup, cy_sup)
+
+        s += espac_dist
 
     # --------------------------------------------------------------------------
     # DESENHO DOS CÍRCULOS EM CORTE (Nível 220, Cor 1 - Vermelho)
@@ -784,7 +788,6 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
     draw.color = 1   # Vermelho
     draw.style = 0
 
-    r_circ = 1.2
     for cx, cy in pontos_circulos:
         draw.Circle(cx, cy, r_circ)
 
@@ -808,7 +811,7 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
             except:
                 rebar_dist.mark = 4
 
-            rebar_dist.straightBarMainLength = 100.0  # Comprimento da barra transversal (largura típica 100cm)
+            rebar_dist.straightBarMainLength = 100.0  # Comprimento padrão da barra transversal
 
             # Linha discriminada / rebatida fora da escada
             dy_rebatido = -(viga_h + 155.0)
