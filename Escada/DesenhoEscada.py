@@ -908,7 +908,13 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
         # Seta de fluxo
-        draw.color = 4  # Azul / Ciano
+        draw.level = 241
+        draw.color = -1  # Por nivel
+        draw.style = -1  # -1 por nivel
+        try:
+            dwg.settings.originalColorsMode = 0
+        except Exception:
+            pass
         x_seta_start = x_deg_ini + piso * 0.5
         x_seta_end = x_deg_fim + (pat_dir * 0.5 if tem_patamar_chegada else 0.0)
         y_seta = y_min_int + largura_l1 / 2.0
@@ -1043,7 +1049,13 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
 
         # Seta e Linha de Fluxo
-        draw.color = 4  # Ciano/Azul
+        draw.level = 241
+        draw.color = -1  # Por nivel
+        draw.style = -1  # -1 por nivel
+        try:
+            dwg.settings.originalColorsMode = 0
+        except Exception:
+            pass
         y_m1 = y_min_int + largura_l1 / 2.0
         y_m2 = y_l2_base + largura_l2 / 2.0
         x_m_start = x_deg_ini + piso * 0.5
