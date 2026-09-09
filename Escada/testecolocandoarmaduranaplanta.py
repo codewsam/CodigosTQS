@@ -177,6 +177,14 @@ def pedir_dados_armacao():
                 document.getElementById('tabPlanta').className = (tabName == 'planta') ? 'tab active' : 'tab';
                 document.getElementById('contentCorte').className = (tabName == 'corte') ? 'tab-content active' : 'tab-content';
                 document.getElementById('contentPlanta').className = (tabName == 'planta') ? 'tab-content active' : 'tab-content';
+                
+                if (tabName == 'corte') {{
+                    document.getElementById('btnCorte').style.display = 'inline-block';
+                    document.getElementById('btnPlanta').style.display = 'none';
+                }} else {{
+                    document.getElementById('btnCorte').style.display = 'none';
+                    document.getElementById('btnPlanta').style.display = 'inline-block';
+                }}
             }}
 
             function confirmar(modoEscolhido) {{
@@ -335,8 +343,8 @@ def pedir_dados_armacao():
             <!-- DOIS BOTOES DE ACAO LADO A LADO -->
             <div class="btns">
                 <button onclick="window.close()">Cancelar</button>
-                <button class="btn-corte" onclick="confirmar('CORTE')">&#9658; Escada </button>
-                <button class="btn-planta" onclick="confirmar('PLANTA')">&#9658; Planta Baixa</button>
+                <button id="btnCorte" class="btn-corte" onclick="confirmar('CORTE')">&#9658; Escada</button>
+                <button id="btnPlanta" class="btn-planta" style="display: none;" onclick="confirmar('PLANTA')">&#9658; Planta Baixa</button>
             </div>
         </div>
     </body>
