@@ -221,7 +221,7 @@ def pedir_dados_armacao():
     <body>
         <div class="topbar">
             <h1>Armacao da Escada</h1>
-            <p>Plugin TQS &#9679 Escolha a opcao: Armar Corte ou Armar Planta</p>
+            <p>Plugin TQS &#9679 Ediglanthio Samuel Araujo Brandao &#9679 G3 Engenharia</p>
         </div>
 
         <div class="container">
@@ -1445,7 +1445,7 @@ def desenhar_ferro_longitudinal_alvenaria_planta(dwg, geo_planta, dados_ferros):
 def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     """
     Calcula e gera as armaduras dos Patamares e Lances na Planta Baixa.
-    Nivel 220, Cor por nivel (-1), Estilo por nivel (-1).
+    Nivel 220, Cor Azul Claro/Ciano (cor = 4), Estilo Tracejado (estilo = 1).
     - As barras chegam ate as linhas externas (vigas/paredes externas superior e inferior).
     - Patamar Esquerdo: gera os dois ferros com dobras viradas para fora (Barra 1 -> esquerda, Barra 2 -> direita).
     - Patamar Direito e Lances: gera ferros totalmente RETOS.
@@ -1483,7 +1483,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         x_p1 = pat_esq["x_min"] + comp_pat * 0.35
         x_p2 = pat_esq["x_min"] + comp_pat * 0.70
 
-        # Barra 1 (esquerda): dobras apontando para a ESQUERDA (ipatas = 4 - invertido: ___|)
+        # Barra 1 (esquerda): TRACEJADA com dobras apontando para a ESQUERDA (ipatas = 4 - invertido: ___|)
         try:
             rebar_pat1 = TQSDwg.SmartRebar(dwg)
             rebar_pat1.type = TQSDwg.ICPFRT
@@ -1504,11 +1504,12 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat1.straightBarRightLength = comp_dobra
 
             ipatas_1 = 4 if tem_dobra else 0
-            rebar_pat1.RebarLine(x_p1, y_ini_total, 90.0, 1.0, 1, 0, ipatas_1, 0, 220, -1, -1)
+            # Nivel 220, Estilo TRACEJADO (iestilo = 1), Cor Azul Claro / Ciano (4)
+            rebar_pat1.RebarLine(x_p1, y_ini_total, 90.0, 1.0, 1, 0, ipatas_1, 0, 220, 1, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 1: %s" % str(e))
 
-        # Barra 2 (direita): dobras apontando para a DIREITA (ipatas = 1 - normal: |___)
+        # Barra 2 (direita): CONTINUA com dobras apontando para a DIREITA (ipatas = 1 - normal: |___)
         try:
             rebar_pat2 = TQSDwg.SmartRebar(dwg)
             rebar_pat2.type = TQSDwg.ICPFRT
@@ -1529,7 +1530,8 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat2.straightBarRightLength = comp_dobra
 
             ipatas_2 = 1 if tem_dobra else 0
-            rebar_pat2.RebarLine(x_p2, y_ini_total, 90.0, 1.0, 1, 0, ipatas_2, 0, 220, -1, -1)
+            # Nivel 220, Estilo CONTINUO (iestilo = 0), Cor Azul Claro / Ciano (4)
+            rebar_pat2.RebarLine(x_p2, y_ini_total, 90.0, 1.0, 1, 0, ipatas_2, 0, 220, 0, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 2: %s" % str(e))
 
@@ -1542,7 +1544,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         x_pd1 = pat_dir["x_min"] + comp_pat_d * 0.35
         x_pd2 = pat_dir["x_min"] + comp_pat_d * 0.70
 
-        # Barra 1 (reta)
+        # Barra 1 (reta): TRACEJADA (circulada em amarelo)
         try:
             rebar_pat_d1 = TQSDwg.SmartRebar(dwg)
             rebar_pat_d1.type = TQSDwg.ICPFRT
@@ -1562,11 +1564,12 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat_d1.straightBarLeftLength = 0.0
             rebar_pat_d1.straightBarRightLength = 0.0
 
-            rebar_pat_d1.RebarLine(x_pd1, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+            # Nivel 220, Estilo TRACEJADO (iestilo = 1), Cor Azul Claro / Ciano (4)
+            rebar_pat_d1.RebarLine(x_pd1, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, 1, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 1: %s" % str(e))
 
-        # Barra 2 (reta)
+        # Barra 2 (reta): CONTINUA / NORMAL
         try:
             rebar_pat_d2 = TQSDwg.SmartRebar(dwg)
             rebar_pat_d2.type = TQSDwg.ICPFRT
@@ -1586,11 +1589,12 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat_d2.straightBarLeftLength = 0.0
             rebar_pat_d2.straightBarRightLength = 0.0
 
-            rebar_pat_d2.RebarLine(x_pd2, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+            # Nivel 220, Estilo CONTINUO (iestilo = 0), Cor Azul Claro / Ciano (4)
+            rebar_pat_d2.RebarLine(x_pd2, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, 0, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 2: %s" % str(e))
 
-    # 3. Armaduras nos Lances (Chegando ate as linhas externas)
+    # 3. Armaduras nos Lances (CONTINUAS / NORMAIS ate as linhas externas)
     for l in lances:
         x_ini = l["x_ini"]
         x_fim = l["x_fim"]
@@ -1634,7 +1638,8 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_l.straightBarLeftLength = 0.0
             rebar_l.straightBarRightLength = 0.0
 
-            rebar_l.RebarLine(x_bar, y_ini_l, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+            # Nivel 220, Estilo CONTINUO (iestilo = 0), Cor Azul Claro / Ciano (4)
+            rebar_l.RebarLine(x_bar, y_ini_l, 90.0, 1.0, 1, 0, 0, 0, 220, 0, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar no lance: %s" % str(e))
 
