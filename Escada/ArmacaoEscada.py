@@ -685,30 +685,72 @@ def identificar_geometria_planta_escada(linhas, textos=None):
         y_min_total = min(l['y_base'] for l in lances_identificados)
         y_max_total = max(l['y_topo'] for l in lances_identificados)
         
+        # Patamar Esquerdo: detectar vao livre SEM a viga/parede
         vert_esq = [v for v in verticais if v[0] < x_min_deg - 5.0 and not (v[2] < y_min_total - 60.0 or v[1] > y_max_total + 60.0)]
         if vert_esq:
-            vert_esq.sort(key=lambda v: v[0])
-            x_pat_esq = vert_esq[0][0]
-            comp_esq = x_min_deg - x_pat_esq
-            if comp_esq >= 30.0:
+            xs_esq = sorted(list(set(round(v[0], 1) for v in vert_esq)))
+            x_outer_esq = xs_esq[0]  # Linha vertical mais a esquerda (face externa)
+            
+            # Procurar face interna da viga (distante entre 10 e 35 cm da face externa)
+            x_inner_esq = None
+            for x_cand in xs_esq:
+                if (10.0 <= x_cand - x_outer_esq <= 35.0) and (x_min_deg - x_cand >= 30.0):
+                    x_inner_esq = x_cand
+                    break
+            
+            # Se achou face interna, usa ela; senao desconta 20cm se for linha externa
+            if x_inner_esq is not None:
+                x_livre_esq = x_inner_esq
+            else:
+                tot = x_min_deg - x_outer_esq
+                x_livre_esq = (x_outer_esq + 20.0) if tot > 60.0 else x_outer_esq
+
+            comp_esq_livre = x_min_deg - x_livre_esq
+            comp_esq_tot = x_min_deg - x_outer_esq
+            if comp_esq_livre >= 25.0:
                 patamar_esq = {
                     'existe': True,
-                    'comprimento': round(comp_esq, 1),
-                    'x_min': round(x_pat_esq, 1),
+                    'comprimento': round(comp_esq_livre, 1),
+                    'comprimento_total': round(comp_esq_tot, 1),
+                    'comprimento_livre': round(comp_esq_livre, 1),
+                    'x_min': round(x_livre_esq, 1),
+                    'x_min_livre': round(x_livre_esq, 1),
+                    'x_min_externo': round(x_outer_esq, 1),
                     'x_max': round(x_min_deg, 1)
                 }
 
+        # Patamar Direito: detectar vao livre SEM a viga/parede
         vert_dir = [v for v in verticais if v[0] > x_max_deg + 5.0 and not (v[2] < y_min_total - 60.0 or v[1] > y_max_total + 60.0)]
         if vert_dir:
-            vert_dir.sort(key=lambda v: v[0], reverse=True)
-            x_pat_dir = vert_dir[0][0]
-            comp_dir = x_pat_dir - x_max_deg
-            if comp_dir >= 30.0:
+            xs_dir = sorted(list(set(round(v[0], 1) for v in vert_dir)), reverse=True)
+            x_outer_dir = xs_dir[0]  # Linha vertical mais a direita (face externa)
+            
+            # Procurar face interna da viga (distante entre 10 e 35 cm da face externa)
+            x_inner_dir = None
+            for x_cand in xs_dir:
+                if (10.0 <= x_outer_dir - x_cand <= 35.0) and (x_cand - x_max_deg >= 30.0):
+                    x_inner_dir = x_cand
+                    break
+            
+            if x_inner_dir is not None:
+                x_livre_dir = x_inner_dir
+            else:
+                tot = x_outer_dir - x_max_deg
+                x_livre_dir = (x_outer_dir - 20.0) if tot > 60.0 else x_outer_dir
+
+            comp_dir_livre = x_livre_dir - x_max_deg
+            comp_dir_tot = x_outer_dir - x_max_deg
+            if comp_dir_livre >= 25.0:
                 patamar_dir = {
                     'existe': True,
-                    'comprimento': round(comp_dir, 1),
+                    'comprimento': round(comp_dir_livre, 1),
+                    'comprimento_total': round(comp_dir_tot, 1),
+                    'comprimento_livre': round(comp_dir_livre, 1),
                     'x_min': round(x_max_deg, 1),
-                    'x_max': round(x_pat_dir, 1)
+                    'x_min_livre': round(x_max_deg, 1),
+                    'x_max': round(x_livre_dir, 1),
+                    'x_max_livre': round(x_livre_dir, 1),
+                    'x_max_externo': round(x_outer_dir, 1)
                 }
 
     sentido_geral = None
