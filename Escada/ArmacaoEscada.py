@@ -719,6 +719,24 @@ def identificar_geometria_planta_escada(linhas, textos=None):
         elif 'SOBE' in txt_u:
             sentido_geral = 'SOBE'
 
+    # Identificar limites externos (vigas/paredes externas superior e inferior)
+    y_min_total = min(l["y_base"] for l in lances_identificados)
+    y_max_total = max(l["y_topo"] for l in lances_identificados)
+
+    long_h = [h for h in horizontais if h[3] >= 100.0]
+    if not long_h:
+        long_h = horizontais
+
+    if long_h:
+        cands_y_min = [h[2] for h in long_h if h[2] <= y_min_total + 1.0]
+        y_outer_min = min(cands_y_min) if cands_y_min else y_min_total - 20.0
+
+        cands_y_max = [h[2] for h in long_h if h[2] >= y_max_total - 1.0]
+        y_outer_max = max(cands_y_max) if cands_y_max else y_max_total + 20.0
+    else:
+        y_outer_min = y_min_total - 20.0
+        y_outer_max = y_max_total + 20.0
+
     return {
         'tipo_vista': 'PLANTA_BAIXA',
         'orientacao': lances_identificados[0]['orientacao'],
@@ -727,6 +745,8 @@ def identificar_geometria_planta_escada(linhas, textos=None):
         'elemento_central': elemento_central,
         'patamar_esquerdo': patamar_esq,
         'patamar_direito': patamar_dir,
+        'y_base_externo': round(y_outer_min, 1),
+        'y_topo_externo': round(y_outer_max, 1),
         'sentido': sentido_geral,
         'textos': textos
     }
@@ -1426,6 +1446,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     """
     Calcula e gera as armaduras dos Patamares e Lances na Planta Baixa.
     Nivel 220, Cor por nivel (-1), Estilo por nivel (-1).
+    - As barras chegam ate as linhas externas (vigas/paredes externas superior e inferior).
     - Patamar Esquerdo: gera os dois ferros com dobras viradas para fora (Barra 1 -> esquerda, Barra 2 -> direita).
     - Patamar Direito e Lances: gera ferros totalmente RETOS.
     """
@@ -1444,7 +1465,14 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
 
     y_min_total = min(l["y_base"] for l in lances)
     y_max_total = max(l["y_topo"] for l in lances)
-    largura_total = (y_max_total - y_min_total) - 2.0 * cobr
+
+    y_base_ext = geo_planta.get("y_base_externo", y_min_total - 20.0)
+    y_topo_ext = geo_planta.get("y_topo_externo", y_max_total + 20.0)
+
+    # Coordenadas que alcancam as linhas externas respeitando o cobrimento
+    y_ini_total = y_base_ext + cobr
+    y_fim_total = y_topo_ext - cobr
+    largura_total = y_fim_total - y_ini_total
 
     # 1. Armaduras no Patamar Esquerdo (ÚNICOS ferros com dobras, viradas para fora: ___|    |___)
     pat_esq = geo_planta.get("patamar_esquerdo")
@@ -1476,7 +1504,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat1.straightBarRightLength = comp_dobra
 
             ipatas_1 = 4 if tem_dobra else 0
-            rebar_pat1.RebarLine(x_p1, y_min_total + cobr, 90.0, 1.0, 1, 0, ipatas_1, 0, 220, -1, -1)
+            rebar_pat1.RebarLine(x_p1, y_ini_total, 90.0, 1.0, 1, 0, ipatas_1, 0, 220, -1, -1)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 1: %s" % str(e))
 
@@ -1501,11 +1529,11 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat2.straightBarRightLength = comp_dobra
 
             ipatas_2 = 1 if tem_dobra else 0
-            rebar_pat2.RebarLine(x_p2, y_min_total + cobr, 90.0, 1.0, 1, 0, ipatas_2, 0, 220, -1, -1)
+            rebar_pat2.RebarLine(x_p2, y_ini_total, 90.0, 1.0, 1, 0, ipatas_2, 0, 220, -1, -1)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 2: %s" % str(e))
 
-    # 2. Armaduras no Patamar Direito (FERROS TOTALMENTE RETOS)
+    # 2. Armaduras no Patamar Direito (FERROS TOTALMENTE RETOS ATE AS LINHAS EXTERNAS)
     pat_dir = geo_planta.get("patamar_direito")
     if pat_dir and pat_dir.get("existe"):
         comp_pat_d = pat_dir["comprimento"]
@@ -1534,7 +1562,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat_d1.straightBarLeftLength = 0.0
             rebar_pat_d1.straightBarRightLength = 0.0
 
-            rebar_pat_d1.RebarLine(x_pd1, y_min_total + cobr, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+            rebar_pat_d1.RebarLine(x_pd1, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 1: %s" % str(e))
 
@@ -1558,19 +1586,28 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat_d2.straightBarLeftLength = 0.0
             rebar_pat_d2.straightBarRightLength = 0.0
 
-            rebar_pat_d2.RebarLine(x_pd2, y_min_total + cobr, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+            rebar_pat_d2.RebarLine(x_pd2, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 2: %s" % str(e))
 
-    # 3. Armaduras nos Lances (FERROS TOTALMENTE RETOS)
+    # 3. Armaduras nos Lances (Chegando ate as linhas externas)
     for l in lances:
         x_ini = l["x_ini"]
         x_fim = l["x_fim"]
-        y_b = l["y_base"]
-        y_t = l["y_topo"]
         comp_lance = abs(x_fim - x_ini)
         qtd_lance = int(math.ceil(comp_lance / espac)) + 1
-        largura_l = (y_t - y_b) - 2.0 * cobr
+
+        if l.get("posicao") == "INFERIOR":
+            y_ini_l = y_base_ext + cobr
+            y_fim_l = l["y_topo"]
+        elif l.get("posicao") == "SUPERIOR":
+            y_ini_l = l["y_base"]
+            y_fim_l = y_topo_ext - cobr
+        else:
+            y_ini_l = y_base_ext + cobr
+            y_fim_l = y_topo_ext - cobr
+
+        largura_l = y_fim_l - y_ini_l
 
         deg_coords = l.get("degraus_coords", [])
         if len(deg_coords) >= 4:
@@ -1597,7 +1634,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_l.straightBarLeftLength = 0.0
             rebar_l.straightBarRightLength = 0.0
 
-            rebar_l.RebarLine(x_bar, y_b + cobr, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+            rebar_l.RebarLine(x_bar, y_ini_l, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar no lance: %s" % str(e))
 
