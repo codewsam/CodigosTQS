@@ -1240,29 +1240,28 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
     for cx, cy in pontos_circulos:
         draw.Circle(cx, cy, r_circ)
 
-    total_pontos = len(pontos_circulos)
-    if total_pontos > 0:
-        try:
-            rebar_dist = TQSDwg.SmartRebar(dwg)
-            rebar_dist.type = TQSDwg.ICPFRT
-            rebar_dist.diameter = bitola_dist
-            rebar_dist.spacing = espac_dist
-            rebar_dist.quantity = total_pontos
-            try:
-                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
-                    f_mark = dwg.globalrebar.FreeMark()
-                    rebar_dist.mark = f_mark if f_mark > 0 else 4
-                else:
-                    rebar_dist.mark = 4
-            except:
-                rebar_dist.mark = 4
-
-            rebar_dist.straightBarMainLength = 100.0
-            dy_rebatido = -(viga_h + 155.0)
-            rebar_dist.RebarLine(x0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
-
-        except Exception as e:
-            TQSUtil.writef("Erro ao gerar SmartRebar Distribuicao: %s" % str(e))
+    # ferro que nn sei para que serve
+    # total_pontos = len(pontos_circulos)
+    # if total_pontos > 0:
+    # try:
+    # rebar_dist = TQSDwg.SmartRebar(dwg)
+    # rebar_dist.type = TQSDwg.ICPFRT
+    # rebar_dist.diameter = bitola_dist
+    # rebar_dist.spacing = espac_dist
+    # rebar_dist.quantity = total_pontos
+    # try:
+    # if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+    # f_mark = dwg.globalrebar.FreeMark()
+    # rebar_dist.mark = f_mark if f_mark > 0 else 4
+    # else:
+    # rebar_dist.mark = 4
+    # except:
+    # rebar_dist.mark = 4
+    #     # rebar_dist.straightBarMainLength = 100.0
+    # dy_rebatido = -(viga_h + 155.0)
+    # rebar_dist.RebarLine(x0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
+    #     # except Exception as e:
+    # TQSUtil.writef("Erro ao gerar SmartRebar Distribuicao: %s" % str(e))
 
 
 # ==============================================================================
