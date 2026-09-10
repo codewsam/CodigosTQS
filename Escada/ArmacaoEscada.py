@@ -204,7 +204,9 @@ def pedir_dados_armacao():
 
                         // Planta Baixa
                         "bitola_planta": parseFloat(document.getElementById('bitola_planta').value.replace(',', '.')),
-                        "espacamento_planta": parseFloat(document.getElementById('espacamento_planta').value.replace(',', '.'))
+                        "espacamento_planta": parseFloat(document.getElementById('espacamento_planta').value.replace(',', '.')),
+                        "com_dobra_planta": parseInt(document.getElementById('com_dobra_planta').value),
+                        "comp_dobra_planta": parseFloat(document.getElementById('comp_dobra_planta').value.replace(',', '.'))
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -280,6 +282,17 @@ def pedir_dados_armacao():
                     <div class="campo">
                         <label>Espacamento (cm):</label>
                         <input type="text" id="espacamento_planta" value="15">
+                    </div>
+                    <div class="campo">
+                        <label>Com Dobras nas Pontas:</label>
+                        <select id="com_dobra_planta">
+                            <option value="1" selected>Sim</option>
+                            <option value="0">Nao</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label>Comprimento da Dobra (cm):</label>
+                        <input type="text" id="comp_dobra_planta" value="15">
                     </div>
                 </div>
             </div>
@@ -1413,6 +1426,8 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     """
     Calcula e gera as armaduras dos Patamares e Lances na Planta Baixa.
     Nivel 220, Cor por nivel (-1), Estilo por nivel (-1).
+    - Patamar Esquerdo: gera os dois ferros com dobras viradas para fora (Barra 1 -> esquerda, Barra 2 -> direita).
+    - Patamar Direito e Lances: gera ferros totalmente RETOS.
     """
     lances = geo_planta.get("lances", [])
     if not lances:
@@ -1424,11 +1439,14 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     if espac <= 0:
         espac = 15.0
 
+    tem_dobra = int(dados_ferros.get("com_dobra_planta", 1)) == 1
+    comp_dobra = float(dados_ferros.get("comp_dobra_planta", 15.0)) if tem_dobra else 0.0
+
     y_min_total = min(l["y_base"] for l in lances)
     y_max_total = max(l["y_topo"] for l in lances)
     largura_total = (y_max_total - y_min_total) - 2.0 * cobr
 
-    # 1. Armaduras Tracejadas no Patamar Esquerdo
+    # 1. Armaduras no Patamar Esquerdo (ÚNICOS ferros com dobras, viradas para fora: ___|    |___)
     pat_esq = geo_planta.get("patamar_esquerdo")
     if pat_esq and pat_esq.get("existe"):
         comp_pat = pat_esq["comprimento"]
@@ -1437,31 +1455,57 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         x_p1 = pat_esq["x_min"] + comp_pat * 0.35
         x_p2 = pat_esq["x_min"] + comp_pat * 0.70
 
-        for x_ins in [x_p1, x_p2]:
+        # Barra 1 (esquerda): dobras apontando para a ESQUERDA (ipatas = 4 - invertido: ___|)
+        try:
+            rebar_pat1 = TQSDwg.SmartRebar(dwg)
+            rebar_pat1.type = TQSDwg.ICPFRT
+            rebar_pat1.diameter = bitola
+            rebar_pat1.spacing = espac
+            rebar_pat1.quantity = qtd_esq
             try:
-                rebar_pat = TQSDwg.SmartRebar(dwg)
-                rebar_pat.type = TQSDwg.ICPFRT
-                rebar_pat.diameter = bitola
-                rebar_pat.spacing = espac
-                rebar_pat.quantity = qtd_esq
-                try:
-                    if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
-                        f_mark = dwg.globalrebar.FreeMark()
-                        rebar_pat.mark = f_mark if f_mark > 0 else 15
-                    else:
-                        rebar_pat.mark = 15
-                except:
-                    rebar_pat.mark = 15
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar_pat1.mark = f_mark if f_mark > 0 else 15
+                else:
+                    rebar_pat1.mark = 15
+            except:
+                rebar_pat1.mark = 15
 
-                rebar_pat.straightBarMainLength = largura_total
-                rebar_pat.straightBarLeftLength = 15.0
-                rebar_pat.straightBarRightLength = 15.0
+            rebar_pat1.straightBarMainLength = largura_total
+            rebar_pat1.straightBarLeftLength = comp_dobra
+            rebar_pat1.straightBarRightLength = comp_dobra
 
-                rebar_pat.RebarLine(x_ins, y_min_total + cobr, 90.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
-            except Exception as e:
-                TQSUtil.writef("Erro ao gerar rebar tracejado patamar esquerdo: %s" % str(e))
+            ipatas_1 = 4 if tem_dobra else 0
+            rebar_pat1.RebarLine(x_p1, y_min_total + cobr, 90.0, 1.0, 1, 0, ipatas_1, 0, 220, -1, -1)
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 1: %s" % str(e))
 
-    # 2. Armaduras Tracejadas no Patamar Direito
+        # Barra 2 (direita): dobras apontando para a DIREITA (ipatas = 1 - normal: |___)
+        try:
+            rebar_pat2 = TQSDwg.SmartRebar(dwg)
+            rebar_pat2.type = TQSDwg.ICPFRT
+            rebar_pat2.diameter = bitola
+            rebar_pat2.spacing = espac
+            rebar_pat2.quantity = qtd_esq
+            try:
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar_pat2.mark = f_mark if f_mark > 0 else 16
+                else:
+                    rebar_pat2.mark = 16
+            except:
+                rebar_pat2.mark = 16
+
+            rebar_pat2.straightBarMainLength = largura_total
+            rebar_pat2.straightBarLeftLength = comp_dobra
+            rebar_pat2.straightBarRightLength = comp_dobra
+
+            ipatas_2 = 1 if tem_dobra else 0
+            rebar_pat2.RebarLine(x_p2, y_min_total + cobr, 90.0, 1.0, 1, 0, ipatas_2, 0, 220, -1, -1)
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 2: %s" % str(e))
+
+    # 2. Armaduras no Patamar Direito (FERROS TOTALMENTE RETOS)
     pat_dir = geo_planta.get("patamar_direito")
     if pat_dir and pat_dir.get("existe"):
         comp_pat_d = pat_dir["comprimento"]
@@ -1470,31 +1514,55 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         x_pd1 = pat_dir["x_min"] + comp_pat_d * 0.35
         x_pd2 = pat_dir["x_min"] + comp_pat_d * 0.70
 
-        for x_ins in [x_pd1, x_pd2]:
+        # Barra 1 (reta)
+        try:
+            rebar_pat_d1 = TQSDwg.SmartRebar(dwg)
+            rebar_pat_d1.type = TQSDwg.ICPFRT
+            rebar_pat_d1.diameter = bitola
+            rebar_pat_d1.spacing = espac
+            rebar_pat_d1.quantity = qtd_dir
             try:
-                rebar_pat_d = TQSDwg.SmartRebar(dwg)
-                rebar_pat_d.type = TQSDwg.ICPFRT
-                rebar_pat_d.diameter = bitola
-                rebar_pat_d.spacing = espac
-                rebar_pat_d.quantity = qtd_dir
-                try:
-                    if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
-                        f_mark = dwg.globalrebar.FreeMark()
-                        rebar_pat_d.mark = f_mark if f_mark > 0 else 16
-                    else:
-                        rebar_pat_d.mark = 16
-                except:
-                    rebar_pat_d.mark = 16
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar_pat_d1.mark = f_mark if f_mark > 0 else 17
+                else:
+                    rebar_pat_d1.mark = 17
+            except:
+                rebar_pat_d1.mark = 17
 
-                rebar_pat_d.straightBarMainLength = largura_total
-                rebar_pat_d.straightBarLeftLength = 15.0
-                rebar_pat_d.straightBarRightLength = 15.0
+            rebar_pat_d1.straightBarMainLength = largura_total
+            rebar_pat_d1.straightBarLeftLength = 0.0
+            rebar_pat_d1.straightBarRightLength = 0.0
 
-                rebar_pat_d.RebarLine(x_ins, y_min_total + cobr, 90.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
-            except Exception as e:
-                TQSUtil.writef("Erro ao gerar rebar tracejado patamar direito: %s" % str(e))
+            rebar_pat_d1.RebarLine(x_pd1, y_min_total + cobr, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar rebar patamar direito 1: %s" % str(e))
 
-    # 3. Armadura Tracejada no Lance
+        # Barra 2 (reta)
+        try:
+            rebar_pat_d2 = TQSDwg.SmartRebar(dwg)
+            rebar_pat_d2.type = TQSDwg.ICPFRT
+            rebar_pat_d2.diameter = bitola
+            rebar_pat_d2.spacing = espac
+            rebar_pat_d2.quantity = qtd_dir
+            try:
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar_pat_d2.mark = f_mark if f_mark > 0 else 18
+                else:
+                    rebar_pat_d2.mark = 18
+            except:
+                rebar_pat_d2.mark = 18
+
+            rebar_pat_d2.straightBarMainLength = largura_total
+            rebar_pat_d2.straightBarLeftLength = 0.0
+            rebar_pat_d2.straightBarRightLength = 0.0
+
+            rebar_pat_d2.RebarLine(x_pd2, y_min_total + cobr, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar rebar patamar direito 2: %s" % str(e))
+
+    # 3. Armaduras nos Lances (FERROS TOTALMENTE RETOS)
     for l in lances:
         x_ini = l["x_ini"]
         x_fim = l["x_fim"]
@@ -1526,20 +1594,21 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
                 rebar_l.mark = 3
 
             rebar_l.straightBarMainLength = largura_l
-            rebar_l.straightBarLeftLength = 15.0
-            rebar_l.straightBarRightLength = 15.0
+            rebar_l.straightBarLeftLength = 0.0
+            rebar_l.straightBarRightLength = 0.0
 
-            rebar_l.RebarLine(x_bar, y_b + cobr, 90.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+            rebar_l.RebarLine(x_bar, y_b + cobr, 90.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
         except Exception as e:
-            TQSUtil.writef("Erro ao gerar rebar tracejado no lance: %s" % str(e))
+            TQSUtil.writef("Erro ao gerar rebar no lance: %s" % str(e))
 
     TQSUtil.writef("Armaduras tracejadas dos patamares e lances geradas com sucesso!")
 
 
 def desenhar_todos_ferros_planta(dwg, geo_planta, dados_ferros):
-    """Gera o conjunto completo de ferros inteligentes na Planta Baixa da escada."""
-    desenhar_ferro_ligacao_alvenaria_planta(dwg, geo_planta, dados_ferros)
-    desenhar_ferro_longitudinal_alvenaria_planta(dwg, geo_planta, dados_ferros)
+    """Gera o conjunto de ferros inteligentes na Planta Baixa da escada."""
+    # Desativados temporariamente conforme solicitado:
+    # desenhar_ferro_ligacao_alvenaria_planta(dwg, geo_planta, dados_ferros)
+    # desenhar_ferro_longitudinal_alvenaria_planta(dwg, geo_planta, dados_ferros)
     desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros)
 
 
