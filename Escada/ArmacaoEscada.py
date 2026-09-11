@@ -206,7 +206,8 @@ def pedir_dados_armacao():
                         "bitola_planta": parseFloat(document.getElementById('bitola_planta').value.replace(',', '.')),
                         "espacamento_planta": parseFloat(document.getElementById('espacamento_planta').value.replace(',', '.')),
                         "com_dobra_planta": parseInt(document.getElementById('com_dobra_planta').value),
-                        "comp_dobra_planta": parseFloat(document.getElementById('comp_dobra_planta').value.replace(',', '.'))
+                        "comp_dobra_planta": parseFloat(document.getElementById('comp_dobra_planta').value.replace(',', '.')),
+                        "espelho_planta": parseFloat(document.getElementById('espelho_planta').value.replace(',', '.'))
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -282,6 +283,10 @@ def pedir_dados_armacao():
                     <div class="campo">
                         <label>Espacamento (cm):</label>
                         <input type="text" id="espacamento_planta" value="15">
+                    </div>
+                    <div class="campo">
+                        <label>Espelho do Degrau (cm):</label>
+                        <input type="text" id="espelho_planta" value="17.5">
                     </div>
                     <div class="campo">
                         <label>Com Dobras nas Pontas:</label>
@@ -482,6 +487,7 @@ def identificar_geometria_escada(linhas):
     TQSUtil.writef("============================================================")
 
     return {
+        "num_lances": len(chains),
         "sentido": sentido,
         "x0": x0,
         "y0": y0,
@@ -934,8 +940,10 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
 
         # Inserir no Nivel 220, Cor por nivel (-1), Estilo por nivel (-1)
         rebar.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 220, -1, -1)
-        dy_rebatido = -(viga_h + 35.0)
-        rebar.RebarLine(700.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
+        is_dois_lances = (geo.get("num_lances", 1) >= 2) or (sentido == "ESQUERDA")
+        dx_rebatido = 220.0 if is_dois_lances else 0.0
+        dy_rebatido = -290.0 if is_dois_lances else -120.0
+        rebar.RebarLine(dx_rebatido, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
 
     except Exception as e:
         TQSUtil.writef("Erro ao gerar SmartRebar N1: %s" % str(e))
@@ -1041,8 +1049,10 @@ def desenhar_ferro_no_superior(dwg, geo, dados_ferros):
 
         # Inserir no Nivel 220, Cor por nivel (-1), Estilo por nivel (-1)
         rebar2.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 220, -1, -1)
-        dy_rebatido = -(viga_h + 75.0)
-        rebar2.RebarLine(700.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
+        is_dois_lances = (geo.get("num_lances", 1) >= 2) or (sentido == "ESQUERDA")
+        dx_rebatido = 220.0 if is_dois_lances else 0.0
+        dy_rebatido = -330.0 if is_dois_lances else -160.0
+        rebar2.RebarLine(dx_rebatido, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
 
     except Exception as e:
         TQSUtil.writef("Erro ao gerar SmartRebar N2: %s" % str(e))
@@ -1122,8 +1132,10 @@ def desenhar_ferro_bordo_patamar(dwg, geo, dados_ferros):
 
         # Inserir no Nivel 220, Cor por nivel (-1), Estilo por nivel (-1)
         rebar3.RebarLine(0.0, 0.0, 0.0, 1.0, 0, 0, 0, 0, 220, -1, -1)
-        dy_rebatido = -(viga_h + 115.0)
-        rebar3.RebarLine(700.0, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
+        is_dois_lances = (geo.get("num_lances", 1) >= 2) or (sentido == "ESQUERDA")
+        dx_rebatido = 220.0 if is_dois_lances else 0.0
+        dy_rebatido = -370.0 if is_dois_lances else -200.0
+        rebar3.RebarLine(dx_rebatido, dy_rebatido, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
 
     except Exception as e:
         TQSUtil.writef("Erro ao gerar SmartRebar N3: %s" % str(e))
@@ -1637,11 +1649,32 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             TQSUtil.writef("Erro ao gerar rebar patamar direito 2: %s" % str(e))
 
     # 3. Armaduras nos Lances (CONTINUAS / NORMAIS ate as linhas externas)
+    # Calculo pelo comprimento inclinado da rampa (hipotenusa: Linclinado = sqrt(Lhoriz^2 + Lvert^2))
+    espelho_padrao = float(dados_ferros.get("espelho_planta", 17.5))
+    if espelho_padrao <= 0:
+        espelho_padrao = 17.5
+
     for l in lances:
-        x_ini = l["x_ini"]
-        x_fim = l["x_fim"]
-        comp_lance = abs(x_fim - x_ini)
-        qtd_lance = int(math.ceil(comp_lance / espac)) + 1
+        if l.get("orientacao") == "VERTICAL":
+            y_ini_l = l.get("y_ini", 0.0)
+            y_fim_l = l.get("y_fim", 0.0)
+            comp_horiz = abs(y_fim_l - y_ini_l)
+        else:
+            x_ini = l["x_ini"]
+            x_fim = l["x_fim"]
+            comp_horiz = abs(x_fim - x_ini)
+
+        n_deg = l.get("n_degraus", 0)
+        piso = l.get("piso", 28.0)
+        if n_deg <= 0 and piso > 0:
+            n_deg = int(round(comp_horiz / piso))
+
+        n_espelhos = n_deg + 1 if n_deg > 0 else 1
+        alt_vert = n_espelhos * espelho_padrao
+        comp_inclinado = math.hypot(comp_horiz, alt_vert)
+
+        # Quantidade de barras: n = ceil(L_inclinado / espac) + 1
+        qtd_lance = int(math.ceil(comp_inclinado / espac)) + 1
 
         if l.get("posicao") == "INFERIOR":
             y_ini_l = y_base_ext + cobr
@@ -1690,6 +1723,10 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
 
 def desenhar_todos_ferros_planta(dwg, geo_planta, dados_ferros):
     """Gera o conjunto de ferros inteligentes na Planta Baixa da escada."""
+    try:
+        dwg.draw.level = 220
+    except:
+        pass
     # Desativados temporariamente conforme solicitado:
     # desenhar_ferro_ligacao_alvenaria_planta(dwg, geo_planta, dados_ferros)
     # desenhar_ferro_longitudinal_alvenaria_planta(dwg, geo_planta, dados_ferros)
