@@ -738,7 +738,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
             draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
 
         # Indicacao do Corte de 2 lances (CORTE B-B)
-        x_rotulo_bb = x0 - 40.0
+        x_rotulo_bb = x_viga_s_ini + 10.0
         y_rotulo_bb = (y0 - viga_altura) - 120.0
         desenhar_indicacao_corte(dwg, x_rotulo_bb, y_rotulo_bb, "CORTE B-B", "ESCALA: 1/20")
         return
@@ -854,7 +854,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
     draw.color = -1
     draw.style = -1  # Verde para forma
 
-    dist_offset = viga_altura + 290.0
+    dist_offset = viga_altura + 370.0
     y_planta_top = y0 - dist_offset
 
     if num_lances == 1:
@@ -1375,8 +1375,8 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
     draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
 
     # Indicacao de corte abaixo do 1º lance
-    x_rotulo = x0 - 40.0
-    y_rotulo = (y0 - viga_altura) - 120.0
+    x_rotulo = x_viga_s_ini + 10.0
+    y_rotulo = (y0 - viga_altura) - 175.0
     desenhar_indicacao_corte(dwg, x_rotulo, y_rotulo, "CORTE A-A", "ESCALA: 1/20")
 
 
@@ -1406,7 +1406,7 @@ def meucmd(eag, tqsjan):
             viga_largura = float(dados.get("viga_largura", 20.0))
             viga_altura = float(dados.get("viga_altura", 40.0))
 
-            dist_offset = viga_altura + 190.0
+            dist_offset = viga_altura + 270.0
             y_planta_top = y0 - dist_offset
             y_planta_bot = y_planta_top - largura_total
             y_min_ext = y_planta_bot - viga_largura
