@@ -1355,161 +1355,20 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
 # FERROS DA PLANTA BAIXA DA ESCADA (REBARS INTELIGENTES REAIS)
 # ==============================================================================
 
-def desenhar_ferro_ligacao_alvenaria_planta(dwg, geo_planta, dados_ferros):
-    """
-    Calcula e gera o Ferro Inteligente de Ligacao com a Alvenaria (P2 - Gancho 50, 20, 11).
-    Nivel 220, Cor por nivel (-1), Estilo por nivel (-1).
-    """
-    lances = geo_planta.get("lances", [])
-    if not lances:
-        return
-
-    lance_alvo = None
-    for l in lances:
-        if l.get("posicao") in ["SUPERIOR", "UNICO"]:
-            lance_alvo = l
-            break
-    if lance_alvo is None:
-        lance_alvo = lances[0]
-
-    bitola = float(dados_ferros.get("bitola_planta", dados_ferros.get("bitola_lig_alv", 8.0)))
-    espac = float(dados_ferros.get("espacamento_planta", dados_ferros.get("espac_lig_alv", 15.0)))
-    d_lance = 50.0
-    d_parede = 20.0
-    d_gancho = 11.0
-
-    x_ini = lance_alvo["x_ini"]
-    x_fim = lance_alvo["x_fim"]
-    y_base_lance = lance_alvo["y_base"]
-
-    comp_faixa = abs(x_fim - x_ini)
-    qtd = int(math.ceil(comp_faixa / espac)) + 1
-
-    degraus_x = lance_alvo.get("degraus_coords", [])
-    if len(degraus_x) >= 5:
-        x_bar = degraus_x[len(degraus_x) // 2 + 1]
-    else:
-        x_bar = (x_ini + x_fim) / 2.0
-
-    p1 = (x_bar, y_base_lance + d_lance)
-    p2 = (x_bar, y_base_lance)
-    p3 = (x_bar, y_base_lance - d_parede)
-    p4 = (x_bar - d_gancho, y_base_lance - d_parede)
-
-    pontos_ferro = [p1, p2, p3, p4]
-
-    try:
-        rebar = TQSDwg.SmartRebar(dwg)
-        rebar.type = TQSDwg.ICPFGN
-        rebar.diameter = bitola
-        rebar.spacing = espac
-        rebar.quantity = qtd
-        try:
-            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
-                f_mark = dwg.globalrebar.FreeMark()
-                rebar.mark = f_mark if f_mark > 0 else 2
-            else:
-                rebar.mark = 2
-        except:
-            rebar.mark = 2
-
-        for px, py in pontos_ferro:
-            rebar.GenRebarPoint(px, py, 0.0, 0, 1, -1)
-
-        # Inserir Linha do Ferro na Planta (Nivel 220, Estilo por nivel -1, Cor por nivel -1)
-        rebar.RebarLine(0.0, 0.0, 0.0, 1.0, 1, 1, 0, 0, 220, -1, -1)
-
-        # Desenhar a Faixa de Distribuicao
-        draw = dwg.draw
-        draw.level = 220
-        draw.color = -1
-        draw.style = -1
-        y_bracket = y_base_lance + d_lance + 18.0
-        draw.Line(x_ini, y_bracket - 12.0, x_ini, y_bracket)
-        draw.Line(x_ini, y_bracket, x_fim, y_bracket)
-        draw.Line(x_fim, y_bracket, x_fim, y_bracket - 12.0)
-        draw.Line(x_ini, y_bracket, x_ini + 12.0, y_bracket + 6.0)
-        draw.Line(x_ini, y_bracket, x_ini + 12.0, y_bracket - 6.0)
-
-        TQSUtil.writef("Ferro de ligacao da alvenaria (P2) gerado: %d barras de dia %.1f mm" % (qtd, bitola))
-
-    except Exception as e:
-        TQSUtil.writef("Erro ao gerar SmartRebar de ligacao alvenaria: %s" % str(e))
-
-
-def desenhar_ferro_longitudinal_alvenaria_planta(dwg, geo_planta, dados_ferros):
-    """
-    Calcula e gera o Ferro Reto Longitudinal da Alvenaria (P9 - 2 barras).
-    Nivel 220, Cor por nivel (-1), Estilo por nivel (-1).
-    """
-    elem_central = geo_planta.get("elemento_central")
-    lances = geo_planta.get("lances", [])
-    if not lances:
-        return
-
-    bitola = float(dados_ferros.get("bitola_planta", dados_ferros.get("bitola_long_alv", 6.3)))
-    qtd = int(dados_ferros.get("qtd_long_alv", 2))
-
-    x_ini = min(l["x_ini"] for l in lances)
-    x_fim = max(l["x_fim"] for l in lances)
-
-    if elem_central and elem_central.get("y_base") is not None:
-        y_center = (elem_central["y_base"] + elem_central["y_topo"]) / 2.0
-    else:
-        y_center = lances[0]["y_topo"]
-
-    comp_barra = abs(x_fim - x_ini)
-
-    try:
-        rebar_long = TQSDwg.SmartRebar(dwg)
-        rebar_long.type = TQSDwg.ICPFRT
-        rebar_long.diameter = bitola
-        rebar_long.spacing = 0.0
-        rebar_long.quantity = qtd
-        try:
-            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
-                f_mark = dwg.globalrebar.FreeMark()
-                rebar_long.mark = f_mark if f_mark > 0 else 9
-            else:
-                rebar_long.mark = 9
-        except:
-            rebar_long.mark = 9
-
-        rebar_long.straightBarMainLength = comp_barra
-        rebar_long.leaderLine = 1
-        rebar_long.leaderLineDistance = 15.0
-
-        # Inserir Linha do Ferro Reto na Alvenaria (Nivel 220, Estilo por nivel -1, Cor por nivel -1)
-        rebar_long.RebarLine(x_ini, y_center, 0.0, 1.0, 1, 0, 0, 0, 220, -1, -1)
-
-        # Linha de chamada para o texto
-        draw = dwg.draw
-        draw.level = 220
-        draw.color = -1
-        draw.style = -1
-        x_pt_call = x_ini + 35.0
-        draw.Line(x_pt_call, y_center, x_pt_call - 25.0, y_center - 30.0)
-
-        TQSUtil.writef("Ferro longitudinal da alvenaria (P9) gerado: %d barras de dia %.1f mm" % (qtd, bitola))
-
-    except Exception as e:
-        TQSUtil.writef("Erro ao gerar SmartRebar longitudinal alvenaria: %s" % str(e))
-
-
 def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     """
     Calcula e gera as armaduras dos Patamares e Lances na Planta Baixa.
-    Nivel 220, Cor Azul Claro/Ciano (cor = 4), Estilo Tracejado (estilo = 1).
-    - As barras chegam ate as linhas externas (vigas/paredes externas superior e inferior).
-    - Patamar Esquerdo: gera os dois ferros com dobras viradas para fora (Barra 1 -> esquerda, Barra 2 -> direita).
-    - Patamar Direito e Lances: gera ferros totalmente RETOS.
+    Nivel 220, Cor Azul Claro/Ciano (cor = 4).
+    - Patamar Esquerdo: gera os dois ferros com dobras viradas para fora.
+    - Patamar Direito: gera os dois ferros retos.
+    - Lances: gera os ferros dentro dos limites dos lances com cobrimento bilateral e posicoes nao-colineares.
     """
     lances = geo_planta.get("lances", [])
     if not lances:
         return
 
     cobr = float(dados_ferros.get("cobrimento", 2.5))
-    bitola = float(dados_ferros.get("bitola_planta", dados_ferros.get("bitola_tracejados", 6.3)))
+    bitola = float(dados_ferros.get("bitola_planta", dados_ferros.get("bitola_tracejados", 8.0)))
     espac = float(dados_ferros.get("espacamento_planta", dados_ferros.get("espac_tracejados", 15.0)))
     if espac <= 0:
         espac = 15.0
@@ -1517,18 +1376,13 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     tem_dobra = int(dados_ferros.get("com_dobra_planta", 1)) == 1
     comp_dobra = float(dados_ferros.get("comp_dobra_planta", 15.0)) if tem_dobra else 0.0
 
-    y_min_total = min(l["y_base"] for l in lances)
-    y_max_total = max(l["y_topo"] for l in lances)
-
-    y_base_ext = geo_planta.get("y_base_externo", y_min_total - 20.0)
-    y_topo_ext = geo_planta.get("y_topo_externo", y_max_total + 20.0)
-
-    # Coordenadas que alcancam as linhas externas respeitando o cobrimento
+    y_base_ext = geo_planta.get("y_base_externo", min(l["y_base"] for l in lances) - 20.0)
+    y_topo_ext = geo_planta.get("y_topo_externo", max(l["y_topo"] for l in lances) + 20.0)
     y_ini_total = y_base_ext + cobr
     y_fim_total = y_topo_ext - cobr
     largura_total = y_fim_total - y_ini_total
 
-    # 1. Armaduras no Patamar Esquerdo (ÚNICOS ferros com dobras, viradas para fora: ___|    |___)
+    # 1. Armaduras no Patamar Esquerdo (ferros com dobras viradas para fora: ___|    |___)
     pat_esq = geo_planta.get("patamar_esquerdo")
     if pat_esq and pat_esq.get("existe"):
         comp_pat = pat_esq["comprimento"]
@@ -1537,7 +1391,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         x_p1 = pat_esq["x_min"] + comp_pat * 0.35
         x_p2 = pat_esq["x_min"] + comp_pat * 0.70
 
-        # Barra 1 (esquerda): TRACEJADA com dobras apontando para a ESQUERDA (ipatas = 4 - invertido: ___|)
+        # Barra 1 (esquerda): TRACEJADA com dobras apontando para a ESQUERDA (ipatas = 4)
         try:
             rebar_pat1 = TQSDwg.SmartRebar(dwg)
             rebar_pat1.type = TQSDwg.ICPFRT
@@ -1558,12 +1412,11 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat1.straightBarRightLength = comp_dobra
 
             ipatas_1 = 4 if tem_dobra else 0
-            # Nivel 220, Estilo TRACEJADO (iestilo = 1), Cor Azul Claro / Ciano (4)
             rebar_pat1.RebarLine(x_p1, y_ini_total, 90.0, 1.0, 1, 0, ipatas_1, 0, 220, 1, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 1: %s" % str(e))
 
-        # Barra 2 (direita): CONTINUA com dobras apontando para a DIREITA (ipatas = 1 - normal: |___)
+        # Barra 2 (direita): CONTINUA com dobras apontando para a DIREITA (ipatas = 1)
         try:
             rebar_pat2 = TQSDwg.SmartRebar(dwg)
             rebar_pat2.type = TQSDwg.ICPFRT
@@ -1584,12 +1437,11 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat2.straightBarRightLength = comp_dobra
 
             ipatas_2 = 1 if tem_dobra else 0
-            # Nivel 220, Estilo CONTINUO (iestilo = 0), Cor Azul Claro / Ciano (4)
             rebar_pat2.RebarLine(x_p2, y_ini_total, 90.0, 1.0, 1, 0, ipatas_2, 0, 220, 0, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 2: %s" % str(e))
 
-    # 2. Armaduras no Patamar Direito (FERROS TOTALMENTE RETOS ATE AS LINHAS EXTERNAS)
+    # 2. Armaduras no Patamar Direito (FERROS RETOS)
     pat_dir = geo_planta.get("patamar_direito")
     if pat_dir and pat_dir.get("existe"):
         comp_pat_d = pat_dir["comprimento"]
@@ -1598,7 +1450,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         x_pd1 = pat_dir["x_min"] + comp_pat_d * 0.35
         x_pd2 = pat_dir["x_min"] + comp_pat_d * 0.70
 
-        # Barra 1 (reta): TRACEJADA (circulada em amarelo)
+        # Barra 1 (reta): TRACEJADA
         try:
             rebar_pat_d1 = TQSDwg.SmartRebar(dwg)
             rebar_pat_d1.type = TQSDwg.ICPFRT
@@ -1618,7 +1470,6 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat_d1.straightBarLeftLength = 0.0
             rebar_pat_d1.straightBarRightLength = 0.0
 
-            # Nivel 220, Estilo TRACEJADO (iestilo = 1), Cor Azul Claro / Ciano (4)
             rebar_pat_d1.RebarLine(x_pd1, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, 1, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 1: %s" % str(e))
@@ -1643,22 +1494,20 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             rebar_pat_d2.straightBarLeftLength = 0.0
             rebar_pat_d2.straightBarRightLength = 0.0
 
-            # Nivel 220, Estilo CONTINUO (iestilo = 0), Cor Azul Claro / Ciano (4)
             rebar_pat_d2.RebarLine(x_pd2, y_ini_total, 90.0, 1.0, 1, 0, 0, 0, 220, 0, 4)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 2: %s" % str(e))
 
-    # 3. Armaduras nos Lances (CONTINUAS / NORMAIS ate as linhas externas)
-    # Calculo pelo comprimento inclinado da rampa (hipotenusa: Linclinado = sqrt(Lhoriz^2 + Lvert^2))
+    # 3. Armaduras nos Lances (Cobrimento bilateral total e Posicoes Nao-Colineares)
     espelho_padrao = float(dados_ferros.get("espelho_planta", 17.5))
     if espelho_padrao <= 0:
         espelho_padrao = 17.5
 
-    for l in lances:
+    for idx_l, l in enumerate(lances):
         if l.get("orientacao") == "VERTICAL":
-            y_ini_l = l.get("y_ini", 0.0)
-            y_fim_l = l.get("y_fim", 0.0)
-            comp_horiz = abs(y_fim_l - y_ini_l)
+            y_ini_l_raw = l.get("y_ini", 0.0)
+            y_fim_l_raw = l.get("y_fim", 0.0)
+            comp_horiz = abs(y_fim_l_raw - y_ini_l_raw)
         else:
             x_ini = l["x_ini"]
             x_fim = l["x_fim"]
@@ -1676,26 +1525,32 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         # Quantidade de barras: n = ceil(L_inclinado / espac) + 1
         qtd_lance = int(math.ceil(comp_inclinado / espac)) + 1
 
-        if l.get("posicao") == "INFERIOR":
-            y_ini_l = l["y_base"] + cobr
-            y_fim_l = l["y_topo"]
-        elif l.get("posicao") == "SUPERIOR":
-            y_ini_l = l["y_base"]
-            y_fim_l = l["y_topo"] - cobr
-        else:
-            y_ini_l = l["y_base"] + cobr
-            y_fim_l = l["y_topo"] - cobr
-
+        # Cobrimento rigoroso em ambas as pontas (fica fora da viga e fora da parede/vao central)
+        y_ini_l = l["y_base"] + cobr
+        y_fim_l = l["y_topo"] - cobr
         largura_l = y_fim_l - y_ini_l
 
+        # POSICIONAMENTO X DESFASADO (NUNCA COLINEAR ENTRE OS LANCES)
         deg_coords = l.get("degraus_coords", [])
-        if len(deg_coords) >= 4:
-            # Posiciona no MEIO do vão do degrau (evitando sobrepor a linha do degrau)
-            x_bar = (deg_coords[2] + deg_coords[3]) / 2.0
-        elif len(deg_coords) >= 2:
-            x_bar = (deg_coords[0] + deg_coords[1]) / 2.0
+        n_pts_deg = len(deg_coords)
+        
+        if n_pts_deg >= 5:
+            if idx_l == 0:
+                # Lance 1 (Inferior): posicionado no 3º degrau (mais à esquerda)
+                x_bar = (deg_coords[1] + deg_coords[2]) / 2.0
+            elif idx_l == 1:
+                # Lance 2 (Superior): posicionado no 5º ou 6º degrau (mais à direita, não-colinear)
+                pos_deg = min(5, n_pts_deg - 2)
+                x_bar = (deg_coords[pos_deg] + deg_coords[pos_deg + 1]) / 2.0
+            else:
+                pos_deg = min(3, n_pts_deg - 2)
+                x_bar = (deg_coords[pos_deg] + deg_coords[pos_deg + 1]) / 2.0
+        elif n_pts_deg >= 2:
+            offset_x = (idx_l * 25.0) - 12.5
+            x_bar = (deg_coords[0] + deg_coords[-1]) / 2.0 + offset_x
         else:
-            x_bar = (x_ini + x_fim) / 2.0 + (piso * 0.5 if piso > 0 else 14.0)
+            offset_x = (idx_l * 30.0) - 15.0
+            x_bar = (x_ini + x_fim) / 2.0 + offset_x
 
         try:
             rebar_l = TQSDwg.SmartRebar(dwg)
@@ -1730,9 +1585,6 @@ def desenhar_todos_ferros_planta(dwg, geo_planta, dados_ferros):
         dwg.draw.level = 220
     except:
         pass
-    # Desativados temporariamente conforme solicitado:
-    # desenhar_ferro_ligacao_alvenaria_planta(dwg, geo_planta, dados_ferros)
-    # desenhar_ferro_longitudinal_alvenaria_planta(dwg, geo_planta, dados_ferros)
     desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros)
 
 
