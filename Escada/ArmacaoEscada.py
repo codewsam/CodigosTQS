@@ -1381,10 +1381,13 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     tem_dobra = int(dados_ferros.get("com_dobra_planta", 1)) == 1
     comp_dobra = float(dados_ferros.get("comp_dobra_planta", 15.0)) if tem_dobra else 0.0
 
-    y_base_ext = geo_planta.get("y_base_externo", min(l["y_base"] for l in lances) - 20.0)
-    y_topo_ext = geo_planta.get("y_topo_externo", max(l["y_topo"] for l in lances) + 20.0)
-    y_ini_total = y_base_ext + cobr
-    y_fim_total = y_topo_ext - cobr
+    # Limites internos da laje (face interna das vigas superior e inferior)
+    y_base_laje = min(l["y_base"] for l in lances)
+    y_topo_laje = max(l["y_topo"] for l in lances)
+
+    # Barras dos patamares contidas na laje (respeitando cobrimento das vigas superior e inferior)
+    y_ini_total = y_base_laje + cobr
+    y_fim_total = y_topo_laje - cobr
     largura_total = y_fim_total - y_ini_total
 
     # 1. Armaduras no Patamar Esquerdo (ferros com dobras viradas para fora: ___|    |___)
