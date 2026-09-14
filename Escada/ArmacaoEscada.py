@@ -170,7 +170,7 @@ def pedir_dados_armacao():
             }}
         </style>
         <script>
-            window.resizeTo(460, 480);
+            window.resizeTo(460, 520);
 
             function setTab(tabName) {{
                 document.getElementById('tabCorte').className = (tabName == 'corte') ? 'tab active' : 'tab';
@@ -205,6 +205,7 @@ def pedir_dados_armacao():
                         // Planta Baixa
                         "bitola_planta": parseFloat(document.getElementById('bitola_planta').value.replace(',', '.')),
                         "espacamento_planta": parseFloat(document.getElementById('espacamento_planta').value.replace(',', '.')),
+                        "cobrimento_planta": parseFloat(document.getElementById('cobrimento_planta').value.replace(',', '.')),
                         "com_dobra_planta": parseInt(document.getElementById('com_dobra_planta').value),
                         "comp_dobra_planta": parseFloat(document.getElementById('comp_dobra_planta').value.replace(',', '.')),
                         "espelho_planta": parseFloat(document.getElementById('espelho_planta').value.replace(',', '.'))
@@ -283,6 +284,10 @@ def pedir_dados_armacao():
                     <div class="campo">
                         <label>Espacamento (cm):</label>
                         <input type="text" id="espacamento_planta" value="15">
+                    </div>
+                    <div class="campo">
+                        <label>Cobrimento (cm):</label>
+                        <input type="text" id="cobrimento_planta" value="2.5">
                     </div>
                     <div class="campo">
                         <label>Espelho do Degrau (cm):</label>
@@ -843,7 +848,7 @@ def desenhar_ferro_principal_maior(dwg, geo, dados_ferros):
     x_topo = geo["x_topo"]
     y_topo = geo["y_topo"]
 
-    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    cobr = float(dados_ferros.get("cobrimento_planta", dados_ferros.get("cobrimento", 2.5)))
     bitola = float(dados_ferros["bitola"])
     espac = float(dados_ferros["espacamento"])
     qtd = int(dados_ferros["quantidade"])
@@ -964,7 +969,7 @@ def desenhar_ferro_no_superior(dwg, geo, dados_ferros):
     x_topo = geo["x_topo"]
     y_topo = geo["y_topo"]
 
-    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    cobr = float(dados_ferros.get("cobrimento_planta", dados_ferros.get("cobrimento", 2.5)))
     bitola = float(dados_ferros["bitola"])
     espac = float(dados_ferros["espacamento"])
     qtd = int(dados_ferros["quantidade"])
@@ -1073,7 +1078,7 @@ def desenhar_ferro_bordo_patamar(dwg, geo, dados_ferros):
     x_topo = geo["x_topo"]
     y_topo = geo["y_topo"]
 
-    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    cobr = float(dados_ferros.get("cobrimento_planta", dados_ferros.get("cobrimento", 2.5)))
     bitola = float(dados_ferros["bitola"])
     espac = float(dados_ferros["espacamento"])
     qtd = int(dados_ferros["quantidade"])
@@ -1157,7 +1162,7 @@ def desenhar_armadura_distribuicao(dwg, geo, dados_ferros):
     x_topo = geo["x_topo"]
     y_topo = geo["y_topo"]
 
-    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    cobr = float(dados_ferros.get("cobrimento_planta", dados_ferros.get("cobrimento", 2.5)))
     bitola_dist = 5.0
     espac_dist = float(dados_ferros.get("espac_dist", 15.0))
     if espac_dist <= 0:
@@ -1367,7 +1372,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     if not lances:
         return
 
-    cobr = float(dados_ferros.get("cobrimento", 2.5))
+    cobr = float(dados_ferros.get("cobrimento_planta", dados_ferros.get("cobrimento", 2.5)))
     bitola = float(dados_ferros.get("bitola_planta", dados_ferros.get("bitola_tracejados", 8.0)))
     espac = float(dados_ferros.get("espacamento_planta", dados_ferros.get("espac_tracejados", 15.0)))
     if espac <= 0:
