@@ -484,13 +484,6 @@ def identificar_geometria_escada(linhas):
     viga_largura = 20.0
     viga_altura = 40.0
 
-    TQSUtil.writef("============================================================")
-    TQSUtil.writef("CORTE DA ESCADA RECONHECIDO COM SUCESSO!")
-    TQSUtil.writef("Lances detectados: %d | Detalhando: %s" % (len(chains), num_lance_msg))
-    TQSUtil.writef("Sentido de subida: %s | Degraus: %d | Piso: %.1f cm | Espelho: %.1f cm" % (sentido, n_degraus, piso, espelho))
-    TQSUtil.writef("Patamar Partida: %.1f cm | Patamar Chegada: %.1f cm | Espessura: %.1f cm" % (patamar_partida, patamar_chegada, espessura))
-    TQSUtil.writef("============================================================")
-
     return {
         "num_lances": len(chains),
         "sentido": sentido,
@@ -1581,10 +1574,8 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
 
             # Nivel 220, Estilo CONTINUO (iestilo = 0), Cor Azul Claro / Ciano (4)
             rebar_l.RebarLine(x_bar, y_ini_l, 90.0, 1.0, 1, 0, 0, 0, 220, 0, 4)
-        except Exception as e:
-            TQSUtil.writef("Erro ao gerar rebar no lance: %s" % str(e))
-
-    TQSUtil.writef("Armaduras tracejadas dos patamares e lances geradas com sucesso!")
+        except Exception:
+            pass
 
 
 def desenhar_todos_ferros_planta(dwg, geo_planta, dados_ferros):
@@ -1603,7 +1594,6 @@ def meucmd(eag, tqsjan):
     """Funcao chamada pelo botao 'Armar Escada' no menu do TQS."""
     dados_ferros = pedir_dados_armacao()
     if dados_ferros is None:
-        TQSUtil.writef("Operacao cancelada.")
         return
 
     modo = dados_ferros.get("modo", "CORTE")
@@ -1612,10 +1602,8 @@ def meucmd(eag, tqsjan):
     # FLUXO 1: SE O USUARIO CLICOU EM "ARMAR CORTE / ESCADA"
     # ==========================================================================
     if modo == "CORTE":
-        TQSUtil.writef("Selecione o Corte/Perfil da escada (1 ou 2 lances) abrindo uma janela sobre ele:")
         addr, xs, ys, np, istat = eag.locate.Select(tqsjan, "Abra uma janela sobre o corte da escada", TQSEag.EAG_IJANEL)
         if istat != 0:
-            TQSUtil.writef("Nenhum elemento selecionado.")
             return
 
         linhas = []
@@ -1642,12 +1630,10 @@ def meucmd(eag, tqsjan):
                     pass
 
         if not linhas:
-            TQSUtil.writef("Nenhuma linha encontrada na selecao.")
             return
 
         geo_perfil = identificar_geometria_escada(linhas)
         if geo_perfil is None:
-            TQSUtil.writef("Nao foi possivel identificar o perfil da escada.")
             return
 
         desenhar_ferro_principal_maior(tqsjan.dwg, geo_perfil, dados_ferros)
@@ -1655,18 +1641,14 @@ def meucmd(eag, tqsjan):
         desenhar_ferro_bordo_patamar(tqsjan.dwg, geo_perfil, dados_ferros)
         desenhar_armadura_distribuicao(tqsjan.dwg, geo_perfil, dados_ferros)
         tqsjan.Regen()
-
-        TQSUtil.writef("Armadura completa da escada gerada com sucesso!")
         return
 
     # ==========================================================================
     # FLUXO 2: SE O USUARIO CLICOU EM "ARMAR PLANTA BAIXA"
     # ==========================================================================
     elif modo == "PLANTA":
-        TQSUtil.writef("Selecione a Planta Baixa da escada abrindo uma janela sobre ela:")
         addr, xs, ys, np, istat = eag.locate.Select(tqsjan, "Abra uma janela sobre a planta baixa da escada", TQSEag.EAG_IJANEL)
         if istat != 0:
-            TQSUtil.writef("Nenhum elemento selecionado.")
             return
 
         linhas = []
@@ -1702,15 +1684,11 @@ def meucmd(eag, tqsjan):
                     pass
 
         if not linhas:
-            TQSUtil.writef("Nenhuma linha encontrada na selecao.")
             return
 
         geo_planta = identificar_geometria_planta_escada(linhas, textos)
         if geo_planta is None:
-            TQSUtil.writef("Nao foi possivel identificar a Planta Baixa da escada.")
             return
 
         desenhar_todos_ferros_planta(tqsjan.dwg, geo_planta, dados_ferros)
         tqsjan.Regen()
-
-        TQSUtil.writef("Armadura completa da Planta Baixa gerada com sucesso!")
