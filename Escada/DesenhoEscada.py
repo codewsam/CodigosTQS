@@ -294,6 +294,7 @@ def pedir_dados_janela_windows():
                         "alterar_extremos": altExtremos,
                         "espelho_primeiro": altExtremos ? parseFloat(document.getElementById('espelho_primeiro').value.replace(',', '.')) : espGeral,
                         "espelho_ultimo": altExtremos ? parseFloat(document.getElementById('espelho_ultimo').value.replace(',', '.')) : espGeral,
+                        "tipo_escada": document.getElementById('tipo_escada').value,
                         "n_degraus_1": n_deg1,
                         "n_degraus_2": n_deg2,
                         "tem_patamar_partida": temPatPartida,
@@ -337,6 +338,13 @@ def pedir_dados_janela_windows():
             <div class="form-box">
                 <div class="card">
                     <h3>Configuração Geral</h3>
+                    <div class="campo">
+                        <label>Tipo de Escada:</label>
+                        <select id="tipo_escada">
+                            <option value="CONVENCIONAL" selected>Normal</option>
+                            <option value="PLISSADA">Plissada</option>
+                        </select>
+                    </div>
                     <div class="campo">
                         <label>Número de Lances:</label>
                         <select id="num_lances" onchange="toggleLances()">
@@ -557,71 +565,144 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     x_inicio_l2 = x
 
-    # Linha inclinada paralela de fundo do Lance 1
-    p1x, p1y = x0 + piso, y0 + espelho_primeiro
-    p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
-    f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
+    tipo_escada = dados.get("tipo_escada", "CONVENCIONAL")
+    is_plissada = (tipo_escada == "PLISSADA")
 
-    if tem_patamar_partida:
-        x_partida = x0 - patamar_partida
-        y_partida = y0
-        draw.Line(x_partida, y_partida, x0, y0)
+    if is_plissada:
+        # ======================================================================
+        # FUNDO PLISSADO - LANCE 1
+        # ======================================================================
+        if tem_patamar_partida:
+            x_partida = x0 - patamar_partida
+            y_partida = y0
+            draw.Line(x_partida, y_partida, x0, y0)
 
-        y_base_partida = y0 - espessura
-        x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
-        draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
+            y_base_partida = y0 - espessura
+            draw.Line(x_partida, y_base_partida, x0 + espessura, y_base_partida)
 
-        # Viga de Partida
-        x_viga_s_ini = x_partida - viga_largura
-        x_viga_s_meio = x_partida
-        y_viga_s_topo = y0
-        y_viga_s_base = y0 - viga_altura
-        y_viga_s_corte = y0 - espessura
+            # Viga de Partida
+            x_viga_s_ini = x_partida - viga_largura
+            x_viga_s_meio = x_partida
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+            y_viga_s_corte = y0 - espessura
 
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-        draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-        draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
-
-        x_fundo_l1_ini = x_base_partida_fim
-        y_fundo_l1_ini = y_base_partida
-    else:
-        x_viga_s_ini = x0 - viga_largura
-        y_viga_s_topo = y0
-        y_viga_s_base = y0 - viga_altura
-        y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
-
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-        draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-        draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
-
-        x_fundo_l1_ini = x0
-        y_fundo_l1_ini = y_fundo_no_x0
-
-    # Linha inclinada de fundo do Lance 1 (NIVEL 241)
-    x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
-    draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_pat1)
-
-    # Caso seja 1 lance apenas
-    if num_lances == 1:
-        x_fim_pat1 = x_inicio_l2 + (patamar_chegada if tem_patamar_chegada else 0.0)
-        x_viga_p1_ext = x_fim_pat1 + viga_largura
-        if tem_patamar_chegada:
-            draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
-            draw.Line(x_fundo_l1_fim, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
-            draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-            draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-            draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-            draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
         else:
-            y_fundo_no_xtopo = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x_inicio_l2)
-            draw.Line(x_inicio_l2, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-            draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-            draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_inicio_l2, y_topo_l1 - viga_altura)
-            draw.Line(x_inicio_l2, y_topo_l1 - viga_altura, x_inicio_l2, y_fundo_no_xtopo)
-            draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_inicio_l2, y_fundo_no_xtopo)
-        return
+            x_viga_s_ini = x0 - viga_largura
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
+            draw.Line(x0, y_viga_s_base, x0, y0 - espessura)
+            draw.Line(x0, y0 - espessura, x0 + espessura, y0 - espessura)
+
+        # 1º espelho vertical do fundo plissado
+        draw.Line(x0 + espessura, y0 - espessura, x0 + espessura, y0 + espelho_primeiro - espessura)
+
+        y_curr = y0 + espelho_primeiro
+        for i in range(n1 - 1):
+            x_start = x0 + i * piso + espessura
+            x_end = x0 + (i + 1) * piso + espessura
+            draw.Line(x_start, y_curr - espessura, x_end, y_curr - espessura)
+
+            if i < n1 - 2:
+                h_next_esp = espelho
+            else:
+                h_next_esp = espelho_ultimo if num_lances == 1 else espelho
+
+            draw.Line(x_end, y_curr - espessura, x_end, y_curr + h_next_esp - espessura)
+            y_curr += h_next_esp
+
+        if num_lances == 1:
+            x_fim_pat1 = x_inicio_l2 + (patamar_chegada if tem_patamar_chegada else 0.0)
+            x_viga_p1_ext = x_fim_pat1 + viga_largura
+            if tem_patamar_chegada:
+                draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
+                draw.Line(x_inicio_l2 + espessura, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
+                draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+                draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
+            else:
+                draw.Line(x_inicio_l2, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_inicio_l2 + espessura, y_topo_l1 - viga_altura)
+                draw.Line(x_inicio_l2 + espessura, y_topo_l1 - viga_altura, x_inicio_l2 + espessura, y_fundo_pat1)
+            return
+    else:
+        # ======================================================================
+        # FUNDO CONVENCIONAL (RETO) - LANCE 1
+        # ======================================================================
+        p1x, p1y = x0 + piso, y0 + espelho_primeiro
+        p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
+        f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
+
+        if tem_patamar_partida:
+            x_partida = x0 - patamar_partida
+            y_partida = y0
+            draw.Line(x_partida, y_partida, x0, y0)
+
+            y_base_partida = y0 - espessura
+            x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
+            draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
+
+            # Viga de Partida
+            x_viga_s_ini = x_partida - viga_largura
+            x_viga_s_meio = x_partida
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+            y_viga_s_corte = y0 - espessura
+
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
+
+            x_fundo_l1_ini = x_base_partida_fim
+            y_fundo_l1_ini = y_base_partida
+        else:
+            x_viga_s_ini = x0 - viga_largura
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+            y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
+
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
+            draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
+
+            x_fundo_l1_ini = x0
+            y_fundo_l1_ini = y_fundo_no_x0
+
+        # Linha inclinada de fundo do Lance 1 (NIVEL 241)
+        x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
+        draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_pat1)
+
+        # Caso seja 1 lance apenas
+        if num_lances == 1:
+            x_fim_pat1 = x_inicio_l2 + (patamar_chegada if tem_patamar_chegada else 0.0)
+            x_viga_p1_ext = x_fim_pat1 + viga_largura
+            if tem_patamar_chegada:
+                draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
+                draw.Line(x_fundo_l1_fim, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
+                draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+                draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
+            else:
+                y_fundo_no_xtopo = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x_inicio_l2)
+                draw.Line(x_inicio_l2, y_topo_l1, x_viga_p1_ext, y_topo_l1)
+                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
+                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_inicio_l2, y_topo_l1 - viga_altura)
+                draw.Line(x_inicio_l2, y_topo_l1 - viga_altura, x_inicio_l2, y_fundo_no_xtopo)
+                draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_inicio_l2, y_fundo_no_xtopo)
+            return
 
     # --------------------------------------------------------------------------
     # 2. LANCE 2 (NIVEL 242) - Patamar Intermediario, Degraus Lance 2, Fundo e Chegada
@@ -646,7 +727,7 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     else:
         y_topo_l2 = y_topo_l1 + (espelho_ultimo if n2 == 1 else 0)
 
-    # Degraus Lance 2
+    # Degraus Lance 2 (topo)
     for i in range(n2):
         if i == n2 - 1:
             h_esp = espelho_ultimo
@@ -662,45 +743,91 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     x_topo_l2 = x
 
-    # Linha paralela de fundo do Lance 2
-    p2_1x, p2_1y = x_inicio_l2 - piso, y_topo_l1 + espelho
-    p2_2x, p2_2y = x_inicio_l2 - (n2 - 1) * piso, y_topo_l1 + (n2 - 1) * espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
-    f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
+    if is_plissada:
+        # ======================================================================
+        # FUNDO PLISSADO - LANCE 2
+        # ======================================================================
+        # Fundo do patamar intermediario conectando ao Lance 2
+        draw.Line(x_inicio_l2 - espessura, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
 
-    # O Fundo do Lance 2 desce ate a cota de baixo do patamar (y_fundo_pat1)
-    x_fundo_l2_no_pat1 = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat1)
+        # 1º espelho vertical do Lance 2
+        draw.Line(x_inicio_l2 - espessura, y_topo_l1 - espessura, x_inicio_l2 - espessura, y_topo_l1 + espelho - espessura)
 
-    # Linha de BAIXO do patamar 1 (Nivel 242)
-    draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
+        y_curr = y_topo_l1 + espelho
+        for j in range(n2 - 1):
+            x_start = x_inicio_l2 - j * piso - espessura
+            x_end = x_inicio_l2 - (j + 1) * piso - espessura
+            draw.Line(x_start, y_curr - espessura, x_end, y_curr - espessura)
 
-    # ==========================================================================
-    # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior a esquerda
-    # ==========================================================================
-    if tem_patamar_chegada:
-        x_fim_chegada = x_topo_l2 - patamar_chegada
-        draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
+            if j < n2 - 2:
+                h_next_esp = espelho
+            else:
+                h_next_esp = espelho_ultimo
 
+            draw.Line(x_end, y_curr - espessura, x_end, y_curr + h_next_esp - espessura)
+            y_curr += h_next_esp
+
+        # Chegada Lance 2
         y_fundo_chegada = y_topo_l2 - espessura
-        x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
+        if tem_patamar_chegada:
+            x_fim_chegada = x_topo_l2 - patamar_chegada
+            draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
+            draw.Line(x_topo_l2 - espessura, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
-        draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
-
-        # Viga de Chegada (Lado Esquerdo Superior)
-        x_viga_c_ext = x_fim_chegada - viga_largura
-        draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
-        draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
-        draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
+            # Viga de Chegada (Lado Esquerdo Superior)
+            x_viga_c_ext = x_fim_chegada - viga_largura
+            draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
+            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
+            draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        else:
+            x_viga_c_ext = x_topo_l2 - viga_largura
+            draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
+            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2 - espessura, y_topo_l2 - viga_altura)
+            draw.Line(x_topo_l2 - espessura, y_topo_l2 - viga_altura, x_topo_l2 - espessura, y_fundo_chegada)
     else:
-        x_viga_c_ext = x_topo_l2 - viga_largura
-        y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
+        # ======================================================================
+        # FUNDO CONVENCIONAL (RETO) - LANCE 2
+        # ======================================================================
+        p2_1x, p2_1y = x_inicio_l2 - piso, y_topo_l1 + espelho
+        p2_2x, p2_2y = x_inicio_l2 - (n2 - 1) * piso, y_topo_l1 + (n2 - 1) * espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
+        f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
 
-        draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
-        draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
-        draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
-        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
+        # O Fundo do Lance 2 desce ate a cota de baixo do patamar (y_fundo_pat1)
+        x_fundo_l2_no_pat1 = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat1)
+
+        # Linha de BAIXO do patamar 1 (Nivel 242)
+        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
+
+        # ==========================================================================
+        # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior a esquerda
+        # ==========================================================================
+        if tem_patamar_chegada:
+            x_fim_chegada = x_topo_l2 - patamar_chegada
+            draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
+
+            y_fundo_chegada = y_topo_l2 - espessura
+            x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
+
+            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
+            draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+
+            # Viga de Chegada (Lado Esquerdo Superior)
+            x_viga_c_ext = x_fim_chegada - viga_largura
+            draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
+            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
+            draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        else:
+            x_viga_c_ext = x_topo_l2 - viga_largura
+            y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
+
+            draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
+            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
+            draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
+            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
 
     # Indicacao do Corte de 2 lances (CORTE B-B)
     x_rotulo_bb = x_viga_s_ini + 10.0
@@ -1096,6 +1223,9 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
     patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
     n1 = int(dados["n_degraus_1"])
 
+    tipo_escada = dados.get("tipo_escada", "CONVENCIONAL")
+    is_plissada = (tipo_escada == "PLISSADA")
+
     draw = dwg.draw
     draw.level = 242
     draw.color = -1
@@ -1117,65 +1247,127 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
 
     x_fim_deg_l1 = x
 
-    # Linha paralela de fundo do Lance 1
-    p1x, p1y = x0 + piso, y0 + espelho_primeiro
-    p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
-    f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
+    if is_plissada:
+        # ======================================================================
+        # FUNDO PLISSADO - LANCE 1 ISOLADO
+        # ======================================================================
+        if tem_patamar_partida:
+            x_partida = x0 - patamar_partida
+            y_partida = y0
+            draw.Line(x_partida, y_partida, x0, y0)
 
-    # Patamar de Partida (Lado Esquerdo Inferior)
-    if tem_patamar_partida:
-        x_partida = x0 - patamar_partida
-        y_partida = y0
-        draw.Line(x_partida, y_partida, x0, y0)
+            y_base_partida = y0 - espessura
+            draw.Line(x_partida, y_base_partida, x0 + espessura, y_base_partida)
 
-        y_base_partida = y0 - espessura
-        x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
-        draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
+            # Viga de Saida / Partida
+            x_viga_s_ini = x_partida - viga_largura
+            x_viga_s_meio = x_partida
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+            y_viga_s_corte = y0 - espessura
 
-        # Viga de Saida / Partida
-        x_viga_s_ini = x_partida - viga_largura
-        x_viga_s_meio = x_partida
-        y_viga_s_topo = y0
-        y_viga_s_base = y0 - viga_altura
-        y_viga_s_corte = y0 - espessura
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
+        else:
+            x_viga_s_ini = x0 - viga_largura
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
 
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-        draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-        draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
+            draw.Line(x0, y_viga_s_base, x0, y0 - espessura)
+            draw.Line(x0, y0 - espessura, x0 + espessura, y0 - espessura)
 
-        x_fundo_l1_ini = x_base_partida_fim
-        y_fundo_l1_ini = y_base_partida
+        # 1º espelho vertical do fundo plissado
+        draw.Line(x0 + espessura, y0 - espessura, x0 + espessura, y0 + espelho_primeiro - espessura)
+
+        y_curr = y0 + espelho_primeiro
+        for i in range(n1 - 1):
+            x_start = x0 + i * piso + espessura
+            x_end = x0 + (i + 1) * piso + espessura
+            draw.Line(x_start, y_curr - espessura, x_end, y_curr - espessura)
+            draw.Line(x_end, y_curr - espessura, x_end, y_curr + espelho - espessura)
+            y_curr += espelho
+
+        # Patamar Intermediario / Chegada do Lance 1 (Lado Direito Superior)
+        x_fim_pat1 = x_fim_deg_l1 + patamar_int_1
+        draw.Line(x_fim_deg_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
+
+        y_fundo_chegada = y_topo_l1 - espessura
+        draw.Line(x_fim_deg_l1 + espessura, y_fundo_chegada, x_fim_pat1, y_fundo_chegada)
+
+        # Viga de Apoio do Patamar Intermediario (Lado Direito Superior)
+        x_viga_c_ext = x_fim_pat1 + viga_largura
+        draw.Line(x_fim_pat1, y_topo_l1, x_viga_c_ext, y_topo_l1)
+        draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+        draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
+
     else:
-        x_viga_s_ini = x0 - viga_largura
-        y_viga_s_topo = y0
-        y_viga_s_base = y0 - viga_altura
-        y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
+        # ======================================================================
+        # FUNDO CONVENCIONAL (RETO) - LANCE 1 ISOLADO
+        # ======================================================================
+        p1x, p1y = x0 + piso, y0 + espelho_primeiro
+        p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
+        f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
 
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-        draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-        draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-        draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
+        # Patamar de Partida (Lado Esquerdo Inferior)
+        if tem_patamar_partida:
+            x_partida = x0 - patamar_partida
+            y_partida = y0
+            draw.Line(x_partida, y_partida, x0, y0)
 
-        x_fundo_l1_ini = x0
-        y_fundo_l1_ini = y_fundo_no_x0
+            y_base_partida = y0 - espessura
+            x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
+            draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
 
-    # Patamar Intermediario / Chegada do Lance 1 (Lado Direito Superior)
-    x_fim_pat1 = x_fim_deg_l1 + patamar_int_1
-    draw.Line(x_fim_deg_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
+            # Viga de Saida / Partida
+            x_viga_s_ini = x_partida - viga_largura
+            x_viga_s_meio = x_partida
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+            y_viga_s_corte = y0 - espessura
 
-    y_fundo_chegada = y_topo_l1 - espessura
-    x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
+            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
 
-    draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
-    draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_pat1, y_fundo_chegada)
+            x_fundo_l1_ini = x_base_partida_fim
+            y_fundo_l1_ini = y_base_partida
+        else:
+            x_viga_s_ini = x0 - viga_largura
+            y_viga_s_topo = y0
+            y_viga_s_base = y0 - viga_altura
+            y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
 
-    # Viga de Apoio do Patamar Intermediario (Lado Direito Superior)
-    x_viga_c_ext = x_fim_pat1 + viga_largura
-    draw.Line(x_fim_pat1, y_topo_l1, x_viga_c_ext, y_topo_l1)
-    draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-    draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
+            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
+            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
+            draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
+
+            x_fundo_l1_ini = x0
+            y_fundo_l1_ini = y_fundo_no_x0
+
+        # Patamar Intermediario / Chegada do Lance 1 (Lado Direito Superior)
+        x_fim_pat1 = x_fim_deg_l1 + patamar_int_1
+        draw.Line(x_fim_deg_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
+
+        y_fundo_chegada = y_topo_l1 - espessura
+        x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
+
+        draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
+        draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_pat1, y_fundo_chegada)
+
+        # Viga de Apoio do Patamar Intermediario (Lado Direito Superior)
+        x_viga_c_ext = x_fim_pat1 + viga_largura
+        draw.Line(x_fim_pat1, y_topo_l1, x_viga_c_ext, y_topo_l1)
+        draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
+        draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
 
     # Indicacao de corte abaixo do 1º lance
     x_rotulo = x_viga_s_ini + 10.0
