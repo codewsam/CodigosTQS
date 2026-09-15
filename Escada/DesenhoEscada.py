@@ -902,8 +902,8 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 
         # Numeracao dos degraus
         draw.color = 7  # Branco/Texto
-        for i in range(n1 - 1):
-            x_c = x_deg_ini + (i + 0.5) * piso
+        for i in range(n1):
+            x_c = (x_deg_ini - 0.5 * piso) if i == 0 else (x_deg_ini + (i - 0.5) * piso)
             y_c = y_min_int + largura_l1 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
@@ -1036,16 +1036,19 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         draw.color = 7  # Branco/Texto
 
         # Numeracao Lance 1 (01, 02, 03... da esquerda para a direita)
-        for i in range(n1 - 1):
-            x_c = x_deg_ini + (i + 0.5) * piso
+        # O degrau 01 fica a esquerda da linha de inicio (no patamar), 02 no primeiro espaco, etc.
+        for i in range(n1):
+            x_c = (x_deg_ini - 0.5 * piso) if i == 0 else (x_deg_ini + (i - 0.5) * piso)
             y_c = y_min_int + largura_l1 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
-        # Numeracao Lance 2 (15, 14, 13... da esquerda para a direita)
-        for j in range(n2 - 1):
-            x_c = x_deg_ini + (j + 0.5) * piso
+        # Numeracao Lance 2 (09, 10, 11... da direita para a esquerda)
+        # O primeiro degrau do lance 2 (n1 + 1) fica a direita da linha final (no patamar intermediario),
+        # e os seguintes vao contando para a esquerda ate o topo
+        for j in range(n2):
+            num_deg = n1 + 1 + j
+            x_c = (x_deg_fim + 0.5 * piso) if j == 0 else (x_deg_fim - (j - 0.5) * piso)
             y_c = y_l2_base + largura_l2 / 2.0
-            num_deg = (n1 + (n2 - 1) - 1) - j
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
 
         # Seta e Linha de Fluxo
@@ -1186,6 +1189,28 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         for k in range(1, n3 - 1):
             x_deg = x_deg_ini + k * piso
             draw.Line(x_deg, y_l3_base, x_deg, y_max_int)
+
+        # Numeracao dos degraus
+        draw.color = 7  # Branco/Texto
+        # Lance 1: esquerda para a direita (01 antes da linha, 02 no 1º piso...)
+        for i in range(n1):
+            x_c = (x_deg_ini - 0.5 * piso) if i == 0 else (x_deg_ini + (i - 0.5) * piso)
+            y_c = y_min_int + largura_l1 / 2.0
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
+
+        # Lance 2: direita para a esquerda
+        for j in range(n2):
+            num_deg = n1 + 1 + j
+            x_c = (x_deg_fim + 0.5 * piso) if j == 0 else (x_deg_fim - (j - 0.5) * piso)
+            y_c = y_l2_base + largura_l2 / 2.0
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
+
+        # Lance 3: esquerda para a direita
+        for k in range(n3):
+            num_deg = n1 + n2 + 1 + k
+            x_c = (x_deg_ini - 0.5 * piso) if k == 0 else (x_deg_ini + (k - 0.5) * piso)
+            y_c = y_l3_base + largura_l3 / 2.0
+            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
 
         # COTAS
         y_cota_top1 = y_max_ext + 35.0
