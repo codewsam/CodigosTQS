@@ -1410,12 +1410,10 @@ def meucmd(eag, tqsjan):
     dados = pedir_dados_janela_windows()
 
     if dados is None:
-        TQSUtil.writef("Operacao cancelada pelo utilizador.")
         return
 
     icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Clique no ponto inicial da escada")
     if icod == -1:
-        TQSUtil.writef("Operacao cancelada.")
         return
 
     desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
@@ -1451,14 +1449,4 @@ def meucmd(eag, tqsjan):
             desenhar_perfil_lance1_isolado(tqsjan.dwg, x0, y0_lance1, dados)
 
     tqsjan.ZoomTotal()
-
-    if dados.get("alterar_extremos"):
-        TQSUtil.writef(
-            "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho Geral=%.1f cm, 1º=%.1f cm, Ultimo=%.1f cm)"
-            % (dados["num_lances"], dados["piso"], dados["espelho"], dados["espelho_primeiro"], dados["espelho_ultimo"])
-        )
-    else:
-        TQSUtil.writef(
-            "Escada (%d lance(s)) desenhada com sucesso! (Piso=%.1f cm, Espelho=%.1f cm)"
-            % (dados["num_lances"], dados["piso"], dados["espelho"])
-        )
+    tqsjan.Regen()
