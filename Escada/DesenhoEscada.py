@@ -78,7 +78,7 @@ def pedir_dados_janela_windows():
             .container {{
                 display: flex;
                 gap: 16px;
-                padding: 16px 20px 20px 20px;
+                padding: 14px 18px 12px 18px;
             }}
 
             .img-box {{
@@ -92,14 +92,20 @@ def pedir_dados_janela_windows():
                 box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             }}
 
-            .img-box img {{ max-width: 420px; }}
+            .img-box img {{ max-width: 360px; max-height: 480px; }}
 
-            .form-box {{
+            .form-cols {{
+                display: flex;
+                gap: 12px;
+                flex: 1;
+            }}
+
+            .col-form {{
                 display: flex;
                 flex-direction: column;
                 gap: 10px;
                 flex: 1;
-                min-width: 300px;
+                min-width: 250px;
             }}
 
             .card {{
@@ -170,11 +176,11 @@ def pedir_dados_janela_windows():
             }}
 
             .btns {{
-                margin-top: 4px;
+                margin-top: 2px;
                 display: flex;
                 justify-content: flex-end;
                 gap: 10px;
-                padding: 0 20px 18px 20px;
+                padding: 0 18px 14px 18px;
             }}
 
             button {{
@@ -201,8 +207,24 @@ def pedir_dados_janela_windows():
 
             .btn-gerar:hover {{ background: linear-gradient(135deg, #004494 0%, #00306b 100%); }}
         </style>
-        <script>
-            window.resizeTo(1200, 920);
+        <script type="text/javascript">
+            function toggleExtremos() {{
+                var box = document.getElementById('box_extremos');
+                var alt = document.getElementById('alterar_extremos').checked;
+                box.style.display = alt ? "block" : "none";
+            }}
+
+            function togglePatamarPartida() {{
+                var box = document.getElementById('box_patamar_partida');
+                var tem = document.getElementById('tem_patamar_partida').checked;
+                box.style.display = tem ? "flex" : "none";
+            }}
+
+            function togglePatamarChegada() {{
+                var box = document.getElementById('box_patamar_chegada');
+                var tem = document.getElementById('tem_patamar_chegada').checked;
+                box.style.display = tem ? "flex" : "none";
+            }}
 
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
@@ -218,27 +240,11 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
-            function togglePatamarPartida() {{
-                var temPat = document.getElementById('tem_patamar_partida').checked;
-                var box = document.getElementById('box_patamar_partida');
+            function togglePlanta() {{
+                var desenharPlanta = document.getElementById('desenhar_planta').checked;
+                var box = document.getElementById('box_opcoes_planta');
                 if (box) {{
-                    box.style.display = temPat ? "flex" : "none";
-                }}
-            }}
-
-            function togglePatamarChegada() {{
-                var temPat = document.getElementById('tem_patamar_chegada').checked;
-                var box = document.getElementById('box_patamar_chegada');
-                if (box) {{
-                    box.style.display = temPat ? "flex" : "none";
-                }}
-            }}
-
-            function toggleExtremos() {{
-                var altExt = document.getElementById('alterar_extremos').checked;
-                var box = document.getElementById('box_extremos');
-                if (box) {{
-                    box.style.display = altExt ? "block" : "none";
+                    box.style.display = desenharPlanta ? "block" : "none";
                 }}
             }}
 
@@ -250,16 +256,7 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
-            function togglePlanta() {{
-                var temPlanta = document.getElementById('desenhar_planta').checked;
-                var box = document.getElementById('box_opcoes_planta');
-                if (box) {{
-                    box.style.display = temPlanta ? "block" : "none";
-                }}
-                atualizarCamposPlanta();
-            }}
-
-            function atualizarCamposPlanta() {{
+            function toggleLancesPlanta() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
                 var box1 = document.getElementById('box_planta_1lance');
                 var boxMulti = document.getElementById('box_planta_multilance');
@@ -274,18 +271,29 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
+            function initDialog() {{
+                try {{
+                    window.resizeTo(1140, 780);
+                    window.moveTo((screen.availWidth - 1140) / 2, (screen.availHeight - 680) / 2);
+                }} catch(e) {{}}
+                toggleVao();
+                togglePlanta();
+                toggleLances();
+                toggleLancesPlanta();
+                togglePatamarPartida();
+                togglePatamarChegada();
+                toggleExtremos();
+            }}
+
             function confirmar() {{
                 try {{
-                    var fso = new ActiveXObject("Scripting.FileSystemObject");
-                    var file = fso.CreateTextFile("{json_js}", true, false);
-
+                    var espGeral = parseFloat(document.getElementById('espelho').value.replace(',', '.'));
                     var numLances = parseInt(document.getElementById('num_lances').value);
                     var n_deg1 = parseInt(document.getElementById('n_degraus_1').value);
                     var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
                     var temPatPartida = document.getElementById('tem_patamar_partida').checked;
                     var temPatChegada = document.getElementById('tem_patamar_chegada').checked;
                     var altExtremos = document.getElementById('alterar_extremos').checked;
-                    var espGeral = parseFloat(document.getElementById('espelho').value.replace(',', '.'));
 
                     var dados = {{
                         "num_lances": numLances,
@@ -312,8 +320,34 @@ def pedir_dados_janela_windows():
                         "vao_lances": (numLances >= 2 && document.getElementById('tem_vao_lances') && document.getElementById('tem_vao_lances').checked) ? (parseFloat(document.getElementById('vao_lances').value.replace(',', '.')) || 10.0) : 0.0,
                     }};
 
-                    file.Write(JSON.stringify(dados));
-                    file.Close();
+                    var fso = new ActiveXObject("Scripting.FileSystemObject");
+                    var a = fso.CreateTextFile("{json_js}", true);
+                    
+                    var jsonStr = '{{"num_lances":' + dados.num_lances + 
+                                  ',"piso":' + dados.piso + 
+                                  ',"espelho":' + dados.espelho + 
+                                  ',"alterar_extremos":' + dados.alterar_extremos + 
+                                  ',"espelho_primeiro":' + dados.espelho_primeiro + 
+                                  ',"espelho_ultimo":' + dados.espelho_ultimo + 
+                                  ',"tipo_escada":"' + dados.tipo_escada + '"' + 
+                                  ',"n_degraus_1":' + dados.n_degraus_1 + 
+                                  ',"n_degraus_2":' + dados.n_degraus_2 + 
+                                  ',"tem_patamar_partida":' + dados.tem_patamar_partida + 
+                                  ',"patamar_partida":' + dados.patamar_partida + 
+                                  ',"patamar_intermediario_1":' + dados.patamar_intermediario_1 + 
+                                  ',"tem_patamar_chegada":' + dados.tem_patamar_chegada + 
+                                  ',"patamar_chegada":' + dados.patamar_chegada + 
+                                  ',"espessura":' + dados.espessura + 
+                                  ',"viga_largura":' + dados.viga_largura + 
+                                  ',"viga_altura":' + dados.viga_altura + 
+                                  ',"desenhar_planta":' + dados.desenhar_planta + 
+                                  ',"largura_lance_1":' + dados.largura_lance_1 + 
+                                  ',"largura_lance_2":' + dados.largura_lance_2 + 
+                                  ',"tem_vao_lances":' + dados.tem_vao_lances + 
+                                  ',"vao_lances":' + dados.vao_lances + '}}';
+                    
+                    a.WriteLine(jsonStr);
+                    a.Close();
                     window.close();
                 }} catch (e) {{
                     alert("Erro ao salvar dados: " + e.message);
@@ -321,7 +355,7 @@ def pedir_dados_janela_windows():
             }}
         </script>
     </head>
-    <body onload="toggleVao(); togglePlanta(); toggleLances(); togglePatamarPartida(); togglePatamarChegada(); toggleExtremos();">
+    <body onload="initDialog();">
         <div class="topbar">
             <div class="icon">📐</div>
             <div>
@@ -335,94 +369,97 @@ def pedir_dados_janela_windows():
                 <img src="{img_html}" alt="Diagrama da Escada" onerror="this.parentElement.innerHTML='<div style=\'color:#888; text-align:center; padding:40px;\'>Diagrama ilustrativo indisponível</div>'" />
             </div>
 
-            <div class="form-box">
-                <div class="card">
-                    <h3>Configuração Geral</h3>
-                    <div class="campo">
-                        <label>Tipo de Escada:</label>
-                        <select id="tipo_escada">
-                            <option value="CONVENCIONAL" selected>Normal</option>
-                            <option value="PLISSADA">Plissada</option>
-                        </select>
-                    </div>
-                    <div class="campo">
-                        <label>Número de Lances:</label>
-                        <select id="num_lances" onchange="toggleLances()">
-                            <option value="1">1 Lance</option>
-                            <option value="2" selected>2 Lances</option>
-                        </select>
-                    </div>
-                    <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
-                    <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
-
-                    <div class="campo" style="margin-top: 8px;">
-                        <label>Alterar espelho do primeiro e último degrau?</label>
-                        <input type="checkbox" id="alterar_extremos" onchange="toggleExtremos()">
-                    </div>
-                    <div id="box_extremos" class="sec-opcional" style="display:none;">
-                        <div class="campo"><label>Espelho 1º degrau (cm):</label><input type="text" id="espelho_primeiro" value="17.9"></div>
-                        <div class="campo"><label>Espelho último degrau (cm):</label><input type="text" id="espelho_ultimo" value="17.9"></div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>Degraus por Lance</h3>
-                    <div class="campo"><label>Degraus Lance 1:</label><input type="text" id="n_degraus_1" value="8"></div>
-
-                    <div id="box_lance2" class="sec-opcional">
-                        <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>Patamares</h3>
-                    <div class="campo">
-                        <label>Tem patamar de partida?</label>
-                        <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
-                    </div>
-                    <div class="campo" id="box_patamar_partida"><label>Patamar de Partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
-                    <div class="campo" id="campo_pat1"><label>Patamar Intermediário (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
-                    <div class="campo">
-                        <label>Tem patamar de chegada?</label>
-                        <input type="checkbox" id="tem_patamar_chegada" checked onchange="togglePatamarChegada()">
-                    </div>
-                    <div class="campo" id="box_patamar_chegada"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
-                </div>
-
-                <div class="card">
-                    <h3>Planta da Escada</h3>
-                    <div class="campo">
-                        <label>Desenhar Planta da Escada?</label>
-                        <input type="checkbox" id="desenhar_planta" checked onchange="togglePlanta()">
-                    </div>
-
-                    <div id="box_opcoes_planta" class="sec-opcional" style="margin-top: 6px;">
-                        <div id="box_planta_1lance" style="display:none;">
-                            <div class="campo"><label>Largura da Escada (cm):</label><input type="text" id="largura_escada_1" value="100"></div>
+            <div class="form-cols">
+                <div class="col-form">
+                    <div class="card">
+                        <h3>Configuração Geral</h3>
+                        <div class="campo">
+                            <label>Tipo de Escada:</label>
+                            <select id="tipo_escada">
+                                <option value="CONVENCIONAL" selected>Normal</option>
+                                <option value="PLISSADA">Plissada</option>
+                            </select>
                         </div>
+                        <div class="campo">
+                            <label>Número de Lances:</label>
+                            <select id="num_lances" onchange="toggleLances(); toggleLancesPlanta();">
+                                <option value="1">1 Lance</option>
+                                <option value="2" selected>2 Lances</option>
+                            </select>
+                        </div>
+                        <div class="campo"><label>Espessura escada (cm):</label><input type="text" id="espessura" value="15"></div>
+                        <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
+                        <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
 
-                        <div id="box_planta_multilance">
-                            <div class="campo"><label>Largura Lance 1 (cm):</label><input type="text" id="largura_lance_1" value="120"></div>
-                            <div class="campo"><label>Largura Lance 2 (cm):</label><input type="text" id="largura_lance_2" value="105.5"></div>
-                            
-                            <div class="campo" style="margin-top: 6px;">
-                                <label>Tem vão entre lances?</label>
-                                <input type="checkbox" id="tem_vao_lances" onchange="toggleVao()">
-                            </div>
-                            <div id="box_vao_lances" class="campo" style="display:none;">
-                                <label>Vão entre lances (cm):</label>
-                                <input type="text" id="vao_lances" value="10">
-                            </div>
+                        <div class="campo" style="margin-top: 8px;">
+                            <label>Alterar espelho do primeiro e último degrau?</label>
+                            <input type="checkbox" id="alterar_extremos" onchange="toggleExtremos()">
+                        </div>
+                        <div id="box_extremos" class="sec-opcional" style="display:none;">
+                            <div class="campo"><label>Espelho 1º degrau (cm):</label><input type="text" id="espelho_primeiro" value="17.9"></div>
+                            <div class="campo"><label>Espelho último degrau (cm):</label><input type="text" id="espelho_ultimo" value="17.9"></div>
                         </div>
                     </div>
-                </div>
+
+                    <div class="card">
+                        <h3>Degraus por Lance</h3>
+                        <div class="campo"><label>Degraus Lance 1:</label><input type="text" id="n_degraus_1" value="8"></div>
+
+                        <div id="box_lance2" class="sec-opcional">
+                            <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Patamares</h3>
+                        <div class="campo">
+                            <label>Tem patamar de partida?</label>
+                            <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
+                        </div>
+                        <div class="campo" id="box_patamar_partida"><label>Patamar de Partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
+                        <div class="campo" id="campo_pat1"><label>Patamar Intermediário (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
+                        <div class="campo">
+                            <label>Tem patamar de chegada?</label>
+                            <input type="checkbox" id="tem_patamar_chegada" checked onchange="togglePatamarChegada()">
+                        </div>
+                        <div class="campo" id="box_patamar_chegada"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
+                    </div>
                 </div>
 
-                <div class="card">
-                    <h3>Laje e Vigas</h3>
-                    <div class="campo"><label>Espessura (cm):</label><input type="text" id="espessura" value="15"></div>
-                    <div class="campo"><label>Largura da Viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
-                    <div class="campo"><label>Altura da Viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
+                <div class="col-form">
+                    <div class="card">
+                        <h3>Planta da Escada</h3>
+                        <div class="campo">
+                            <label>Desenhar Planta da Escada?</label>
+                            <input type="checkbox" id="desenhar_planta" checked onchange="togglePlanta()">
+                        </div>
+
+                        <div id="box_opcoes_planta" class="sec-opcional" style="margin-top: 6px;">
+                            <div id="box_planta_1lance" style="display:none;">
+                                <div class="campo"><label>Largura da Escada (cm):</label><input type="text" id="largura_escada_1" value="100"></div>
+                            </div>
+
+                            <div id="box_planta_multilance">
+                                <div class="campo"><label>Largura Lance 1 (cm):</label><input type="text" id="largura_lance_1" value="120"></div>
+                                <div class="campo"><label>Largura Lance 2 (cm):</label><input type="text" id="largura_lance_2" value="105.5"></div>
+                                
+                                <div class="campo" style="margin-top: 6px;">
+                                    <label>Tem vão entre lances?</label>
+                                    <input type="checkbox" id="tem_vao_lances" onchange="toggleVao()">
+                                </div>
+                                <div id="box_vao_lances" class="campo" style="display:none;">
+                                    <label>Vão entre lances (cm):</label>
+                                    <input type="text" id="vao_lances" value="10">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Vigas</h3>
+                        <div class="campo"><label>Largura da Viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
+                        <div class="campo"><label>Altura da Viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
+                    </div>
                 </div>
             </div>
         </div>
