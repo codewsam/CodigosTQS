@@ -207,20 +207,13 @@ def pedir_dados_janela_windows():
             function toggleLances() {{
                 var numLances = parseInt(document.getElementById('num_lances').value);
                 var box2 = document.getElementById('box_lance2');
-                var box3 = document.getElementById('box_lance3');
                 var campoPat1 = document.getElementById('campo_pat1');
 
                 if (numLances === 1) {{
                     box2.style.display = "none";
-                    box3.style.display = "none";
                     campoPat1.style.display = "none";
                 }} else if (numLances === 2) {{
                     box2.style.display = "block";
-                    box3.style.display = "none";
-                    campoPat1.style.display = "flex";
-                }} else if (numLances === 3) {{
-                    box2.style.display = "block";
-                    box3.style.display = "block";
                     campoPat1.style.display = "flex";
                 }}
             }}
@@ -249,7 +242,7 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
-                                    function toggleVao() {{
+            function toggleVao() {{
                 var temVao = document.getElementById('tem_vao_lances').checked;
                 var box = document.getElementById('box_vao_lances');
                 if (box) {{
@@ -270,7 +263,6 @@ def pedir_dados_janela_windows():
                 var numLances = parseInt(document.getElementById('num_lances').value);
                 var box1 = document.getElementById('box_planta_1lance');
                 var boxMulti = document.getElementById('box_planta_multilance');
-                var boxL3 = document.getElementById('box_planta_l3');
                 if (box1 && boxMulti) {{
                     if (numLances === 1) {{
                         box1.style.display = "block";
@@ -278,9 +270,6 @@ def pedir_dados_janela_windows():
                     }} else {{
                         box1.style.display = "none";
                         boxMulti.style.display = "block";
-                        if (boxL3) {{
-                            boxL3.style.display = (numLances === 3) ? "flex" : "none";
-                        }}
                     }}
                 }}
             }}
@@ -293,7 +282,6 @@ def pedir_dados_janela_windows():
                     var numLances = parseInt(document.getElementById('num_lances').value);
                     var n_deg1 = parseInt(document.getElementById('n_degraus_1').value);
                     var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
-                    var n_deg3 = numLances === 3 ? parseInt(document.getElementById('n_degraus_3').value) : 0;
                     var temPatPartida = document.getElementById('tem_patamar_partida').checked;
                     var temPatChegada = document.getElementById('tem_patamar_chegada').checked;
                     var altExtremos = document.getElementById('alterar_extremos').checked;
@@ -308,11 +296,9 @@ def pedir_dados_janela_windows():
                         "espelho_ultimo": altExtremos ? parseFloat(document.getElementById('espelho_ultimo').value.replace(',', '.')) : espGeral,
                         "n_degraus_1": n_deg1,
                         "n_degraus_2": n_deg2,
-                        "n_degraus_3": n_deg3,
                         "tem_patamar_partida": temPatPartida,
                         "patamar_partida": temPatPartida ? parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')) : 0.0,
                         "patamar_intermediario_1": parseFloat(document.getElementById('patamar_int_1').value.replace(',', '.')),
-                        "patamar_intermediario_2": parseFloat(document.getElementById('patamar_int_2').value.replace(',', '.')),
                         "tem_patamar_chegada": temPatChegada,
                         "patamar_chegada": temPatChegada ? parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')) : 0.0,
                         "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
@@ -321,7 +307,6 @@ def pedir_dados_janela_windows():
                         "desenhar_planta": document.getElementById('desenhar_planta') ? document.getElementById('desenhar_planta').checked : false,
                         "largura_lance_1": (numLances === 1) ? (parseFloat(document.getElementById('largura_escada_1').value.replace(',', '.')) || 100.0) : (parseFloat(document.getElementById('largura_lance_1').value.replace(',', '.')) || 120.0),
                         "largura_lance_2": (numLances >= 2) ? (parseFloat(document.getElementById('largura_lance_2').value.replace(',', '.')) || 105.5) : 0.0,
-                        "largura_lance_3": (numLances === 3) ? (parseFloat(document.getElementById('largura_lance_3').value.replace(',', '.')) || 100.0) : 0.0,
                         "tem_vao_lances": document.getElementById('tem_vao_lances') ? document.getElementById('tem_vao_lances').checked : false,
                         "vao_lances": (numLances >= 2 && document.getElementById('tem_vao_lances') && document.getElementById('tem_vao_lances').checked) ? (parseFloat(document.getElementById('vao_lances').value.replace(',', '.')) || 10.0) : 0.0,
                     }};
@@ -357,7 +342,6 @@ def pedir_dados_janela_windows():
                         <select id="num_lances" onchange="toggleLances()">
                             <option value="1">1 Lance</option>
                             <option value="2" selected>2 Lances</option>
-                            <option value="3">3 Lances</option>
                         </select>
                     </div>
                     <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
@@ -380,11 +364,6 @@ def pedir_dados_janela_windows():
                     <div id="box_lance2" class="sec-opcional">
                         <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
                     </div>
-
-                    <div id="box_lance3" class="sec-opcional" style="display:none; margin-top: 6px;">
-                        <div class="campo"><label>Degraus Lance 3:</label><input type="text" id="n_degraus_3" value="8"></div>
-                        <div class="campo"><label>2º Patamar Intermediário (cm):</label><input type="text" id="patamar_int_2" value="120"></div>
-                    </div>
                 </div>
 
                 <div class="card">
@@ -402,7 +381,7 @@ def pedir_dados_janela_windows():
                     <div class="campo" id="box_patamar_chegada"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
                 </div>
 
-                                <div class="card">
+                <div class="card">
                     <h3>Planta da Escada</h3>
                     <div class="campo">
                         <label>Desenhar Planta da Escada?</label>
@@ -417,7 +396,6 @@ def pedir_dados_janela_windows():
                         <div id="box_planta_multilance">
                             <div class="campo"><label>Largura Lance 1 (cm):</label><input type="text" id="largura_lance_1" value="120"></div>
                             <div class="campo"><label>Largura Lance 2 (cm):</label><input type="text" id="largura_lance_2" value="105.5"></div>
-                            <div class="campo" id="box_planta_l3" style="display:none;"><label>Largura Lance 3 (cm):</label><input type="text" id="largura_lance_3" value="100"></div>
                             
                             <div class="campo" style="margin-top: 6px;">
                                 <label>Tem vão entre lances?</label>
@@ -531,12 +509,10 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
 
     patamar_partida = float(dados.get("patamar_partida", 150))
     patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
-    patamar_int_2 = float(dados.get("patamar_intermediario_2", 120))
     patamar_chegada = float(dados.get("patamar_chegada", 150))
 
     n1 = int(dados["n_degraus_1"])
     n2 = int(dados.get("n_degraus_2", 0))
-    n3 = int(dados.get("n_degraus_3", 0))
 
     draw = dwg.draw
 
@@ -665,30 +641,20 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
 
     x, y = x_inicio_l2, y_topo_l1
-    if num_lances == 2:
-        if n2 > 1:
-            y_topo_l2 = y_topo_l1 + (n2 - 1) * espelho + espelho_ultimo
-        else:
-            y_topo_l2 = y_topo_l1 + (espelho_ultimo if n2 == 1 else 0)
+    if n2 > 1:
+        y_topo_l2 = y_topo_l1 + (n2 - 1) * espelho + espelho_ultimo
     else:
-        y_topo_l2 = y_topo_l1 + n2 * espelho
-
-    y_fundo_pat2 = y_topo_l2 - espessura
+        y_topo_l2 = y_topo_l1 + (espelho_ultimo if n2 == 1 else 0)
 
     # Degraus Lance 2
     for i in range(n2):
-        if num_lances == 3 and i == n2 - 1:
-            if y < y_fundo_pat2:
-                draw.Line(x, y, x, y_fundo_pat2)
-            y = y_topo_l2
+        if i == n2 - 1:
+            h_esp = espelho_ultimo
         else:
-            if num_lances == 2 and i == n2 - 1:
-                h_esp = espelho_ultimo
-            else:
-                h_esp = espelho
+            h_esp = espelho
 
-            draw.Line(x, y, x, y + h_esp)
-            y += h_esp
+        draw.Line(x, y, x, y + h_esp)
+        y += h_esp
 
         if i < n2 - 1:
             draw.Line(x, y, x - piso, y)
@@ -710,111 +676,36 @@ def desenhar_perfil_escada(dwg, x0, y0, dados):
     # ==========================================================================
     # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior a esquerda
     # ==========================================================================
-    if num_lances == 2:
-        if tem_patamar_chegada:
-            x_fim_chegada = x_topo_l2 - patamar_chegada
-            draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
-
-            y_fundo_chegada = y_topo_l2 - espessura
-            x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
-
-            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
-            draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
-
-            # Viga de Chegada (Lado Esquerdo Superior)
-            x_viga_c_ext = x_fim_chegada - viga_largura
-            draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
-            draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
-        else:
-            x_viga_c_ext = x_topo_l2 - viga_largura
-            y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
-
-            draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
-            draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
-            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
-
-        # Indicacao do Corte de 2 lances (CORTE B-B)
-        x_rotulo_bb = x_viga_s_ini + 10.0
-        y_rotulo_bb = (y0 - viga_altura) - 120.0
-        desenhar_indicacao_corte(dwg, x_rotulo_bb, y_rotulo_bb, "CORTE B-B", "ESCALA: 1/20")
-        return
-
-    # ==========================================================================
-    # CASO 3 LANCES: 2º Patamar Intermediario (a esquerda) e Lance 3 (+X, +Y)
-    # ==========================================================================
-    x_inicio_l3 = x_topo_l2
-    x, y = x_inicio_l3, y_topo_l2
-
-    if n3 > 1:
-        y_topo_l3 = y_topo_l2 + (n3 - 1) * espelho + espelho_ultimo
-    else:
-        y_topo_l3 = y_topo_l2 + (espelho_ultimo if n3 == 1 else 0)
-
-    for i in range(n3):
-        if i == n3 - 1:
-            h_esp = espelho_ultimo
-        else:
-            h_esp = espelho
-
-        draw.Line(x, y, x, y + h_esp)
-        y += h_esp
-        if i < n3 - 1:
-            draw.Line(x, y, x + piso, y)
-            x += piso
-
-    x_topo_l3 = x
-
-    p3_1x, p3_1y = x_inicio_l3 + piso, y_topo_l2 + espelho
-    p3_2x, p3_2y = x_inicio_l3 + (n3 - 1) * piso, y_topo_l2 + (n3 - 1) * espelho if n3 > 1 else (p3_1x + piso, p3_1y + espelho)
-    f3_x1, f3_y1, f3_x2, f3_y2 = obter_fundo_lance(p3_1x, p3_1y, p3_2x, p3_2y, espessura)
-
-    x_fim_pat2 = x_inicio_l3 - patamar_int_2
-
-    draw.Line(x_inicio_l3, y_topo_l2, x_fim_pat2, y_topo_l2)
-
-    x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat2)
-    draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_pat2)
-
-    x_fundo_l3_no_pat2 = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_pat2)
-    draw.Line(x_fim_pat2, y_fundo_pat2, x_fundo_l3_no_pat2, y_fundo_pat2)
-
-    x_viga_p2_ext = x_fim_pat2 - viga_largura
-    draw.Line(x_fim_pat2, y_topo_l2, x_viga_p2_ext, y_topo_l2)
-    draw.Line(x_viga_p2_ext, y_topo_l2, x_viga_p2_ext, y_topo_l2 - viga_altura)
-    draw.Line(x_viga_p2_ext, y_topo_l2 - viga_altura, x_fim_pat2, y_topo_l2 - viga_altura)
-    draw.Line(x_fim_pat2, y_topo_l2 - viga_altura, x_fim_pat2, y_fundo_pat2)
-
-    # --------------------------------------------------------------------------
-    # PATAMAR DE CHEGADA SUPERIOR (LADO DIREITO)
-    # --------------------------------------------------------------------------
     if tem_patamar_chegada:
-        x_fim_chegada = x_topo_l3 + patamar_chegada
-        draw.Line(x_topo_l3, y_topo_l3, x_fim_chegada, y_topo_l3)
+        x_fim_chegada = x_topo_l2 - patamar_chegada
+        draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
 
-        y_fundo_chegada = y_topo_l3 - espessura
-        x_fundo_l3_fim = calcular_x_no_y(f3_x1, f3_y1, f3_x2, f3_y2, y_fundo_chegada)
+        y_fundo_chegada = y_topo_l2 - espessura
+        x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
 
-        draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_fundo_l3_fim, y_fundo_chegada)
-        draw.Line(x_fundo_l3_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
+        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
+        draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
 
-        x_viga_c_ext = x_fim_chegada + viga_largura
-        draw.Line(x_fim_chegada, y_topo_l3, x_viga_c_ext, y_topo_l3)
-        draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_fim_chegada, y_topo_l3 - viga_altura)
-        draw.Line(x_fim_chegada, y_topo_l3 - viga_altura, x_fim_chegada, y_fundo_chegada)
+        # Viga de Chegada (Lado Esquerdo Superior)
+        x_viga_c_ext = x_fim_chegada - viga_largura
+        draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
+        draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
+        draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
     else:
-        x_viga_c_ext = x_topo_l3 + viga_largura
-        y_fundo_no_xtopo3 = calcular_y_no_x(f3_x1, f3_y1, f3_x2, f3_y2, x_topo_l3)
+        x_viga_c_ext = x_topo_l2 - viga_largura
+        y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
 
-        draw.Line(x_topo_l3, y_topo_l3, x_viga_c_ext, y_topo_l3)
-        draw.Line(x_viga_c_ext, y_topo_l3, x_viga_c_ext, y_topo_l3 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l3 - viga_altura, x_topo_l3, y_topo_l3 - viga_altura)
-        draw.Line(x_topo_l3, y_topo_l3 - viga_altura, x_topo_l3, y_fundo_no_xtopo3)
-        draw.Line(x_fundo_l3_no_pat2, y_fundo_pat2, x_topo_l3, y_fundo_no_xtopo3)
+        draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
+        draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
+        draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
+        draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
+        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
+
+    # Indicacao do Corte de 2 lances (CORTE B-B)
+    x_rotulo_bb = x_viga_s_ini + 10.0
+    y_rotulo_bb = (y0 - viga_altura) - 120.0
+    desenhar_indicacao_corte(dwg, x_rotulo_bb, y_rotulo_bb, "CORTE B-B", "ESCALA: 1/20")
 
 
 # ==============================================================================
@@ -829,7 +720,6 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 
     largura_l1 = float(dados.get("largura_lance_1", 120.0))
     largura_l2 = float(dados.get("largura_lance_2", 105.5))
-    largura_l3 = float(dados.get("largura_lance_3", 100.0))
     vao_lances = float(dados.get("vao_lances", 0.0))
 
     tem_patamar_partida = dados.get("tem_patamar_partida", True)
@@ -842,12 +732,10 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 
     patamar_partida = float(dados.get("patamar_partida", 150))
     patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
-    patamar_int_2 = float(dados.get("patamar_intermediario_2", 120))
     patamar_chegada = float(dados.get("patamar_chegada", 150))
 
     n1 = int(dados["n_degraus_1"])
     n2 = int(dados.get("n_degraus_2", 0))
-    n3 = int(dados.get("n_degraus_3", 0))
 
     draw = dwg.draw
     draw.level = 242
@@ -1132,116 +1020,6 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         x_rotulo_planta = x_min_ext + 10.0
         y_rotulo_planta = y_min_ext - 60.0
         desenhar_indicacao_corte(dwg, x_rotulo_planta, y_rotulo_planta, "PLANTA BAIXA", "ESCALA: 1/20")
-
-    elif num_lances == 3:
-        # ======================================================================
-        # PLANTA: 3 LANCES
-        # ======================================================================
-        largura_total = largura_l1 + vao_lances + largura_l2 + vao_lances + largura_l3
-        y_min_int = y_planta_top - largura_total
-        y_max_int = y_planta_top
-        y_min_ext = y_min_int - viga_largura
-        y_max_ext = y_max_int + viga_largura
-
-        x_deg_ini = x0
-        num_deg_max = max(n1 - 1, n2 - 1, n3 - 1)
-        x_deg_fim = x0 + num_deg_max * piso
-
-        pat_esq = max(patamar_partida if tem_patamar_partida else 0.0, patamar_int_2)
-        pat_dir = max(patamar_int_1, patamar_chegada if tem_patamar_chegada else 0.0)
-
-        x_min_int = x_deg_ini - pat_esq
-        x_min_ext = x_min_int - viga_largura
-        x_max_int = x_deg_fim + pat_dir
-        x_max_ext = x_max_int + viga_largura
-
-        # Retangulo Externo
-        draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
-        draw.Line(x_max_ext, y_min_ext, x_max_ext, y_max_ext)
-        draw.Line(x_max_ext, y_max_ext, x_min_ext, y_max_ext)
-        draw.Line(x_min_ext, y_max_ext, x_min_ext, y_min_ext)
-
-        # Retangulo Interno
-        draw.Line(x_min_int, y_min_int, x_max_int, y_min_int)
-        draw.Line(x_max_int, y_min_int, x_max_int, y_max_int)
-        draw.Line(x_max_int, y_max_int, x_min_int, y_max_int)
-        draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
-
-        y_l1_topo = y_min_int + largura_l1
-        y_l2_base = y_l1_topo + vao_lances
-        y_l2_topo = y_l2_base + largura_l2
-        y_l3_base = y_l2_topo + vao_lances
-
-        draw.Line(x_deg_ini, y_min_int, x_deg_ini, y_l1_topo)
-        draw.Line(x_deg_ini, y_l2_base, x_deg_ini, y_l2_topo)
-        draw.Line(x_deg_ini, y_l3_base, x_deg_ini, y_max_int)
-
-        draw.Line(x_deg_fim, y_min_int, x_deg_fim, y_l1_topo)
-        draw.Line(x_deg_fim, y_l2_base, x_deg_fim, y_l2_topo)
-        draw.Line(x_deg_fim, y_l3_base, x_deg_fim, y_max_int)
-
-        for i in range(1, n1 - 1):
-            x_deg = x_deg_ini + i * piso
-            draw.Line(x_deg, y_min_int, x_deg, y_l1_topo)
-        for j in range(1, n2 - 1):
-            x_deg = x_deg_ini + j * piso
-            draw.Line(x_deg, y_l2_base, x_deg, y_l2_topo)
-        for k in range(1, n3 - 1):
-            x_deg = x_deg_ini + k * piso
-            draw.Line(x_deg, y_l3_base, x_deg, y_max_int)
-
-        # Numeracao dos degraus
-        draw.color = 7  # Branco/Texto
-        # Lance 1: esquerda para a direita (01 antes da linha, 02 no 1º piso...)
-        for i in range(n1):
-            x_c = (x_deg_ini - 0.5 * piso) if i == 0 else (x_deg_ini + (i - 0.5) * piso)
-            y_c = y_min_int + largura_l1 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
-
-        # Lance 2: direita para a esquerda
-        for j in range(n2):
-            num_deg = n1 + 1 + j
-            x_c = (x_deg_fim + 0.5 * piso) if j == 0 else (x_deg_fim - (j - 0.5) * piso)
-            y_c = y_l2_base + largura_l2 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
-
-        # Lance 3: esquerda para a direita
-        for k in range(n3):
-            num_deg = n1 + n2 + 1 + k
-            x_c = (x_deg_ini - 0.5 * piso) if k == 0 else (x_deg_ini + (k - 0.5) * piso)
-            y_c = y_l3_base + largura_l3 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
-
-        # COTAS
-        y_cota_top1 = y_max_ext + 35.0
-        y_cota_top2 = y_max_ext + 70.0
-
-        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
-        if pat_esq > 0:
-            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_ini, y_max_ext, x_min_int, y_cota_top1)
-        for i in range(num_deg_max):
-            x_a = x_deg_ini + i * piso
-            x_b = x_a + piso
-            dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
-        if pat_dir > 0:
-            dwg.dim.DimHorizontal(x_deg_fim, y_max_ext, x_max_int, y_max_ext, x_deg_fim, y_cota_top1)
-        dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
-
-        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
-
-        x_cota_dir1 = x_max_ext + 35.0
-        x_cota_dir2 = x_max_ext + 70.0
-        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_min_int, x_cota_dir1, y_min_ext)
-        dwg.dim.DimVertical(x_max_ext, y_min_int, x_max_ext, y_l1_topo, x_cota_dir1, y_min_int)
-        if vao_lances > 0:
-            dwg.dim.DimVertical(x_max_ext, y_l1_topo, x_max_ext, y_l2_base, x_cota_dir1, y_l1_topo)
-        dwg.dim.DimVertical(x_max_ext, y_l2_base, x_max_ext, y_l2_topo, x_cota_dir1, y_l2_base)
-        if vao_lances > 0:
-            dwg.dim.DimVertical(x_max_ext, y_l2_topo, x_max_ext, y_l3_base, x_cota_dir1, y_l2_topo)
-        dwg.dim.DimVertical(x_max_ext, y_l3_base, x_max_ext, y_max_int, x_cota_dir1, y_l3_base)
-        dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
-
-        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
 
 
 
