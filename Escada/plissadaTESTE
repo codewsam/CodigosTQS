@@ -1881,9 +1881,9 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s['y_riser_top'] - sec_h8
             rebar8.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
-        # Rebatido detalhado com identificacao e cotas
-        x_reb8 = x0 + 60.0 if sentido == "DIREITA" else x0 - 60.0
-        y_reb8 = y0 - 50.0
+        # Rebatido detalhado com identificacao e cotas (Piso: coluna direita, embaixo)
+        x_reb8 = x0 + 130.0 if sentido == "DIREITA" else x0 - 130.0
+        y_reb8 = y0 - 85.0
         rebar8.RebarLine(x_reb8, y_reb8, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P8: %s" % str(e))
@@ -1925,9 +1925,9 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s['y_riser_top'] - sec_h9
             rebar9.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
-        # Rebatido detalhado com identificacao e cotas
-        x_reb9 = x0 + 120.0 if sentido == "DIREITA" else x0 - 120.0
-        y_reb9 = y0 + 10.0
+        # Rebatido detalhado com identificacao e cotas (Espelho: coluna direita, meio)
+        x_reb9 = x0 + 140.0 if sentido == "DIREITA" else x0 - 140.0
+        y_reb9 = y0 - 35.0
         rebar9.RebarLine(x_reb9, y_reb9, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P9: %s" % str(e))
@@ -1969,8 +1969,9 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s0['y_riser_bot'] - sec_h7 + s0['altura_riser']
             rebar7.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
-        x_reb7 = x0 - 20.0 if sentido == "DIREITA" else x0 + 20.0
-        y_reb7 = y0 - 50.0
+        # Rebatido detalhado com identificacao e cotas (Partida: coluna esquerda)
+        x_reb7 = x0 + 60.0 if sentido == "DIREITA" else x0 - 60.0
+        y_reb7 = y0 - 55.0
         rebar7.RebarLine(x_reb7, y_reb7, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P7: %s" % str(e))
@@ -2012,8 +2013,9 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s_top['y_riser_top'] - sec_h10
             rebar10.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
-        x_reb10 = x_topo - 50.0 if sentido == "DIREITA" else x_topo + 50.0
-        y_reb10 = y_topo - 40.0
+        # Rebatido detalhado com identificacao e cotas (Chegada: coluna direita, topo acima do P9)
+        x_reb10 = x0 + 140.0 if sentido == "DIREITA" else x0 - 140.0
+        y_reb10 = y0 + 20.0
         rebar10.RebarLine(x_reb10, y_reb10, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P10: %s" % str(e))
