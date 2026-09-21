@@ -1802,6 +1802,8 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
     """
     try:
         dwg.draw.level = 220
+        dwg.draw.style = 0
+        dwg.draw.color = 4
     except:
         pass
 
@@ -1871,7 +1873,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
         except:
             rebar8.mark = 8
 
-        # Inserir linhas nos degraus reais (do primeiro degrau ate o penultimo)
+        # Inserir linhas nos degraus reais (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
         for s in steps[:-1]:
             if sentido == "DIREITA":
                 x_ins = s['x_riser']
@@ -1879,7 +1881,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
             else:
                 x_ins = s['x_riser'] - sec_w8
                 y_ins = s['y_riser_top'] - sec_h8
-            rebar8.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
+            rebar8.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
         # Rebatido detalhado com identificacao e cotas (Piso: coluna direita, embaixo)
         x_reb8 = x0 + 130.0 if sentido == "DIREITA" else x0 - 130.0
@@ -1915,7 +1917,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
         except:
             rebar9.mark = 9
 
-        # Inserir linhas nos espelhos reais (do segundo espelho em diante)
+        # Inserir linhas nos espelhos reais (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
         for s in steps[1:]:
             if sentido == "DIREITA":
                 x_ins = s['x_riser']
@@ -1923,7 +1925,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
             else:
                 x_ins = s['x_riser'] - sec_w9
                 y_ins = s['y_riser_top'] - sec_h9
-            rebar9.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
+            rebar9.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
         # Rebatido detalhado com identificacao e cotas (Espelho: coluna direita, meio)
         x_reb9 = x0 + 140.0 if sentido == "DIREITA" else x0 - 140.0
@@ -1959,6 +1961,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
         except:
             rebar7.mark = 7
 
+        # Inserir linha na partida (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
         if steps:
             s0 = steps[0]
             if sentido == "DIREITA":
@@ -1967,7 +1970,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
             else:
                 x_ins = s0['x_riser'] - sec_w7
                 y_ins = s0['y_riser_bot'] - sec_h7 + s0['altura_riser']
-            rebar7.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
+            rebar7.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
         # Rebatido detalhado com identificacao e cotas (Partida: coluna esquerda)
         x_reb7 = x0 + 60.0 if sentido == "DIREITA" else x0 - 60.0
@@ -2003,6 +2006,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
         except:
             rebar10.mark = 10
 
+        # Inserir linha na chegada (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
         if steps:
             s_top = steps[-1]
             if sentido == "DIREITA":
@@ -2011,7 +2015,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
             else:
                 x_ins = s_top['x_riser'] - sec_w10
                 y_ins = s_top['y_riser_top'] - sec_h10
-            rebar10.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
+            rebar10.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
         # Rebatido detalhado com identificacao e cotas (Chegada: coluna direita, topo acima do P9)
         x_reb10 = x0 + 140.0 if sentido == "DIREITA" else x0 - 140.0
