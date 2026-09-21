@@ -353,11 +353,11 @@ def pedir_dados_armacao():
                     </div>
                     <div class="campo">
                         <label>Espessura da Laje (cm):</label>
-                        <input type="text" id="espessura_plissada" value="12.0">
+                        <input type="text" id="espessura_plissada" value="15.0">
                     </div>
                     <div class="campo">
                         <label>Transpasse / Ancoragem (cm):</label>
-                        <input type="text" id="transpasse_plissada" value="12.0">
+                        <input type="text" id="transpasse_plissada" value="15.0">
                     </div>
                 </div>
             </div>
@@ -1821,8 +1821,8 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
     espac = float(dados_ferros.get("espacamento_plissada", 15.0))
     mult = int(dados_ferros.get("multiplicador_plissada", 7))
     cobr = float(dados_ferros.get("cobrimento_plissada", 2.5))
-    espessura = float(dados_ferros.get("espessura_plissada", geo.get("espessura", 12.0)))
-    transp = float(dados_ferros.get("transpasse_plissada", 14.0))
+    espessura = float(dados_ferros.get("espessura_plissada", geo.get("espessura", 15.0)))
+    transp = float(dados_ferros.get("transpasse_plissada", 15.0))
 
     if espac <= 0:
         espac = 15.0
