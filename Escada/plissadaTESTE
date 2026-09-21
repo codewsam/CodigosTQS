@@ -357,7 +357,7 @@ def pedir_dados_armacao():
                     </div>
                     <div class="campo">
                         <label>Transpasse / Ancoragem (cm):</label>
-                        <input type="text" id="transpasse_plissada" value="14.0">
+                        <input type="text" id="transpasse_plissada" value="12.0">
                     </div>
                 </div>
             </div>
@@ -1827,17 +1827,21 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
     if mult <= 0:
         mult = 7
 
-    # Dimensoes das secoes de concreto para cada posicao
-    sec_w8 = round(piso + transp, 1)
+    # Dimensoes das secoes de concreto para cada posicao (alinhamento exato na casca do degrau)
+    # Piso: estribo horizontal com transpasse no nó vertical
+    sec_w8 = round(piso + (transp if transp > 0 else espessura), 1)
     sec_h8 = round(espessura, 1)
 
+    # Espelho: estribo vertical com ancoragem no degrau inferior
     sec_w9 = round(espessura, 1)
-    sec_h9 = round(espelho + transp, 1)
+    sec_h9 = round(espelho + (transp if transp > 0 else espessura), 1)
 
+    # Partida: estribo de arranque
     sec_w7 = round(espessura, 1)
-    sec_h7 = round(espelho + transp, 1)
+    sec_h7 = round(espelho + (transp if transp > 0 else espessura), 1)
 
-    sec_w10 = round(piso + transp + 8.0, 1)
+    # Chegada: estribo de ancoragem no patamar superior
+    sec_w10 = round(45.0 + 2.0 * cobr, 1)
     sec_h10 = round(espessura, 1)
 
     # --------------------------------------------------------------------------
@@ -1879,7 +1883,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
 
         # Rebatido detalhado com identificacao e cotas
         x_reb8 = x0 + 60.0 if sentido == "DIREITA" else x0 - 60.0
-        y_reb8 = y0 - 80.0
+        y_reb8 = y0 - 50.0
         rebar8.RebarLine(x_reb8, y_reb8, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P8: %s" % str(e))
@@ -1922,8 +1926,8 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
             rebar9.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
         # Rebatido detalhado com identificacao e cotas
-        x_reb9 = x0 + 130.0 if sentido == "DIREITA" else x0 - 130.0
-        y_reb9 = y0 - 80.0
+        x_reb9 = x0 + 120.0 if sentido == "DIREITA" else x0 - 120.0
+        y_reb9 = y0 + 10.0
         rebar9.RebarLine(x_reb9, y_reb9, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P9: %s" % str(e))
@@ -1966,7 +1970,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
             rebar7.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
         x_reb7 = x0 - 20.0 if sentido == "DIREITA" else x0 + 20.0
-        y_reb7 = y0 - 80.0
+        y_reb7 = y0 - 50.0
         rebar7.RebarLine(x_reb7, y_reb7, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P7: %s" % str(e))
@@ -2008,8 +2012,8 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s_top['y_riser_top'] - sec_h10
             rebar10.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
 
-        x_reb10 = x_topo - 40.0 if sentido == "DIREITA" else x_topo + 40.0
-        y_reb10 = y_topo - 60.0
+        x_reb10 = x_topo - 50.0 if sentido == "DIREITA" else x_topo + 50.0
+        y_reb10 = y_topo - 40.0
         rebar10.RebarLine(x_reb10, y_reb10, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P10: %s" % str(e))
