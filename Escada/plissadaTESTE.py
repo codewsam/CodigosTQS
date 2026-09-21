@@ -218,13 +218,13 @@ def pedir_dados_armacao():
                         "comp_dobra_planta": parseFloat(document.getElementById('comp_dobra_planta').value.replace(',', '.')),
                         "espelho_planta": parseFloat(document.getElementById('espelho_planta').value.replace(',', '.')),
 
-                        // Escada Plissada
+                        // Escada Plissada (transpasse e tals: espessura e transpasse fixos em 15.0)
                         "bitola_plissada": parseFloat(document.getElementById('bitola_plissada').value.replace(',', '.')),
                         "espacamento_plissada": parseFloat(document.getElementById('espacamento_plissada').value.replace(',', '.')),
                         "multiplicador_plissada": parseInt(document.getElementById('multiplicador_plissada').value),
                         "cobrimento_plissada": parseFloat(document.getElementById('cobrimento_plissada').value.replace(',', '.')),
-                        "espessura_plissada": parseFloat(document.getElementById('espessura_plissada').value.replace(',', '.')),
-                        "transpasse_plissada": parseFloat(document.getElementById('transpasse_plissada').value.replace(',', '.'))
+                        "espessura_plissada": 15.0,
+                        "transpasse_plissada": 15.0
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -350,14 +350,6 @@ def pedir_dados_armacao():
                     <div class="campo">
                         <label>Cobrimento (cm):</label>
                         <input type="text" id="cobrimento_plissada" value="2.5">
-                    </div>
-                    <div class="campo">
-                        <label>Espessura da Laje (cm):</label>
-                        <input type="text" id="espessura_plissada" value="15.0">
-                    </div>
-                    <div class="campo">
-                        <label>Transpasse / Ancoragem (cm):</label>
-                        <input type="text" id="transpasse_plissada" value="15.0">
                     </div>
                 </div>
             </div>
@@ -1821,6 +1813,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
     espac = float(dados_ferros.get("espacamento_plissada", 15.0))
     mult = int(dados_ferros.get("multiplicador_plissada", 7))
     cobr = float(dados_ferros.get("cobrimento_plissada", 2.5))
+    # transpasse e tals: definicao da espessura da laje e transpasse da escada plissada (padrao 15.0 cm)
     espessura = float(dados_ferros.get("espessura_plissada", geo.get("espessura", 15.0)))
     transp = float(dados_ferros.get("transpasse_plissada", 15.0))
 
