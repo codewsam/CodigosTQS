@@ -2018,6 +2018,137 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
         TQSUtil.writef("Erro ao gerar estribo P10: %s" % str(e))
 
 
+def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
+    """
+    Desenha as armaduras de distribuicao (bolinhas vermelhas em corte) da escada plissada:
+    1. 4 bolinhas nos nos quadrados de uniao dos estribos (cantos de cada degrau, partida e chegada).
+    2. Bolinhas no ponto medio superior e inferior de cada estribo horizontal (pisos e chegada).
+    """
+    sentido = geo.get("sentido", "DIREITA")
+    steps = geo.get("steps", [])
+    if not steps:
+        return
+
+    piso = geo["piso"]
+    espelho = geo["espelho"]
+
+    cobr = float(dados_ferros.get("cobrimento_plissada", 2.5))
+    espessura = float(dados_ferros.get("espessura_plissada", geo.get("espessura", 15.0)))
+    transp = float(dados_ferros.get("transpasse_plissada", 15.0))
+
+    sec_w8 = round(piso + (transp if transp > 0 else espessura), 1)
+    sec_w10 = round(45.0 + 2.0 * cobr, 1)
+
+    r_circ = 1.0
+    pontos_circulos = []
+
+    def adicionar_bolinha(cx, cy, d_min=2.0):
+        for ex, ey in pontos_circulos:
+            if math.hypot(cx - ex, cy - ey) < d_min:
+                return False
+        pontos_circulos.append((cx, cy))
+        return True
+
+    def adicionar_quadrado(x1, y1, x2, y2):
+        xmin = min(x1, x2)
+        xmax = max(x1, x2)
+        ymin = min(y1, y2)
+        ymax = max(y1, y2)
+        adicionar_bolinha(xmin + cobr + r_circ, ymax - cobr - r_circ)
+        adicionar_bolinha(xmax - cobr - r_circ, ymax - cobr - r_circ)
+        adicionar_bolinha(xmin + cobr + r_circ, ymin + cobr + r_circ)
+        adicionar_bolinha(xmax - cobr - r_circ, ymin + cobr + r_circ)
+
+    if sentido == "DIREITA":
+        # 1. Nos e pontos medios de cada degrau (P8 e P9)
+        for i, s in enumerate(steps[:-1]):
+            x_r = s['x_riser']
+            y_top = s['y_riser_top']
+            s_next = steps[i + 1]
+            x_next = s_next['x_riser']
+
+            # No do canto superior (uniao do espelho com o piso)
+            adicionar_quadrado(x_r, y_top - espessura, x_r + espessura, y_top)
+
+            # Ponto medio do estribo horizontal (em cima e em baixo)
+            x_mid = x_r + sec_w8 / 2.0
+            y_top_bar = y_top - cobr - r_circ
+            y_bot_bar = y_top - espessura + cobr + r_circ
+            adicionar_bolinha(x_mid, y_top_bar)
+            adicionar_bolinha(x_mid, y_bot_bar)
+
+            # No do canto reentrante (uniao do piso com o proximo espelho)
+            adicionar_quadrado(x_next, y_top - espessura, x_next + espessura, y_top)
+
+        # 2. Chegada / Topo (P10)
+        s_top = steps[-1]
+        x_top_r = s_top['x_riser']
+        y_top_val = s_top['y_riser_top']
+        # No da chegada com o ultimo espelho
+        adicionar_quadrado(x_top_r, y_top_val - espessura, x_top_r + espessura, y_top_val)
+
+        # Ponto medio do estribo horizontal de chegada P10
+        x_mid10 = x_top_r + sec_w10 / 2.0
+        y_top_bar10 = y_top_val - cobr - r_circ
+        y_bot_bar10 = y_top_val - espessura + cobr + r_circ
+        adicionar_bolinha(x_mid10, y_top_bar10)
+        adicionar_bolinha(x_mid10, y_bot_bar10)
+
+        # Extremidade direita do P10
+        x_end10 = x_top_r + sec_w10 - cobr - r_circ
+        adicionar_bolinha(x_end10, y_top_bar10)
+        adicionar_bolinha(x_end10, y_bot_bar10)
+
+    else:  # Subindo para a ESQUERDA
+        # 1. Nos e pontos medios de cada degrau (P8 e P9)
+        for i, s in enumerate(steps[:-1]):
+            x_r = s['x_riser']
+            y_top = s['y_riser_top']
+            s_next = steps[i + 1]
+            x_next = s_next['x_riser']
+
+            # No do canto superior
+            adicionar_quadrado(x_r - espessura, y_top - espessura, x_r, y_top)
+
+            # Ponto medio do estribo horizontal
+            x_mid = x_r - sec_w8 / 2.0
+            y_top_bar = y_top - cobr - r_circ
+            y_bot_bar = y_top - espessura + cobr + r_circ
+            adicionar_bolinha(x_mid, y_top_bar)
+            adicionar_bolinha(x_mid, y_bot_bar)
+
+            # No do canto reentrante
+            adicionar_quadrado(x_next - espessura, y_top - espessura, x_next, y_top)
+
+        # 3. Chegada / Topo (P10)
+        s_top = steps[-1]
+        x_top_r = s_top['x_riser']
+        y_top_val = s_top['y_riser_top']
+        adicionar_quadrado(x_top_r - espessura, y_top_val - espessura, x_top_r, y_top_val)
+
+        x_mid10 = x_top_r - sec_w10 / 2.0
+        y_top_bar10 = y_top_val - cobr - r_circ
+        y_bot_bar10 = y_top_val - espessura + cobr + r_circ
+        adicionar_bolinha(x_mid10, y_top_bar10)
+        adicionar_bolinha(x_mid10, y_bot_bar10)
+
+        x_end10 = x_top_r - sec_w10 + cobr + r_circ
+        adicionar_bolinha(x_end10, y_top_bar10)
+        adicionar_bolinha(x_end10, y_bot_bar10)
+
+    # Desenhar circulos vermelhos no nivel 220
+    try:
+        draw = dwg.draw
+        draw.level = 220
+        draw.color = 1   # Vermelho
+        draw.style = 0
+
+        for cx, cy in pontos_circulos:
+            draw.Circle(cx, cy, r_circ)
+    except Exception as e:
+        TQSUtil.writef("Erro ao desenhar distribuicao plissada: %s" % str(e))
+
+
 # ==============================================================================
 # COMANDO PRINCIPAL UNIFICADO ACIONADO PELO MENU TQS ("2. Armar Escada")
 # ==============================================================================
@@ -2164,6 +2295,7 @@ def meucmd(eag, tqsjan):
             return
 
         desenhar_estribos_escada_plissada(tqsjan.dwg, geo_plissada, dados_ferros)
+        desenhar_distribuicao_escada_plissada(tqsjan.dwg, geo_plissada, dados_ferros)
         tqsjan.Regen()
         return
 
