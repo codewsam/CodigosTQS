@@ -1907,6 +1907,44 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
     sec_h10 = round(espessura, 1)
 
     # --------------------------------------------------------------------------
+    # POSICIONAMENTO DOS REBATIDOS EXTERNOS (2 LINHAS ORGANIZADAS)
+    # Linha 1 (Topo): Patamar Superior (P10) a esquerda | Patamar Inferior (P7) a direita
+    # Linha 2 (Fundo): Espelho (P9) a esquerda | Piso (P8) a direita
+    # --------------------------------------------------------------------------
+    if sentido == "DIREITA":
+        x_base_reb = x0 + 80.0
+        y_linha_sup = y0 - 45.0
+        y_linha_inf = y0 - 95.0
+
+        x_reb10 = x_base_reb
+        y_reb10 = y_linha_sup
+
+        x_reb7 = x_base_reb + max(sec_w10, 50.0) + 30.0
+        y_reb7 = y_linha_sup
+
+        x_reb9 = x_base_reb
+        y_reb9 = y_linha_inf
+
+        x_reb8 = x_base_reb + max(sec_w9, 15.0) + 40.0
+        y_reb8 = y_linha_inf
+    else:
+        x_base_reb = x0 - 80.0
+        y_linha_sup = y0 - 45.0
+        y_linha_inf = y0 - 95.0
+
+        x_reb10 = x_base_reb - max(sec_w10, 50.0)
+        y_reb10 = y_linha_sup
+
+        x_reb7 = x_base_reb - max(sec_w10, 50.0) - max(sec_w7, 50.0) - 30.0
+        y_reb7 = y_linha_sup
+
+        x_reb9 = x_base_reb - max(sec_w9, 15.0)
+        y_reb9 = y_linha_inf
+
+        x_reb8 = x_base_reb - max(sec_w9, 15.0) - max(sec_w8, 30.0) - 40.0
+        y_reb8 = y_linha_inf
+
+    # --------------------------------------------------------------------------
     # 1. ESTRIBO DE PISO / HORIZONTAL (P8)
     # --------------------------------------------------------------------------
     qtd_p8 = max(1, n_deg - 1) * mult
@@ -1943,9 +1981,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s['y_riser_top'] - sec_h8
             rebar8.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
-        # Rebatido detalhado com identificacao e cotas (Piso: coluna direita, embaixo)
-        x_reb8 = x0 + 130.0 if sentido == "DIREITA" else x0 - 130.0
-        y_reb8 = y0 - 85.0
+        # Rebatido detalhado com identificacao e cotas (Piso: linha inferior, a direita do espelho)
         rebar8.RebarLine(x_reb8, y_reb8, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P8: %s" % str(e))
@@ -1987,9 +2023,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s['y_riser_top'] - sec_h9
             rebar9.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
-        # Rebatido detalhado com identificacao e cotas (Espelho: coluna direita, meio)
-        x_reb9 = x0 + 140.0 if sentido == "DIREITA" else x0 - 140.0
-        y_reb9 = y0 - 35.0
+        # Rebatido detalhado com identificacao e cotas (Espelho: linha inferior, a esquerda)
         rebar9.RebarLine(x_reb9, y_reb9, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P9: %s" % str(e))
@@ -2033,9 +2067,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                     y_ins = s0['y_riser_bot'] - sec_h7
                 rebar7.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
-            # Rebatido detalhado com identificacao e cotas (Partida: coluna esquerda)
-            x_reb7 = x0 + 60.0 if sentido == "DIREITA" else x0 - 60.0
-            y_reb7 = y0 - 55.0
+            # Rebatido detalhado com identificacao e cotas (Patamar Partida: linha superior, a direita do P10)
             rebar7.RebarLine(x_reb7, y_reb7, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
         except Exception as e:
             TQSUtil.writef("Erro ao gerar estribo P7: %s" % str(e))
@@ -2078,9 +2110,7 @@ def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
                 y_ins = s_top['y_riser_top'] - sec_h10
             rebar10.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
 
-        # Rebatido detalhado com identificacao e cotas (Chegada: coluna direita, topo acima do P9)
-        x_reb10 = x0 + 140.0 if sentido == "DIREITA" else x0 - 140.0
-        y_reb10 = y0 + 20.0
+        # Rebatido detalhado com identificacao e cotas (Patamar Chegada: linha superior, a esquerda)
         rebar10.RebarLine(x_reb10, y_reb10, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
     except Exception as e:
         TQSUtil.writef("Erro ao gerar estribo P10: %s" % str(e))
@@ -2149,17 +2179,22 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
             # No de uniao do patamar de partida com o primeiro espelho
             adicionar_quadrado(x_base_r, y_base_val - espessura, x_base_r + espessura, y_base_val)
 
+            # Bolinha proxima da curva/no (na entrada do primeiro espelho)
+            x_near_corner = x_base_r - cobr - r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar_p)
+            adicionar_bolinha(x_near_corner, y_bot_bar_p)
+
+            # Distribuicao regular da direita para a esquerda ao longo do patamar
             x_ini_dist = x_base_r - pat_part + cobr + r_circ
-            x_fim_dist = x_base_r
+            x_cur = x_near_corner - espac_dist
+            while x_cur >= x_ini_dist + 2.0:
+                adicionar_bolinha(x_cur, y_top_bar_p)
+                adicionar_bolinha(x_cur, y_bot_bar_p)
+                x_cur -= espac_dist
+
             # Extremidade inicial do patamar de partida
             adicionar_bolinha(x_ini_dist, y_top_bar_p)
             adicionar_bolinha(x_ini_dist, y_bot_bar_p)
-
-            x_cur = x_ini_dist + espac_dist
-            while x_cur <= x_fim_dist - 2.0:
-                adicionar_bolinha(x_cur, y_top_bar_p)
-                adicionar_bolinha(x_cur, y_bot_bar_p)
-                x_cur += espac_dist
 
         # 2. Nos e pontos medios de cada degrau (P8 e P9)
         for i, s in enumerate(steps[:-1]):
@@ -2192,10 +2227,14 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
         adicionar_quadrado(x_top_r, y_top_val - espessura, x_top_r + espessura, y_top_val)
 
         if pat_cheg > 45.0:
-            # Distribuicao ao longo de todo o patamar de chegada ate o fim
-            x_ini_dist = x_top_r + espessura
+            # Bolinha proxima da curva/no da chegada
+            x_near_corner = x_top_r + espessura + cobr + r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar10)
+            adicionar_bolinha(x_near_corner, y_bot_bar10)
+
+            # Distribuicao regular ao longo do patamar de chegada ate o fim
             x_fim_dist = x_top_r + pat_cheg - cobr - r_circ
-            x_cur = x_ini_dist + espac_dist
+            x_cur = x_near_corner + espac_dist
             while x_cur <= x_fim_dist - 2.0:
                 adicionar_bolinha(x_cur, y_top_bar10)
                 adicionar_bolinha(x_cur, y_bot_bar10)
@@ -2224,16 +2263,22 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
             # No de uniao do patamar de partida com o primeiro espelho
             adicionar_quadrado(x_base_r - espessura, y_base_val - espessura, x_base_r, y_base_val)
 
-            x_ini_dist = x_base_r + pat_part - cobr - r_circ
-            x_fim_dist = x_base_r
-            adicionar_bolinha(x_ini_dist, y_top_bar_p)
-            adicionar_bolinha(x_ini_dist, y_bot_bar_p)
+            # Bolinha proxima da curva/no (na entrada do primeiro espelho)
+            x_near_corner = x_base_r + cobr + r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar_p)
+            adicionar_bolinha(x_near_corner, y_bot_bar_p)
 
-            x_cur = x_ini_dist - espac_dist
-            while x_cur >= x_fim_dist + 2.0:
+            # Distribuicao regular da esquerda para a direita ao longo do patamar
+            x_ini_dist = x_base_r + pat_part - cobr - r_circ
+            x_cur = x_near_corner + espac_dist
+            while x_cur <= x_ini_dist - 2.0:
                 adicionar_bolinha(x_cur, y_top_bar_p)
                 adicionar_bolinha(x_cur, y_bot_bar_p)
-                x_cur -= espac_dist
+                x_cur += espac_dist
+
+            # Extremidade inicial do patamar de partida
+            adicionar_bolinha(x_ini_dist, y_top_bar_p)
+            adicionar_bolinha(x_ini_dist, y_bot_bar_p)
 
         # 2. Nos e pontos medios de cada degrau (P8 e P9)
         for i, s in enumerate(steps[:-1]):
@@ -2265,9 +2310,13 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
         adicionar_quadrado(x_top_r - espessura, y_top_val - espessura, x_top_r, y_top_val)
 
         if pat_cheg > 45.0:
-            x_ini_dist = x_top_r - espessura
+            # Bolinha proxima da curva/no da chegada
+            x_near_corner = x_top_r - espessura - cobr - r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar10)
+            adicionar_bolinha(x_near_corner, y_bot_bar10)
+
             x_fim_dist = x_top_r - pat_cheg + cobr + r_circ
-            x_cur = x_ini_dist - espac_dist
+            x_cur = x_near_corner - espac_dist
             while x_cur >= x_fim_dist + 2.0:
                 adicionar_bolinha(x_cur, y_top_bar10)
                 adicionar_bolinha(x_cur, y_bot_bar10)
