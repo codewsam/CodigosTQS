@@ -168,23 +168,31 @@ def pedir_dados_armacao():
                 border: none;
                 font-weight: 600;
             }}
+            .card-purple h3 {{
+                color: #6a1b9a;
+            }}
+            .btn-plissada {{
+                background: linear-gradient(135deg, #6a1b9a 0%, #4a148c 100%);
+                color: #fff;
+                border: none;
+                font-weight: 600;
+            }}
         </style>
         <script>
-            window.resizeTo(460, 520);
+            window.resizeTo(490, 560);
 
             function setTab(tabName) {{
                 document.getElementById('tabCorte').className = (tabName == 'corte') ? 'tab active' : 'tab';
                 document.getElementById('tabPlanta').className = (tabName == 'planta') ? 'tab active' : 'tab';
+                document.getElementById('tabPlissada').className = (tabName == 'plissada') ? 'tab active' : 'tab';
+
                 document.getElementById('contentCorte').className = (tabName == 'corte') ? 'tab-content active' : 'tab-content';
                 document.getElementById('contentPlanta').className = (tabName == 'planta') ? 'tab-content active' : 'tab-content';
+                document.getElementById('contentPlissada').className = (tabName == 'plissada') ? 'tab-content active' : 'tab-content';
                 
-                if (tabName == 'corte') {{
-                    document.getElementById('btnCorte').style.display = 'inline-block';
-                    document.getElementById('btnPlanta').style.display = 'none';
-                }} else {{
-                    document.getElementById('btnCorte').style.display = 'none';
-                    document.getElementById('btnPlanta').style.display = 'inline-block';
-                }}
+                document.getElementById('btnCorte').style.display = (tabName == 'corte') ? 'inline-block' : 'none';
+                document.getElementById('btnPlanta').style.display = (tabName == 'planta') ? 'inline-block' : 'none';
+                document.getElementById('btnPlissada').style.display = (tabName == 'plissada') ? 'inline-block' : 'none';
             }}
 
             function confirmar(modoEscolhido) {{
@@ -203,12 +211,22 @@ def pedir_dados_armacao():
                         "espac_dist": parseFloat(document.getElementById('espac_dist').value.replace(',', '.')),
 
                         // Planta Baixa
+                        "tipo_escada_planta": document.getElementById('tipo_escada_planta').value,
                         "bitola_planta": parseFloat(document.getElementById('bitola_planta').value.replace(',', '.')),
                         "espacamento_planta": parseFloat(document.getElementById('espacamento_planta').value.replace(',', '.')),
                         "cobrimento_planta": parseFloat(document.getElementById('cobrimento_planta').value.replace(',', '.')),
                         "com_dobra_planta": parseInt(document.getElementById('com_dobra_planta').value),
                         "comp_dobra_planta": parseFloat(document.getElementById('comp_dobra_planta').value.replace(',', '.')),
-                        "espelho_planta": parseFloat(document.getElementById('espelho_planta').value.replace(',', '.'))
+                        "espelho_planta": parseFloat(document.getElementById('espelho_planta').value.replace(',', '.')),
+
+                        // Escada Plissada (transpasse e tals: espessura e transpasse fixos em 15.0)
+                        "bitola_plissada": parseFloat(document.getElementById('bitola_plissada').value.replace(',', '.')),
+                        "espacamento_plissada": parseFloat(document.getElementById('espacamento_plissada').value.replace(',', '.')),
+                        "multiplicador_plissada": parseInt(document.getElementById('multiplicador_plissada').value),
+                        "cobrimento_plissada": parseFloat(document.getElementById('cobrimento_plissada').value.replace(',', '.')),
+                        "espac_dist_plissada": parseFloat(document.getElementById('espac_dist_plissada').value.replace(',', '.')),
+                        "espessura_plissada": 15.0,
+                        "transpasse_plissada": 15.0
                     }};
 
                     file.Write(JSON.stringify(dados));
@@ -230,6 +248,7 @@ def pedir_dados_armacao():
             <div class="tabs">
                 <div id="tabCorte" class="tab active" onclick="setTab('corte')">1. Corte / Perfil</div>
                 <div id="tabPlanta" class="tab" onclick="setTab('planta')">2. Planta Baixa</div>
+                <div id="tabPlissada" class="tab" onclick="setTab('plissada')">3. Escada Plissada</div>
             </div>
 
             <!-- CONTEUDO CORTE -->
@@ -271,6 +290,13 @@ def pedir_dados_armacao():
                 <div class="card card-blue">
                     <h3>Armadura da Planta Baixa</h3>
                     <div class="campo">
+                        <label>Tipo de Escada:</label>
+                        <select id="tipo_escada_planta">
+                            <option value="CONVENCIONAL" selected>Convencional</option>
+                            <option value="PLISSADA">Plissada (Cascata)</option>
+                        </select>
+                    </div>
+                    <div class="campo">
                         <label>Bitola:</label>
                         <select id="bitola_planta">
                             <option value="5.0">5.0 mm</option>
@@ -282,7 +308,7 @@ def pedir_dados_armacao():
                         </select>
                     </div>
                     <div class="campo">
-                        <label>Espacamento (cm):</label>
+                        <label>Espacamento da Armadura (cm):</label>
                         <input type="text" id="espacamento_planta" value="15">
                     </div>
                     <div class="campo">
@@ -307,11 +333,46 @@ def pedir_dados_armacao():
                 </div>
             </div>
 
-            <!-- DOIS BOTOES DE ACAO LADO A LADO -->
+            <!-- CONTEUDO ESCADA PLISSADA -->
+            <div id="contentPlissada" class="tab-content">
+                <div class="card card-purple">
+                    <h3>Armadura de Estribos (Escada Plissada)</h3>
+                    <div class="campo">
+                        <label>Bitola do Estribo:</label>
+                        <select id="bitola_plissada">
+                            <option value="5.0">5.0 mm</option>
+                            <option value="6.3">6.3 mm</option>
+                            <option value="8.0" selected>8.0 mm</option>
+                            <option value="10.0">10.0 mm</option>
+                            <option value="12.5">12.5 mm</option>
+                            <option value="16.0">16.0 mm</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label>Espacamento (cm):</label>
+                        <input type="text" id="espacamento_plissada" value="15">
+                    </div>
+                    <div class="campo">
+                        <label>Multiplicador por Degrau (ex: 7x):</label>
+                        <input type="text" id="multiplicador_plissada" value="7">
+                    </div>
+                    <div class="campo">
+                        <label>Cobrimento (cm):</label>
+                        <input type="text" id="cobrimento_plissada" value="2.5">
+                    </div>
+                    <div class="campo">
+                        <label>Espac. Distribuicao nos Patamares (cm):</label>
+                        <input type="text" id="espac_dist_plissada" value="15">
+                    </div>
+                </div>
+            </div>
+
+            <!-- TRES BOTOES DE ACAO CONFORME A ABA SELECIONADA -->
             <div class="btns">
                 <button onclick="window.close()">Cancelar</button>
                 <button id="btnCorte" class="btn-corte" onclick="confirmar('CORTE')">&#9658; Escada</button>
                 <button id="btnPlanta" class="btn-planta" style="display: none;" onclick="confirmar('PLANTA')">&#9658; Planta Baixa</button>
+                <button id="btnPlissada" class="btn-plissada" style="display: none;" onclick="confirmar('PLISSADA')">&#9658; Escada Plissada</button>
             </div>
         </div>
     </body>
@@ -693,24 +754,19 @@ def identificar_geometria_planta_escada(linhas, textos=None):
         vert_esq = [v for v in verticais if v[0] < x_min_deg - 5.0 and not (v[2] < y_min_total - 60.0 or v[1] > y_max_total + 60.0)]
         if vert_esq:
             xs_esq = sorted(list(set(round(v[0], 1) for v in vert_esq)))
+            x_fim_pat_e = xs_esq[-1] if (x_min_deg - xs_esq[-1] <= 40.0) else x_min_deg
             x_outer_esq = xs_esq[0]  # Linha vertical mais a esquerda (face externa)
             
             # Procurar face interna da viga (distante entre 10 e 35 cm da face externa)
             x_inner_esq = None
-            for x_cand in xs_esq:
-                if (10.0 <= x_cand - x_outer_esq <= 35.0) and (x_min_deg - x_cand >= 30.0):
+            for x_cand in xs_esq[1:]:
+                if (10.0 <= x_cand - x_outer_esq <= 35.0) and (x_fim_pat_e - x_cand >= 30.0):
                     x_inner_esq = x_cand
                     break
             
-            # Se achou face interna, usa ela; senao desconta 20cm se for linha externa
-            if x_inner_esq is not None:
-                x_livre_esq = x_inner_esq
-            else:
-                tot = x_min_deg - x_outer_esq
-                x_livre_esq = (x_outer_esq + 20.0) if tot > 60.0 else x_outer_esq
-
-            comp_esq_livre = x_min_deg - x_livre_esq
-            comp_esq_tot = x_min_deg - x_outer_esq
+            x_livre_esq = x_inner_esq if x_inner_esq is not None else x_outer_esq
+            comp_esq_livre = x_fim_pat_e - x_livre_esq
+            comp_esq_tot = x_fim_pat_e - x_outer_esq
             if comp_esq_livre >= 25.0:
                 patamar_esq = {
                     'existe': True,
@@ -720,38 +776,34 @@ def identificar_geometria_planta_escada(linhas, textos=None):
                     'x_min': round(x_livre_esq, 1),
                     'x_min_livre': round(x_livre_esq, 1),
                     'x_min_externo': round(x_outer_esq, 1),
-                    'x_max': round(x_min_deg, 1)
+                    'x_max': round(x_fim_pat_e, 1)
                 }
 
         # Patamar Direito: detectar vao livre SEM a viga/parede
         vert_dir = [v for v in verticais if v[0] > x_max_deg + 5.0 and not (v[2] < y_min_total - 60.0 or v[1] > y_max_total + 60.0)]
         if vert_dir:
-            xs_dir = sorted(list(set(round(v[0], 1) for v in vert_dir)), reverse=True)
-            x_outer_dir = xs_dir[0]  # Linha vertical mais a direita (face externa)
+            xs_dir = sorted(list(set(round(v[0], 1) for v in vert_dir)))
+            x_ini_pat_d = xs_dir[0] if (xs_dir[0] - x_max_deg <= 40.0) else x_max_deg
+            x_outer_dir = xs_dir[-1]  # Linha vertical mais a direita (face externa)
             
             # Procurar face interna da viga (distante entre 10 e 35 cm da face externa)
             x_inner_dir = None
-            for x_cand in xs_dir:
-                if (10.0 <= x_outer_dir - x_cand <= 35.0) and (x_cand - x_max_deg >= 30.0):
+            for x_cand in reversed(xs_dir[:-1]):
+                if (10.0 <= x_outer_dir - x_cand <= 35.0) and (x_cand - x_ini_pat_d >= 30.0):
                     x_inner_dir = x_cand
                     break
             
-            if x_inner_dir is not None:
-                x_livre_dir = x_inner_dir
-            else:
-                tot = x_outer_dir - x_max_deg
-                x_livre_dir = (x_outer_dir - 20.0) if tot > 60.0 else x_outer_dir
-
-            comp_dir_livre = x_livre_dir - x_max_deg
-            comp_dir_tot = x_outer_dir - x_max_deg
+            x_livre_dir = x_inner_dir if x_inner_dir is not None else x_outer_dir
+            comp_dir_livre = x_livre_dir - x_ini_pat_d
+            comp_dir_tot = x_outer_dir - x_ini_pat_d
             if comp_dir_livre >= 25.0:
                 patamar_dir = {
                     'existe': True,
                     'comprimento': round(comp_dir_livre, 1),
                     'comprimento_total': round(comp_dir_tot, 1),
                     'comprimento_livre': round(comp_dir_livre, 1),
-                    'x_min': round(x_max_deg, 1),
-                    'x_min_livre': round(x_max_deg, 1),
+                    'x_min': round(x_ini_pat_d, 1),
+                    'x_min_livre': round(x_ini_pat_d, 1),
                     'x_max': round(x_livre_dir, 1),
                     'x_max_livre': round(x_livre_dir, 1),
                     'x_max_externo': round(x_outer_dir, 1)
@@ -795,6 +847,204 @@ def identificar_geometria_planta_escada(linhas, textos=None):
         'y_topo_externo': round(y_outer_max, 1),
         'sentido': sentido_geral,
         'textos': textos
+    }
+
+
+# ==============================================================================
+# RECONHECIMENTO GEOMETRICO DE ESCADA PLISSADA (CASCATA / ZIGUE-ZAGUE)
+# ==============================================================================
+def identificar_geometria_escada_plissada(linhas):
+    """
+    Analisa as linhas selecionadas e identifica os degraus em zigue-zague
+    da escada plissada (pisos, espelhos, espessura da laje e patamares).
+    Filtra rigorosamente apenas os espelhos de topo (face externa dos degraus).
+    """
+    horizontais = []
+    verticais = []
+
+    for (x1, y1), (x2, y2) in linhas:
+        dx = abs(x1 - x2)
+        dy = abs(y1 - y2)
+        length = math.hypot(dx, dy)
+        if length < 2.0:
+            continue
+        if dx < 0.2:  # Vertical
+            verticais.append((x1, min(y1, y2), max(y1, y2), dy))
+        elif dy < 0.2:  # Horizontal
+            horizontais.append((min(x1, x2), max(x1, x2), y1, dx))
+
+    if not verticais or not horizontais:
+        return None
+
+    # Espelhos candidatos (verticais com altura típica de espelho entre 10 e 35 cm)
+    espelhos_cands = [v for v in verticais if 10.0 <= v[3] <= 35.0]
+    if len(espelhos_cands) < 2:
+        return None
+
+    # Filtrar exclusivamente espelhos superiores (se houver espelho inferior próximo em X com y_max menor, descartar o inferior)
+    espelhos_topo = []
+    for v in espelhos_cands:
+        tem_superior = False
+        for v_outro in espelhos_cands:
+            if v_outro is not v and abs(v[0] - v_outro[0]) < 18.0 and (v_outro[2] - v[2]) > 5.0:
+                tem_superior = True
+                break
+        if not tem_superior:
+            espelhos_topo.append(v)
+
+    if len(espelhos_topo) < 2:
+        espelhos_topo = espelhos_cands
+
+    # Montar cadeias contínuas de espelhos de topo
+    chains = []
+    visited = set()
+    for e in sorted(espelhos_topo, key=lambda v: (v[1], v[0])):
+        if (round(e[0], 1), round(e[1], 1)) in visited:
+            continue
+        chain = [e]
+        curr = e
+        while True:
+            candidates = [
+                c for c in espelhos_topo
+                if (round(c[0], 1), round(c[1], 1)) not in visited
+                and 8.0 <= (c[1] - curr[1]) <= 28.0
+                and 16.0 <= abs(c[0] - curr[0]) <= 40.0
+            ]
+            if not candidates:
+                break
+            if len(chain) >= 2:
+                prev_dx = chain[-1][0] - chain[-2][0]
+                prev_dy = chain[-1][1] - chain[-2][1]
+                candidates.sort(key=lambda c: (abs(c[0] - curr[0] - prev_dx), abs(c[1] - curr[1] - prev_dy)))
+            else:
+                candidates.sort(key=lambda c: abs(c[1] - curr[1] - curr[3]))
+            next_step = candidates[0]
+            chain.append(next_step)
+            curr = next_step
+
+        if len(chain) >= 2:
+            for item in chain:
+                visited.add((round(item[0], 1), round(item[1], 1)))
+            chains.append(chain)
+
+    if not chains:
+        return None
+
+    # Escolher a cadeia com maior número de degraus
+    chains.sort(key=lambda c: len(c), reverse=True)
+    espelhos_lance = chains[0]
+    n_degraus = len(espelhos_lance)
+
+    dx_subida = espelhos_lance[1][0] - espelhos_lance[0][0] if len(espelhos_lance) > 1 else 1.0
+    sentido = 'DIREITA' if dx_subida > 0 else 'ESQUERDA'
+
+    x0 = espelhos_lance[0][0]
+    y0 = espelhos_lance[0][1]
+    x_topo = espelhos_lance[-1][0]
+    y_topo = espelhos_lance[-1][2]
+
+    # Medias de piso e espelho
+    pisos_vals = [abs(espelhos_lance[i+1][0] - espelhos_lance[i][0]) for i in range(n_degraus - 1)]
+    piso = (sum(pisos_vals) / len(pisos_vals)) if pisos_vals else 28.0
+    espelho = sum(e[3] for e in espelhos_lance) / n_degraus
+
+    # Detectar espessura da laje plissada (distancia vertical entre o piso superior e o piso inferior)
+    espessuras_detectadas = []
+    for e_step in espelhos_lance:
+        y_tread_top = e_step[2]
+        cands_h = [h for h in horizontais if (h[2] < y_tread_top - 5.0) and (h[2] >= y_tread_top - 30.0)]
+        for h in cands_h:
+            dist = y_tread_top - h[2]
+            if 8.0 <= dist <= 25.0:
+                espessuras_detectadas.append(dist)
+
+    if espessuras_detectadas:
+        espessura_calc = sum(espessuras_detectadas) / len(espessuras_detectadas)
+    else:
+        espessura_calc = 12.0
+
+    # Construir dados detalhados de cada degrau
+    steps_data = []
+    for i, e_step in enumerate(espelhos_lance):
+        x_r = e_step[0]
+        y_r_bot = e_step[1]
+        y_r_top = e_step[2]
+        steps_data.append({
+            'indice': i,
+            'x_riser': x_r,
+            'y_riser_bot': y_r_bot,
+            'y_riser_top': y_r_top,
+            'altura_riser': e_step[3]
+        })
+
+    # --------------------------------------------------------------------------
+    # Detectar Patamar de Partida (Base) e Patamar de Chegada (Topo)
+    # --------------------------------------------------------------------------
+    patamar_partida = 0.0
+    patamar_chegada = 0.0
+    x_pat_partida = x0
+    x_pat_chegada = x_topo
+
+    if sentido == 'DIREITA':
+        # Partida (a esquerda de x0 no nivel do piso inferior y0 ou y0 - espessura)
+        cands_h_part = [
+            h for h in horizontais
+            if (h[0] < x0 - 10.0) and (abs(h[2] - y0) < 6.0 or abs(h[2] - (y0 - espessura_calc)) < 6.0)
+        ]
+        if cands_h_part:
+            min_x_part = min(h[0] for h in cands_h_part)
+            patamar_partida = max(0.0, x0 - min_x_part)
+            x_pat_partida = min_x_part
+
+        # Chegada (a direita de x_topo no nivel do piso superior y_topo ou y_topo - espessura)
+        cands_h_cheg = [
+            h for h in horizontais
+            if (h[1] > x_topo + 10.0) and (abs(h[2] - y_topo) < 6.0 or abs(h[2] - (y_topo - espessura_calc)) < 6.0)
+        ]
+        if cands_h_cheg:
+            max_x_cheg = max(h[1] for h in cands_h_cheg)
+            patamar_chegada = max(0.0, max_x_cheg - x_topo)
+            x_pat_chegada = max_x_cheg
+    else:  # Subindo para a ESQUERDA
+        # Partida (a direita de x0 no nivel y0 ou y0 - espessura)
+        cands_h_part = [
+            h for h in horizontais
+            if (h[1] > x0 + 10.0) and (abs(h[2] - y0) < 6.0 or abs(h[2] - (y0 - espessura_calc)) < 6.0)
+        ]
+        if cands_h_part:
+            max_x_part = max(h[1] for h in cands_h_part)
+            patamar_partida = max(0.0, max_x_part - x0)
+            x_pat_partida = max_x_part
+
+        # Chegada (a esquerda de x_topo no nivel y_topo ou y_topo - espessura)
+        cands_h_cheg = [
+            h for h in horizontais
+            if (h[0] < x_topo - 10.0) and (abs(h[2] - y_topo) < 6.0 or abs(h[2] - (y_topo - espessura_calc)) < 6.0)
+        ]
+        if cands_h_cheg:
+            min_x_cheg = min(h[0] for h in cands_h_cheg)
+            patamar_chegada = max(0.0, x_topo - min_x_cheg)
+            x_pat_chegada = min_x_cheg
+
+    return {
+        "tipo": "ESCADA_PLISSADA",
+        "sentido": sentido,
+        "n_degraus": n_degraus,
+        "x0": x0,
+        "y0": y0,
+        "x_topo": x_topo,
+        "y_topo": y_topo,
+        "piso": round(piso, 1),
+        "espelho": round(espelho, 1),
+        "espessura": round(espessura_calc, 1),
+        "patamar_partida": round(patamar_partida, 1),
+        "patamar_chegada": round(patamar_chegada, 1),
+        "x_pat_partida": round(x_pat_partida, 1),
+        "x_pat_chegada": round(x_pat_chegada, 1),
+        "espelhos": espelhos_lance,
+        "steps": steps_data,
+        "horizontais": horizontais,
+        "verticais": verticais
     }
 
 
@@ -1371,6 +1621,9 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     if espac <= 0:
         espac = 15.0
 
+    tipo_escada = dados_ferros.get("tipo_escada_planta", "CONVENCIONAL")
+    is_plissada = (tipo_escada == "PLISSADA" or str(tipo_escada) == "1")
+
     tem_dobra = int(dados_ferros.get("com_dobra_planta", 1)) == 1
     comp_dobra = float(dados_ferros.get("comp_dobra_planta", 15.0)) if tem_dobra else 0.0
 
@@ -1383,16 +1636,23 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     y_fim_total = y_topo_laje - cobr
     largura_total = y_fim_total - y_ini_total
 
+    espessura_pliss = float(dados_ferros.get("espessura_plissada", 15.0))
+
     # 1. Armaduras no Patamar Esquerdo (ferros com dobras viradas para fora: ___|    |___)
+    # Linha tracejada = camada superior; Linha continua = camada inferior
     pat_esq = geo_planta.get("patamar_esquerdo")
     if pat_esq and pat_esq.get("existe"):
         comp_pat = pat_esq["comprimento"]
-        qtd_esq = int(math.ceil(comp_pat / espac)) + 1
+        # Patamar de partida (esquerdo): ceil(comp_pat / espac) -> ex: 75 / 15 = 5 ferros
+        if is_plissada:
+            qtd_esq = max(1, int(math.ceil(comp_pat / espac)))
+        else:
+            qtd_esq = int(math.ceil(comp_pat / espac)) + 1
         
         x_p1 = pat_esq["x_min"] + comp_pat * 0.35
         x_p2 = pat_esq["x_min"] + comp_pat * 0.70
 
-        # Barra 1 (esquerda): TRACEJADA com dobras apontando para a ESQUERDA (ipatas = 4)
+        # Barra 1 (esquerda): TRACEJADA (camada superior) com dobras apontando para a ESQUERDA (ipatas = 4)
         try:
             rebar_pat1 = TQSDwg.SmartRebar(dwg)
             rebar_pat1.type = TQSDwg.ICPFRT
@@ -1417,7 +1677,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 1: %s" % str(e))
 
-        # Barra 2 (direita): CONTINUA com dobras apontando para a DIREITA (ipatas = 1)
+        # Barra 2 (direita): CONTINUA (camada inferior) com dobras apontando para a DIREITA (ipatas = 1)
         try:
             rebar_pat2 = TQSDwg.SmartRebar(dwg)
             rebar_pat2.type = TQSDwg.ICPFRT
@@ -1443,15 +1703,20 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             TQSUtil.writef("Erro ao gerar rebar patamar esquerdo 2: %s" % str(e))
 
     # 2. Armaduras no Patamar Direito (FERROS RETOS)
+    # Linha tracejada = camada superior; Linha continua = camada inferior
     pat_dir = geo_planta.get("patamar_direito")
     if pat_dir and pat_dir.get("existe"):
         comp_pat_d = pat_dir["comprimento"]
-        qtd_dir = int(math.ceil(comp_pat_d / espac)) + 1
+        # Na plissada, os 4 ferros do no da quina pertencem ao degrau (ocupam 15cm) e nao contam no patamar:
+        if is_plissada:
+            qtd_dir = max(1, int(math.ceil((comp_pat_d - espessura_pliss) / espac)))
+        else:
+            qtd_dir = int(math.ceil(comp_pat_d / espac)) + 1
         
         x_pd1 = pat_dir["x_min"] + comp_pat_d * 0.35
         x_pd2 = pat_dir["x_min"] + comp_pat_d * 0.70
 
-        # Barra 1 (reta): TRACEJADA
+        # Barra 1 (reta): TRACEJADA (camada superior)
         try:
             rebar_pat_d1 = TQSDwg.SmartRebar(dwg)
             rebar_pat_d1.type = TQSDwg.ICPFRT
@@ -1475,7 +1740,7 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
         except Exception as e:
             TQSUtil.writef("Erro ao gerar rebar patamar direito 1: %s" % str(e))
 
-        # Barra 2 (reta): CONTINUA / NORMAL
+        # Barra 2 (reta): CONTINUA / NORMAL (camada inferior)
         try:
             rebar_pat_d2 = TQSDwg.SmartRebar(dwg)
             rebar_pat_d2.type = TQSDwg.ICPFRT
@@ -1514,17 +1779,40 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             x_fim = l["x_fim"]
             comp_horiz = abs(x_fim - x_ini)
 
-        n_deg = l.get("n_degraus", 0)
+        # Identificar numero real de degraus
+        # Se ha N linhas divisorias internas selecionadas (ex: 7 linhas), elas delimitam (N + 1) = 8 degraus
+        n_linhas = len(l.get("degraus_coords", []))
+        if n_linhas <= 0:
+            n_linhas = l.get("n_linhas_degraus", l.get("n_degraus", 0))
+
         piso = l.get("piso", 28.0)
-        if n_deg <= 0 and piso > 0:
-            n_deg = int(round(comp_horiz / piso))
+        if piso <= 0:
+            piso = 28.0
 
-        n_espelhos = n_deg + 1 if n_deg > 0 else 1
-        alt_vert = n_espelhos * espelho_padrao
-        comp_inclinado = math.hypot(comp_horiz, alt_vert)
+        n_deg_real = None
+        pat_esq_geo = geo_planta.get("patamar_esquerdo")
+        pat_dir_geo = geo_planta.get("patamar_direito")
+        if pat_esq_geo and pat_dir_geo and pat_esq_geo.get("existe") and pat_dir_geo.get("existe"):
+            vao_livre = pat_dir_geo.get("x_min", 0.0) - pat_esq_geo.get("x_max", 0.0)
+            if vao_livre > 50.0:
+                n_deg_real = int(round(vao_livre / piso))
 
-        # Quantidade de barras: n = ceil(L_inclinado / espac) + 1
-        qtd_lance = int(math.ceil(comp_inclinado / espac)) + 1
+        if n_deg_real is None or n_deg_real <= 0:
+            if n_linhas > 0:
+                n_deg_real = n_linhas + 1
+            else:
+                n_deg_real = max(1, int(round(comp_horiz / piso)))
+
+        if is_plissada:
+            # Na escada plissada (cascata):
+            # 8 degraus * 10 - 2 = 78 ferros
+            qtd_lance = max(1, int(n_deg_real * 10 - 2))
+        else:
+            # Na escada convencional, a distribuicao corre ao longo do comprimento inclinado do lance
+            n_espelhos = n_deg_real + 1
+            alt_vert = n_espelhos * espelho_padrao
+            comp_inclinado = math.hypot(n_deg_real * piso, alt_vert)
+            qtd_lance = int(math.ceil(comp_inclinado / espac)) + 1
 
         # Cobrimento rigoroso em ambas as pontas (fica fora da viga e fora da parede/vao central)
         y_ini_l = l["y_base"] + cobr
@@ -1585,6 +1873,501 @@ def desenhar_todos_ferros_planta(dwg, geo_planta, dados_ferros):
     except:
         pass
     desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros)
+
+
+# ==============================================================================
+# FERROS DA ESCADA PLISSADA (ESTRIBOS INTELIGENTES DOS DEGRAUS)
+# ==============================================================================
+def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
+    """
+    Gera as armaduras inteligentes de estribos em escada plissada (cascata/zigue-zague)
+    utilizando o tipo nativo TQSDwg.ICPSTR (permite alterar o formato pelo duplo clique no EAG).
+    - P7: Estribo de partida (base)
+    - P8: Estribos fechados horizontais nos pisos
+    - P9: Estribos fechados verticais nos espelhos
+    - P10: Estribo fechado horizontal na chegada (topo)
+    """
+    try:
+        dwg.draw.level = 220
+        dwg.draw.style = 0
+        dwg.draw.color = 4
+    except:
+        pass
+
+    sentido = geo.get("sentido", "DIREITA")
+    n_deg = geo["n_degraus"]
+    piso = geo["piso"]
+    espelho = geo["espelho"]
+    steps = geo["steps"]
+    x0 = geo["x0"]
+    y0 = geo["y0"]
+    x_topo = geo["x_topo"]
+    y_topo = geo["y_topo"]
+
+    bitola = float(dados_ferros.get("bitola_plissada", 8.0))
+    espac = float(dados_ferros.get("espacamento_plissada", 15.0))
+    mult = int(dados_ferros.get("multiplicador_plissada", 7))
+    cobr = float(dados_ferros.get("cobrimento_plissada", 2.5))
+    # transpasse e tals: definicao da espessura da laje e transpasse da escada plissada (padrao 15.0 cm)
+    espessura = float(dados_ferros.get("espessura_plissada", geo.get("espessura", 15.0)))
+    transp = float(dados_ferros.get("transpasse_plissada", 15.0))
+
+    if espac <= 0:
+        espac = 15.0
+    if mult <= 0:
+        mult = 7
+
+    # Dimensoes das secoes de concreto para cada posicao (alinhamento exato na casca do degrau)
+    # Piso: estribo horizontal com transpasse no nó vertical
+    sec_w8 = round(piso + (transp if transp > 0 else espessura), 1)
+    sec_h8 = round(espessura, 1)
+
+    # Espelho: estribo vertical com ancoragem no degrau inferior
+    sec_w9 = round(espessura, 1)
+    sec_h9 = round(espelho + (transp if transp > 0 else espessura), 1)
+
+    # Partida: estribo de arranque ou estribo horizontal de patamar de partida
+    pat_part = geo.get("patamar_partida", 0.0)
+    if pat_part > 30.0:
+        sec_w7 = round(pat_part + (transp if transp > 0 else espessura), 1)
+        sec_h7 = round(espessura, 1)
+    else:
+        sec_w7 = round(espessura, 1)
+        sec_h7 = round(espelho + (transp if transp > 0 else espessura), 1)
+
+    # Chegada: estribo de ancoragem ou estribo do patamar superior
+    pat_cheg = geo.get("patamar_chegada", 0.0)
+    if pat_cheg > 45.0:
+        sec_w10 = round(pat_cheg, 1)
+    else:
+        sec_w10 = round(45.0 + 2.0 * cobr, 1)
+    sec_h10 = round(espessura, 1)
+
+    # --------------------------------------------------------------------------
+    # POSICIONAMENTO DOS REBATIDOS EXTERNOS (2 LINHAS ORGANIZADAS)
+    # Linha 1 (Topo): Patamar Superior (P10) a esquerda | Patamar Inferior (P7) a direita
+    # Linha 2 (Fundo): Espelho (P9) a esquerda | Piso (P8) a direita
+    # --------------------------------------------------------------------------
+    if sentido == "DIREITA":
+        x_base_reb = x0 + 80.0
+        y_linha_sup = y0 - 45.0
+        y_linha_inf = y0 - 95.0
+
+        x_reb10 = x_base_reb
+        y_reb10 = y_linha_sup
+
+        x_reb7 = x_base_reb + max(sec_w10, 50.0) + 30.0
+        y_reb7 = y_linha_sup
+
+        x_reb9 = x_base_reb
+        y_reb9 = y_linha_inf
+
+        x_reb8 = x_base_reb + max(sec_w9, 15.0) + 40.0
+        y_reb8 = y_linha_inf
+    else:
+        x_base_reb = x0 - 80.0
+        y_linha_sup = y0 - 45.0
+        y_linha_inf = y0 - 95.0
+
+        x_reb10 = x_base_reb - max(sec_w10, 50.0)
+        y_reb10 = y_linha_sup
+
+        x_reb7 = x_base_reb - max(sec_w10, 50.0) - max(sec_w7, 50.0) - 30.0
+        y_reb7 = y_linha_sup
+
+        x_reb9 = x_base_reb - max(sec_w9, 15.0)
+        y_reb9 = y_linha_inf
+
+        x_reb8 = x_base_reb - max(sec_w9, 15.0) - max(sec_w8, 30.0) - 40.0
+        y_reb8 = y_linha_inf
+
+    # --------------------------------------------------------------------------
+    # 1. ESTRIBO DE PISO / HORIZONTAL (P8)
+    # --------------------------------------------------------------------------
+    qtd_p8 = max(1, n_deg - 1) * mult
+    try:
+        rebar8 = TQSDwg.SmartRebar(dwg)
+        rebar8.type = TQSDwg.ICPSTR
+        rebar8.diameter = bitola
+        rebar8.spacing = espac
+        rebar8.quantity = qtd_p8
+        rebar8.cover = cobr
+        rebar8.stirrupType = TQSDwg.ICPEFC
+        rebar8.stirrupLegs = TQSDwg.ICPNR2
+        rebar8.stirrupSectionWidth = sec_w8
+        rebar8.stirrupSectionHeight = sec_h8
+        rebar8.stirrupHookType = TQSDwg.ICPTPPATA45
+        rebar8.stirrupHookLength = 8
+
+        try:
+            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                f_mark = dwg.globalrebar.FreeMark()
+                rebar8.mark = f_mark if f_mark > 0 else 8
+            else:
+                rebar8.mark = 8
+        except:
+            rebar8.mark = 8
+
+        # Inserir linhas nos degraus reais (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
+        for s in steps[:-1]:
+            if sentido == "DIREITA":
+                x_ins = s['x_riser']
+                y_ins = s['y_riser_top'] - sec_h8
+            else:
+                x_ins = s['x_riser'] - sec_w8
+                y_ins = s['y_riser_top'] - sec_h8
+            rebar8.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
+
+        # Rebatido detalhado com identificacao e cotas (Piso: linha inferior, a direita do espelho)
+        rebar8.RebarLine(x_reb8, y_reb8, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+    except Exception as e:
+        TQSUtil.writef("Erro ao gerar estribo P8: %s" % str(e))
+
+    # --------------------------------------------------------------------------
+    # 2. ESTRIBO DE ESPELHO / VERTICAL (P9)
+    # --------------------------------------------------------------------------
+    qtd_p9 = len(steps) * mult
+    try:
+        rebar9 = TQSDwg.SmartRebar(dwg)
+        rebar9.type = TQSDwg.ICPSTR
+        rebar9.diameter = bitola
+        rebar9.spacing = espac
+        rebar9.quantity = qtd_p9
+        rebar9.cover = cobr
+        rebar9.stirrupType = TQSDwg.ICPEFC
+        rebar9.stirrupLegs = TQSDwg.ICPNR2
+        rebar9.stirrupSectionWidth = sec_w9
+        rebar9.stirrupSectionHeight = sec_h9
+        rebar9.stirrupHookType = TQSDwg.ICPTPPATA45
+        rebar9.stirrupHookLength = 8
+
+        try:
+            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                f_mark = dwg.globalrebar.FreeMark()
+                rebar9.mark = f_mark if f_mark > 0 else 9
+            else:
+                rebar9.mark = 9
+        except:
+            rebar9.mark = 9
+
+        # Inserir linhas em todos os espelhos reais (inclusive no degrau 0)
+        for s in steps:
+            if sentido == "DIREITA":
+                x_ins = s['x_riser']
+                y_ins = s['y_riser_top'] - sec_h9
+            else:
+                x_ins = s['x_riser'] - sec_w9
+                y_ins = s['y_riser_top'] - sec_h9
+            rebar9.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
+
+        # Rebatido detalhado com identificacao e cotas (Espelho: linha inferior, a esquerda)
+        rebar9.RebarLine(x_reb9, y_reb9, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+    except Exception as e:
+        TQSUtil.writef("Erro ao gerar estribo P9: %s" % str(e))
+
+    # --------------------------------------------------------------------------
+    # 3. ESTRIBO DE PARTIDA / PATAMAR INFERIOR (P7)
+    # --------------------------------------------------------------------------
+    if pat_part > 30.0:
+        qtd_p7 = max(1, int(round(pat_part / 28.0))) * mult
+        try:
+            rebar7 = TQSDwg.SmartRebar(dwg)
+            rebar7.type = TQSDwg.ICPSTR
+            rebar7.diameter = bitola
+            rebar7.spacing = espac
+            rebar7.quantity = qtd_p7
+            rebar7.cover = cobr
+            rebar7.stirrupType = TQSDwg.ICPEFC
+            rebar7.stirrupLegs = TQSDwg.ICPNR2
+            rebar7.stirrupSectionWidth = sec_w7
+            rebar7.stirrupSectionHeight = sec_h7
+            rebar7.stirrupHookType = TQSDwg.ICPTPPATA45
+            rebar7.stirrupHookLength = 8
+
+            try:
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar7.mark = f_mark if f_mark > 0 else 7
+                else:
+                    rebar7.mark = 7
+            except:
+                rebar7.mark = 7
+
+            # Inserir linha no patamar de partida (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
+            if steps:
+                s0 = steps[0]
+                if sentido == "DIREITA":
+                    x_ins = s0['x_riser'] - pat_part
+                    y_ins = s0['y_riser_bot'] - sec_h7
+                else:
+                    x_ins = s0['x_riser']
+                    y_ins = s0['y_riser_bot'] - sec_h7
+                rebar7.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
+
+            # Rebatido detalhado com identificacao e cotas (Patamar Partida: linha superior, a direita do P10)
+            rebar7.RebarLine(x_reb7, y_reb7, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar estribo P7: %s" % str(e))
+
+    # --------------------------------------------------------------------------
+    # 4. ESTRIBO DE CHEGADA / TOPO (P10)
+    # --------------------------------------------------------------------------
+    qtd_p10 = 4 * mult
+    try:
+        rebar10 = TQSDwg.SmartRebar(dwg)
+        rebar10.type = TQSDwg.ICPSTR
+        rebar10.diameter = bitola
+        rebar10.spacing = espac
+        rebar10.quantity = qtd_p10
+        rebar10.cover = cobr
+        rebar10.stirrupType = TQSDwg.ICPEFC
+        rebar10.stirrupLegs = TQSDwg.ICPNR2
+        rebar10.stirrupSectionWidth = sec_w10
+        rebar10.stirrupSectionHeight = sec_h10
+        rebar10.stirrupHookType = TQSDwg.ICPTPPATA45
+        rebar10.stirrupHookLength = 8
+
+        try:
+            if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                f_mark = dwg.globalrebar.FreeMark()
+                rebar10.mark = f_mark if f_mark > 0 else 10
+            else:
+                rebar10.mark = 10
+        except:
+            rebar10.mark = 10
+
+        # Inserir linha na chegada (Nivel 220, Estilo Continuo 0, Cor Azul/Ciano 4)
+        if steps:
+            s_top = steps[-1]
+            if sentido == "DIREITA":
+                x_ins = s_top['x_riser']
+                y_ins = s_top['y_riser_top'] - sec_h10
+            else:
+                x_ins = s_top['x_riser'] - sec_w10
+                y_ins = s_top['y_riser_top'] - sec_h10
+            rebar10.RebarLine(x_ins, y_ins, 0.0, 1.0, 0, 0, 0, 0, 220, 0, 4)
+
+        # Rebatido detalhado com identificacao e cotas (Patamar Chegada: linha superior, a esquerda)
+        rebar10.RebarLine(x_reb10, y_reb10, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+    except Exception as e:
+        TQSUtil.writef("Erro ao gerar estribo P10: %s" % str(e))
+
+
+def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
+    """
+    Desenha as armaduras de distribuicao (bolinhas vermelhas em corte) da escada plissada:
+    1. 4 bolinhas nos nos quadrados de uniao dos estribos (cantos de cada degrau, partida e chegada).
+    2. Bolinhas no ponto medio superior e inferior de cada estribo horizontal dos degraus.
+    3. Bolinhas distribuidas ao longo dos patamares de partida e chegada ate o fim (respeitando cobrimento).
+    """
+    sentido = geo.get("sentido", "DIREITA")
+    steps = geo.get("steps", [])
+    if not steps:
+        return
+
+    piso = geo["piso"]
+    espelho = geo["espelho"]
+
+    cobr = float(dados_ferros.get("cobrimento_plissada", 2.5))
+    espessura = float(dados_ferros.get("espessura_plissada", geo.get("espessura", 15.0)))
+    transp = float(dados_ferros.get("transpasse_plissada", 15.0))
+    espac_dist = float(dados_ferros.get("espac_dist_plissada", dados_ferros.get("espac_dist", 15.0)))
+    if espac_dist <= 0:
+        espac_dist = 15.0
+
+    pat_part = geo.get("patamar_partida", 0.0)
+    pat_cheg = geo.get("patamar_chegada", 0.0)
+
+    sec_w8 = round(piso + (transp if transp > 0 else espessura), 1)
+    if pat_cheg > 45.0:
+        sec_w10 = round(pat_cheg, 1)
+    else:
+        sec_w10 = round(45.0 + 2.0 * cobr, 1)
+
+    r_circ = 1.0
+    pontos_circulos = []
+
+    def adicionar_bolinha(cx, cy, d_min=2.0):
+        for ex, ey in pontos_circulos:
+            if math.hypot(cx - ex, cy - ey) < d_min:
+                return False
+        pontos_circulos.append((cx, cy))
+        return True
+
+    def adicionar_quadrado(x1, y1, x2, y2):
+        xmin = min(x1, x2)
+        xmax = max(x1, x2)
+        ymin = min(y1, y2)
+        ymax = max(y1, y2)
+        adicionar_bolinha(xmin + cobr + r_circ, ymax - cobr - r_circ)
+        adicionar_bolinha(xmax - cobr - r_circ, ymax - cobr - r_circ)
+        adicionar_bolinha(xmin + cobr + r_circ, ymin + cobr + r_circ)
+        adicionar_bolinha(xmax - cobr - r_circ, ymin + cobr + r_circ)
+
+    recuo_viga = 20.0
+
+    if sentido == "DIREITA":
+        # 1. Patamar de Partida (Base)
+        if pat_part > 30.0:
+            s0 = steps[0]
+            x_base_r = s0['x_riser']
+            y_base_val = s0['y_riser_bot']
+            y_top_bar_p = y_base_val - cobr - r_circ
+            y_bot_bar_p = y_base_val - espessura + cobr + r_circ
+
+            # No de uniao do patamar de partida com o primeiro espelho
+            adicionar_quadrado(x_base_r, y_base_val - espessura, x_base_r + espessura, y_base_val)
+
+            # Bolinha proxima da curva/no (na entrada do primeiro espelho)
+            x_near_corner = x_base_r - cobr - r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar_p)
+            adicionar_bolinha(x_near_corner, y_bot_bar_p)
+
+            # Distribuicao regular da direita para a esquerda ao longo do patamar (parando antes da viga de apoio)
+            x_limite_viga_part = x_base_r - pat_part + recuo_viga
+            x_cur = x_near_corner - espac_dist
+            while x_cur >= x_limite_viga_part:
+                adicionar_bolinha(x_cur, y_top_bar_p)
+                adicionar_bolinha(x_cur, y_bot_bar_p)
+                x_cur -= espac_dist
+
+        # 2. Nos e pontos medios de cada degrau (P8 e P9)
+        for i, s in enumerate(steps[:-1]):
+            x_r = s['x_riser']
+            y_top = s['y_riser_top']
+            s_next = steps[i + 1]
+            x_next = s_next['x_riser']
+
+            # No do canto superior (uniao do espelho com o piso)
+            adicionar_quadrado(x_r, y_top - espessura, x_r + espessura, y_top)
+
+            # Ponto medio do estribo horizontal (em cima e em baixo)
+            x_mid = x_r + sec_w8 / 2.0
+            y_top_bar = y_top - cobr - r_circ
+            y_bot_bar = y_top - espessura + cobr + r_circ
+            adicionar_bolinha(x_mid, y_top_bar)
+            adicionar_bolinha(x_mid, y_bot_bar)
+
+            # No do canto reentrante (uniao do piso com o proximo espelho)
+            adicionar_quadrado(x_next, y_top - espessura, x_next + espessura, y_top)
+
+        # 3. Chegada / Topo (P10)
+        s_top = steps[-1]
+        x_top_r = s_top['x_riser']
+        y_top_val = s_top['y_riser_top']
+        y_top_bar10 = y_top_val - cobr - r_circ
+        y_bot_bar10 = y_top_val - espessura + cobr + r_circ
+
+        # No da chegada com o ultimo espelho
+        adicionar_quadrado(x_top_r, y_top_val - espessura, x_top_r + espessura, y_top_val)
+
+        if pat_cheg > 45.0:
+            # Bolinha proxima da curva/no da chegada
+            x_near_corner = x_top_r + espessura + cobr + r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar10)
+            adicionar_bolinha(x_near_corner, y_bot_bar10)
+
+            # Distribuicao regular ao longo do patamar de chegada (parando antes da viga de apoio)
+            x_limite_viga_cheg = x_top_r + pat_cheg - recuo_viga
+            x_cur = x_near_corner + espac_dist
+            while x_cur <= x_limite_viga_cheg:
+                adicionar_bolinha(x_cur, y_top_bar10)
+                adicionar_bolinha(x_cur, y_bot_bar10)
+                x_cur += espac_dist
+        else:
+            # Ponto medio do estribo horizontal de chegada padrao
+            x_mid10 = x_top_r + sec_w10 / 2.0
+            adicionar_bolinha(x_mid10, y_top_bar10)
+            adicionar_bolinha(x_mid10, y_bot_bar10)
+            x_end10 = x_top_r + sec_w10 - cobr - r_circ
+            adicionar_bolinha(x_end10, y_top_bar10)
+            adicionar_bolinha(x_end10, y_bot_bar10)
+
+    else:  # Subindo para a ESQUERDA
+        # 1. Patamar de Partida (Base)
+        if pat_part > 30.0:
+            s0 = steps[0]
+            x_base_r = s0['x_riser']
+            y_base_val = s0['y_riser_bot']
+            y_top_bar_p = y_base_val - cobr - r_circ
+            y_bot_bar_p = y_base_val - espessura + cobr + r_circ
+
+            # No de uniao do patamar de partida com o primeiro espelho
+            adicionar_quadrado(x_base_r - espessura, y_base_val - espessura, x_base_r, y_base_val)
+
+            # Bolinha proxima da curva/no (na entrada do primeiro espelho)
+            x_near_corner = x_base_r + cobr + r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar_p)
+            adicionar_bolinha(x_near_corner, y_bot_bar_p)
+
+            # Distribuicao regular da esquerda para a direita ao longo do patamar (parando antes da viga de apoio)
+            x_limite_viga_part = x_base_r + pat_part - recuo_viga
+            x_cur = x_near_corner + espac_dist
+            while x_cur <= x_limite_viga_part:
+                adicionar_bolinha(x_cur, y_top_bar_p)
+                adicionar_bolinha(x_cur, y_bot_bar_p)
+                x_cur += espac_dist
+
+        # 2. Nos e pontos medios de cada degrau (P8 e P9)
+        for i, s in enumerate(steps[:-1]):
+            x_r = s['x_riser']
+            y_top = s['y_riser_top']
+            s_next = steps[i + 1]
+            x_next = s_next['x_riser']
+
+            # No do canto superior
+            adicionar_quadrado(x_r - espessura, y_top - espessura, x_r, y_top)
+
+            # Ponto medio do estribo horizontal
+            x_mid = x_r - sec_w8 / 2.0
+            y_top_bar = y_top - cobr - r_circ
+            y_bot_bar = y_top - espessura + cobr + r_circ
+            adicionar_bolinha(x_mid, y_top_bar)
+            adicionar_bolinha(x_mid, y_bot_bar)
+
+            # No do canto reentrante
+            adicionar_quadrado(x_next - espessura, y_top - espessura, x_next, y_top)
+
+        # 3. Chegada / Topo (P10)
+        s_top = steps[-1]
+        x_top_r = s_top['x_riser']
+        y_top_val = s_top['y_riser_top']
+        y_top_bar10 = y_top_val - cobr - r_circ
+        y_bot_bar10 = y_top_val - espessura + cobr + r_circ
+
+        adicionar_quadrado(x_top_r - espessura, y_top_val - espessura, x_top_r, y_top_val)
+
+        if pat_cheg > 45.0:
+            # Bolinha proxima da curva/no da chegada
+            x_near_corner = x_top_r - espessura - cobr - r_circ
+            adicionar_bolinha(x_near_corner, y_top_bar10)
+            adicionar_bolinha(x_near_corner, y_bot_bar10)
+
+            x_limite_viga_cheg = x_top_r - pat_cheg + recuo_viga
+            x_cur = x_near_corner - espac_dist
+            while x_cur >= x_limite_viga_cheg:
+                adicionar_bolinha(x_cur, y_top_bar10)
+                adicionar_bolinha(x_cur, y_bot_bar10)
+                x_cur -= espac_dist
+        else:
+            x_mid10 = x_top_r - sec_w10 / 2.0
+            adicionar_bolinha(x_mid10, y_top_bar10)
+            adicionar_bolinha(x_mid10, y_bot_bar10)
+            x_end10 = x_top_r - sec_w10 + cobr + r_circ
+            adicionar_bolinha(x_end10, y_top_bar10)
+            adicionar_bolinha(x_end10, y_bot_bar10)
+
+    # Desenhar circulos vermelhos no nivel 220
+    try:
+        draw = dwg.draw
+        draw.level = 220
+        draw.color = 1   # Vermelho
+        draw.style = 0
+
+        for cx, cy in pontos_circulos:
+            draw.Circle(cx, cy, r_circ)
+    except Exception as e:
+        TQSUtil.writef("Erro ao desenhar distribuicao plissada: %s" % str(e))
 
 
 # ==============================================================================
@@ -1692,3 +2475,48 @@ def meucmd(eag, tqsjan):
 
         desenhar_todos_ferros_planta(tqsjan.dwg, geo_planta, dados_ferros)
         tqsjan.Regen()
+        return
+
+    # ==========================================================================
+    # FLUXO 3: SE O USUARIO CLICOU EM "ARMAR ESCADA PLISSADA"
+    # ==========================================================================
+    elif modo == "PLISSADA":
+        addr, xs, ys, np, istat = eag.locate.Select(tqsjan, "Abra uma janela sobre o corte da escada plissada", TQSEag.EAG_IJANEL)
+        if istat != 0:
+            return
+
+        linhas = []
+        eag.locate.BeginSelection(tqsjan)
+        while True:
+            h_elem = eag.locate.NextSelection(tqsjan)
+            if h_elem is None:
+                break
+            tqsjan.dwg.iterator.SetPosition(h_elem)
+            itipo = tqsjan.dwg.iterator.Next()
+            if itipo == TQSDwg.DWGTYPE_LINE:
+                x1 = tqsjan.dwg.iterator.x1
+                y1 = tqsjan.dwg.iterator.y1
+                x2 = tqsjan.dwg.iterator.x2
+                y2 = tqsjan.dwg.iterator.y2
+                linhas.append(((x1, y1), (x2, y2)))
+            elif itipo == TQSDwg.DWGTYPE_POLYLINE:
+                try:
+                    npts = tqsjan.dwg.iterator.xySize
+                    pts = [tqsjan.dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                    for i in range(len(pts) - 1):
+                        linhas.append(((pts[i][0], pts[i][1]), (pts[i+1][0], pts[i+1][1])))
+                except Exception:
+                    pass
+
+        if not linhas:
+            return
+
+        geo_plissada = identificar_geometria_escada_plissada(linhas)
+        if geo_plissada is None:
+            return
+
+        desenhar_estribos_escada_plissada(tqsjan.dwg, geo_plissada, dados_ferros)
+        desenhar_distribuicao_escada_plissada(tqsjan.dwg, geo_plissada, dados_ferros)
+        tqsjan.Regen()
+        return
+
