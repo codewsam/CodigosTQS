@@ -1804,9 +1804,9 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
                 n_deg_real = max(1, int(round(comp_horiz / piso)))
 
         if is_plissada:
-            # Na escada plissada (cascata):
-            # 8 degraus * 10 - 2 = 78 ferros
-            qtd_lance = max(1, int(n_deg_real * 10 - 2))
+            # Na escada plissada (cascata): adiciona +10 a soma dos ferros do lance
+            # Ex: 68 + 10 = 78 ferros
+            qtd_lance = max(1, int(n_deg_real * 10 - 2) + 10)
         else:
             # Na escada convencional, a distribuicao corre ao longo do comprimento inclinado do lance
             n_espelhos = n_deg_real + 1
