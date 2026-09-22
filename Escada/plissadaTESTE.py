@@ -2167,6 +2167,8 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
         adicionar_bolinha(xmin + cobr + r_circ, ymin + cobr + r_circ)
         adicionar_bolinha(xmax - cobr - r_circ, ymin + cobr + r_circ)
 
+    recuo_viga = 20.0
+
     if sentido == "DIREITA":
         # 1. Patamar de Partida (Base)
         if pat_part > 30.0:
@@ -2184,17 +2186,13 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
             adicionar_bolinha(x_near_corner, y_top_bar_p)
             adicionar_bolinha(x_near_corner, y_bot_bar_p)
 
-            # Distribuicao regular da direita para a esquerda ao longo do patamar
-            x_ini_dist = x_base_r - pat_part + cobr + r_circ
+            # Distribuicao regular da direita para a esquerda ao longo do patamar (parando antes da viga de apoio)
+            x_limite_viga_part = x_base_r - pat_part + recuo_viga
             x_cur = x_near_corner - espac_dist
-            while x_cur >= x_ini_dist + 2.0:
+            while x_cur >= x_limite_viga_part:
                 adicionar_bolinha(x_cur, y_top_bar_p)
                 adicionar_bolinha(x_cur, y_bot_bar_p)
                 x_cur -= espac_dist
-
-            # Extremidade inicial do patamar de partida
-            adicionar_bolinha(x_ini_dist, y_top_bar_p)
-            adicionar_bolinha(x_ini_dist, y_bot_bar_p)
 
         # 2. Nos e pontos medios de cada degrau (P8 e P9)
         for i, s in enumerate(steps[:-1]):
@@ -2232,16 +2230,13 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
             adicionar_bolinha(x_near_corner, y_top_bar10)
             adicionar_bolinha(x_near_corner, y_bot_bar10)
 
-            # Distribuicao regular ao longo do patamar de chegada ate o fim
-            x_fim_dist = x_top_r + pat_cheg - cobr - r_circ
+            # Distribuicao regular ao longo do patamar de chegada (parando antes da viga de apoio)
+            x_limite_viga_cheg = x_top_r + pat_cheg - recuo_viga
             x_cur = x_near_corner + espac_dist
-            while x_cur <= x_fim_dist - 2.0:
+            while x_cur <= x_limite_viga_cheg:
                 adicionar_bolinha(x_cur, y_top_bar10)
                 adicionar_bolinha(x_cur, y_bot_bar10)
                 x_cur += espac_dist
-            # Bolinha na extremidade final respeitando o cobrimento
-            adicionar_bolinha(x_fim_dist, y_top_bar10)
-            adicionar_bolinha(x_fim_dist, y_bot_bar10)
         else:
             # Ponto medio do estribo horizontal de chegada padrao
             x_mid10 = x_top_r + sec_w10 / 2.0
@@ -2268,17 +2263,13 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
             adicionar_bolinha(x_near_corner, y_top_bar_p)
             adicionar_bolinha(x_near_corner, y_bot_bar_p)
 
-            # Distribuicao regular da esquerda para a direita ao longo do patamar
-            x_ini_dist = x_base_r + pat_part - cobr - r_circ
+            # Distribuicao regular da esquerda para a direita ao longo do patamar (parando antes da viga de apoio)
+            x_limite_viga_part = x_base_r + pat_part - recuo_viga
             x_cur = x_near_corner + espac_dist
-            while x_cur <= x_ini_dist - 2.0:
+            while x_cur <= x_limite_viga_part:
                 adicionar_bolinha(x_cur, y_top_bar_p)
                 adicionar_bolinha(x_cur, y_bot_bar_p)
                 x_cur += espac_dist
-
-            # Extremidade inicial do patamar de partida
-            adicionar_bolinha(x_ini_dist, y_top_bar_p)
-            adicionar_bolinha(x_ini_dist, y_bot_bar_p)
 
         # 2. Nos e pontos medios de cada degrau (P8 e P9)
         for i, s in enumerate(steps[:-1]):
@@ -2315,14 +2306,12 @@ def desenhar_distribuicao_escada_plissada(dwg, geo, dados_ferros):
             adicionar_bolinha(x_near_corner, y_top_bar10)
             adicionar_bolinha(x_near_corner, y_bot_bar10)
 
-            x_fim_dist = x_top_r - pat_cheg + cobr + r_circ
+            x_limite_viga_cheg = x_top_r - pat_cheg + recuo_viga
             x_cur = x_near_corner - espac_dist
-            while x_cur >= x_fim_dist + 2.0:
+            while x_cur >= x_limite_viga_cheg:
                 adicionar_bolinha(x_cur, y_top_bar10)
                 adicionar_bolinha(x_cur, y_bot_bar10)
                 x_cur -= espac_dist
-            adicionar_bolinha(x_fim_dist, y_top_bar10)
-            adicionar_bolinha(x_fim_dist, y_bot_bar10)
         else:
             x_mid10 = x_top_r - sec_w10 / 2.0
             adicionar_bolinha(x_mid10, y_top_bar10)
