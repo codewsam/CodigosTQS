@@ -1029,7 +1029,13 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         x_deg_fim = x0 + num_deg_flight * piso
 
         # Patamares
-        pat_esq = max(patamar_partida if tem_patamar_partida else 0.0, patamar_chegada if tem_patamar_chegada else 0.0)
+        if tem_patamar_partida:
+            pat_esq = patamar_partida
+        elif tem_patamar_chegada:
+            pat_esq = patamar_chegada
+        else:
+            pat_esq = 0.0
+
         pat_dir = patamar_int_1
 
         x_min_int = x_deg_ini - pat_esq
