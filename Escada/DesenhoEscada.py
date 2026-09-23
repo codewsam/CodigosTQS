@@ -1042,17 +1042,18 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         x_l2_fim = x_deg_fim - num_pisos_l2 * piso
 
         # Patamares
-        if tem_patamar_partida:
-            pat_esq = patamar_partida
-        elif tem_patamar_chegada:
-            pat_esq = patamar_chegada
-        else:
-            pat_esq = 0.0
+        pat_l1 = patamar_partida if tem_patamar_partida else 0.0
+        x_l1_pat_ext = x_l1_ini - pat_l1
+        x_l1_viga_ext = x_l1_pat_ext - viga_largura
+
+        pat_l2 = patamar_chegada if tem_patamar_chegada else 0.0
+        x_l2_pat_ext = x_l2_fim - pat_l2
+        x_l2_viga_ext = x_l2_pat_ext - viga_largura
 
         pat_dir = patamar_int_1
 
-        x_min_int = min(x_l1_ini, x_l2_fim) - pat_esq
-        x_min_ext = x_min_int - viga_largura
+        x_min_int = min(x_l1_pat_ext, x_l2_pat_ext)
+        x_min_ext = min(x_l1_viga_ext, x_l2_viga_ext)
 
         x_max_int = x_deg_fim + pat_dir
         x_max_ext = x_max_int + viga_largura
@@ -1077,15 +1078,17 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
 
         # Divisorias verticais do Patamar Esquerdo (com os lances)
-        draw.Line(x_l1_ini, y_min_int, x_l1_ini, y_l1_topo)
-        draw.Line(x_l2_fim, y_l2_base, x_l2_fim, y_max_int)
+        if tem_patamar_partida:
+            draw.Line(x_l1_ini, y_min_int, x_l1_ini, y_l1_topo)
+        if tem_patamar_chegada:
+            draw.Line(x_l2_fim, y_l2_base, x_l2_fim, y_max_int)
 
         # Divisorias verticais do Patamar Direito (com os lances)
         draw.Line(x_l1_fim, y_min_int, x_l1_fim, y_l1_topo)
         draw.Line(x_l2_ini, y_l2_base, x_l2_ini, y_max_int)
 
-        # Vao Central entre Lances
-        x_vao_esq = min(x_l1_ini, x_l2_fim)
+        # (linha que separa os dois patamares)
+        x_vao_esq = x_min_int
         draw.Line(x_vao_esq, y_l1_topo, x_deg_fim, y_l1_topo)
         if vao_lances > 0:
             draw.Line(x_vao_esq, y_l2_base, x_deg_fim, y_l2_base)
@@ -1120,7 +1123,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
             y_c = y_l2_base + largura_l2 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
 
-        # Seta e Linha de Fluxo
+        # Seta e Linha de Fluxo (Sentido de Subida: SOBE)
         draw.level = 241
         draw.color = -1  # Por nivel
         draw.style = -1  # -1 por nivel
@@ -1132,18 +1135,24 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         y_m2 = y_l2_base + largura_l2 / 2.0
         x_m_start = x_l1_ini + piso * 0.5
         x_m_pat = x_deg_fim + pat_dir * 0.5
-        x_m_arr = x_l2_fim - (pat_esq * 0.5 if pat_esq > 0 else 20.0)
+        x_m_arr = x_l2_fim - (pat_l2 * 0.5 if pat_l2 > 0 else 20.0)
 
+        # Circulo de inicio no degrau 01
+        r_circ = 2.5
+        draw.Line(x_m_start - r_circ, y_m1, x_m_start + r_circ, y_m1)
+        draw.Line(x_m_start, y_m1 - r_circ, x_m_start, y_m1 + r_circ)
+
+        # Trajeto do fluxo
         draw.Line(x_m_start, y_m1, x_m_pat, y_m1)
         draw.Line(x_m_pat, y_m1, x_m_pat, y_m2)
         draw.Line(x_m_pat, y_m2, x_m_arr, y_m2)
 
-        # Seta apontando para a esquerda na chegada
-        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 + 6.0)
-        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 - 6.0)
+        # Seta apontando para a esquerda na chegada do Lance 2
+        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 + 5.0)
+        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 - 5.0)
 
-        # Texto DESCE
-        draw.Text(x_deg_ini + piso * 0.8, y_m1 + 6.0, 8.0, 0.0, "DESCE")
+        # Texto SOBE posicionado de forma limpa no inicio
+        draw.Text(x_l1_ini + 10.0, y_m1 + 12.0, 8.0, 0.0, "SOBE")
 
         # ----------------------------------------------------------------------
         # 3. LINHAS DE COTA (dwg.dim)
@@ -1156,12 +1165,13 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
 
         # Patamar Esquerdo
-        if pat_esq > 0:
-            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_ini, y_max_ext, x_min_int, y_cota_top1)
+        x_deg_esq_ref = min(x_l1_ini, x_l2_fim)
+        if x_deg_esq_ref > x_min_int:
+            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_esq_ref, y_max_ext, x_min_int, y_cota_top1)
 
         # Degraus
         for i in range(num_deg_flight):
-            x_a = x_deg_ini + i * piso
+            x_a = x_deg_esq_ref + i * piso
             x_b = x_a + piso
             dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
 
