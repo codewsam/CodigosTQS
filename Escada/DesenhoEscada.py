@@ -1024,9 +1024,22 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         y_l2_topo = y_max_int
 
         # Degraus
-        num_deg_flight = max(n1 - 1, n2 - 1)
+        if n2 <= 0:
+            n2 = n1
+
+        num_pisos_l1 = n1 - 1
+        num_pisos_l2 = n2 - 1
+        num_deg_flight = max(num_pisos_l1, num_pisos_l2)
+
         x_deg_ini = x0
         x_deg_fim = x0 + num_deg_flight * piso
+
+        # Limites individuais de cada lance
+        x_l1_fim = x_deg_fim
+        x_l1_ini = x_deg_fim - num_pisos_l1 * piso
+
+        x_l2_ini = x_deg_fim
+        x_l2_fim = x_deg_fim - num_pisos_l2 * piso
 
         # Patamares
         if tem_patamar_partida:
@@ -1038,7 +1051,7 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
 
         pat_dir = patamar_int_1
 
-        x_min_int = x_deg_ini - pat_esq
+        x_min_int = min(x_l1_ini, x_l2_fim) - pat_esq
         x_min_ext = x_min_int - viga_largura
 
         x_max_int = x_deg_fim + pat_dir
@@ -1064,28 +1077,29 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
 
         # Divisorias verticais do Patamar Esquerdo (com os lances)
-        draw.Line(x_deg_ini, y_min_int, x_deg_ini, y_l1_topo)
-        draw.Line(x_deg_ini, y_l2_base, x_deg_ini, y_max_int)
+        draw.Line(x_l1_ini, y_min_int, x_l1_ini, y_l1_topo)
+        draw.Line(x_l2_fim, y_l2_base, x_l2_fim, y_max_int)
 
         # Divisorias verticais do Patamar Direito (com os lances)
-        draw.Line(x_deg_fim, y_min_int, x_deg_fim, y_l1_topo)
-        draw.Line(x_deg_fim, y_l2_base, x_deg_fim, y_max_int)
+        draw.Line(x_l1_fim, y_min_int, x_l1_fim, y_l1_topo)
+        draw.Line(x_l2_ini, y_l2_base, x_l2_ini, y_max_int)
 
         # Vao Central entre Lances
-        draw.Line(x_deg_ini, y_l1_topo, x_deg_fim, y_l1_topo)
+        x_vao_esq = min(x_l1_ini, x_l2_fim)
+        draw.Line(x_vao_esq, y_l1_topo, x_deg_fim, y_l1_topo)
         if vao_lances > 0:
-            draw.Line(x_deg_ini, y_l2_base, x_deg_fim, y_l2_base)
-            draw.Line(x_deg_ini, y_l1_topo, x_deg_ini, y_l2_base)
+            draw.Line(x_vao_esq, y_l2_base, x_deg_fim, y_l2_base)
+            draw.Line(x_vao_esq, y_l1_topo, x_vao_esq, y_l2_base)
             draw.Line(x_deg_fim, y_l1_topo, x_deg_fim, y_l2_base)
 
         # Degraus Lance 1 (Inferior)
-        for i in range(1, n1 - 1):
-            x_deg = x_deg_ini + i * piso
+        for i in range(1, num_pisos_l1):
+            x_deg = x_l1_ini + i * piso
             draw.Line(x_deg, y_min_int, x_deg, y_l1_topo)
 
-        # Degraus Lance 2 (Superior)
-        for j in range(1, n2 - 1):
-            x_deg = x_deg_ini + j * piso
+        # Degraus Lance 2 (Superior) - Desenhados a partir da direita (patamar intermediario) para a esquerda
+        for j in range(1, num_pisos_l2):
+            x_deg = x_l2_ini - j * piso
             draw.Line(x_deg, y_l2_base, x_deg, y_max_int)
 
         # ----------------------------------------------------------------------
@@ -1094,18 +1108,15 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
         draw.color = 7  # Branco/Texto
 
         # Numeracao Lance 1 (01, 02, 03... da esquerda para a direita)
-        # O degrau 01 fica a esquerda da linha de inicio (no patamar), 02 no primeiro espaco, etc.
         for i in range(n1):
-            x_c = (x_deg_ini - 0.5 * piso) if i == 0 else (x_deg_ini + (i - 0.5) * piso)
+            x_c = (x_l1_ini - 0.5 * piso) if i == 0 else (x_l1_ini + (i - 0.5) * piso)
             y_c = y_min_int + largura_l1 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
 
-        # Numeracao Lance 2 (09, 10, 11... da direita para a esquerda)
-        # O primeiro degrau do lance 2 (n1 + 1) fica a direita da linha final (no patamar intermediario),
-        # e os seguintes vao contando para a esquerda ate o topo
+        # Numeracao Lance 2 (da direita para a esquerda a partir do patamar intermediario)
         for j in range(n2):
             num_deg = n1 + 1 + j
-            x_c = (x_deg_fim + 0.5 * piso) if j == 0 else (x_deg_fim - (j - 0.5) * piso)
+            x_c = (x_l2_ini + 0.5 * piso) if j == 0 else (x_l2_ini - (j - 0.5) * piso)
             y_c = y_l2_base + largura_l2 / 2.0
             draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
 
@@ -1119,9 +1130,9 @@ def desenhar_planta_escada(dwg, x0, y0, dados):
             pass
         y_m1 = y_min_int + largura_l1 / 2.0
         y_m2 = y_l2_base + largura_l2 / 2.0
-        x_m_start = x_deg_ini + piso * 0.5
+        x_m_start = x_l1_ini + piso * 0.5
         x_m_pat = x_deg_fim + pat_dir * 0.5
-        x_m_arr = x_min_int + (pat_esq * 0.5 if pat_esq > 0 else -20.0)
+        x_m_arr = x_l2_fim - (pat_esq * 0.5 if pat_esq > 0 else 20.0)
 
         draw.Line(x_m_start, y_m1, x_m_pat, y_m1)
         draw.Line(x_m_pat, y_m1, x_m_pat, y_m2)
