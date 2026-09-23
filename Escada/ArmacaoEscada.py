@@ -179,7 +179,18 @@ def pedir_dados_armacao():
             }}
         </style>
         <script>
-            window.resizeTo(490, 560);
+            window.resizeTo(480, 520);
+
+            function toggleTipoPlanta() {{
+                var tp = document.getElementById('tipo_escada_planta').value;
+                document.getElementById('box_ferros_degrau_planta').style.display = (tp == 'PLISSADA') ? 'flex' : 'none';
+                document.getElementById('box_espelho_planta').style.display = (tp == 'CONVENCIONAL') ? 'flex' : 'none';
+            }}
+
+            function toggleDobraPlanta() {{
+                var db = document.getElementById('com_dobra_planta').value;
+                document.getElementById('box_comp_dobra_planta').style.display = (db == '1') ? 'flex' : 'none';
+            }}
 
             function setTab(tabName) {{
                 document.getElementById('tabCorte').className = (tabName == 'corte') ? 'tab active' : 'tab';
@@ -193,6 +204,11 @@ def pedir_dados_armacao():
                 document.getElementById('btnCorte').style.display = (tabName == 'corte') ? 'inline-block' : 'none';
                 document.getElementById('btnPlanta').style.display = (tabName == 'planta') ? 'inline-block' : 'none';
                 document.getElementById('btnPlissada').style.display = (tabName == 'plissada') ? 'inline-block' : 'none';
+
+                if (tabName == 'planta') {{
+                    toggleTipoPlanta();
+                    toggleDobraPlanta();
+                }}
             }}
 
             function confirmar(modoEscolhido) {{
@@ -212,6 +228,7 @@ def pedir_dados_armacao():
 
                         // Planta Baixa
                         "tipo_escada_planta": document.getElementById('tipo_escada_planta').value,
+                        "ferros_por_degrau_plissada": parseInt(document.getElementById('ferros_por_degrau_plissada').value),
                         "bitola_planta": parseFloat(document.getElementById('bitola_planta').value.replace(',', '.')),
                         "espacamento_planta": parseFloat(document.getElementById('espacamento_planta').value.replace(',', '.')),
                         "cobrimento_planta": parseFloat(document.getElementById('cobrimento_planta').value.replace(',', '.')),
@@ -238,7 +255,7 @@ def pedir_dados_armacao():
             }}
         </script>
     </head>
-    <body>
+    <body onload="toggleTipoPlanta(); toggleDobraPlanta();">
         <div class="topbar">
             <h1>Armacao da Escada</h1>
             <p>Plugin TQS &#9679 Ediglanthio Samuel Araujo Brandao &#9679 G3 Engenharia</p>
@@ -288,14 +305,26 @@ def pedir_dados_armacao():
             <!-- CONTEUDO PLANTA -->
             <div id="contentPlanta" class="tab-content">
                 <div class="card card-blue">
-                    <h3>Armadura da Planta Baixa</h3>
+                    <h3>Tipo de Escada</h3>
                     <div class="campo">
-                        <label>Tipo de Escada:</label>
-                        <select id="tipo_escada_planta">
-                            <option value="CONVENCIONAL" selected>Convencional</option>
-                            <option value="PLISSADA">Plissada (Cascata)</option>
+                        <label>Modelo:</label>
+                        <select id="tipo_escada_planta" onchange="toggleTipoPlanta()">
+                            <option value="PLISSADA" selected>Plissada</option>
+                            <option value="CONVENCIONAL">Convencional</option>
                         </select>
                     </div>
+                    <div class="campo" id="box_ferros_degrau_planta">
+                        <label>Ferros por Degrau:</label>
+                        <input type="text" id="ferros_por_degrau_plissada" value="10">
+                    </div>
+                    <div class="campo" id="box_espelho_planta" style="display:none;">
+                        <label>Espelho do Degrau (cm):</label>
+                        <input type="text" id="espelho_planta" value="17.5">
+                    </div>
+                </div>
+
+                <div class="card card-blue">
+                    <h3>Armadura e Detalhes</h3>
                     <div class="campo">
                         <label>Bitola:</label>
                         <select id="bitola_planta">
@@ -308,7 +337,7 @@ def pedir_dados_armacao():
                         </select>
                     </div>
                     <div class="campo">
-                        <label>Espacamento da Armadura (cm):</label>
+                        <label>Espacamento (cm):</label>
                         <input type="text" id="espacamento_planta" value="15">
                     </div>
                     <div class="campo">
@@ -316,19 +345,49 @@ def pedir_dados_armacao():
                         <input type="text" id="cobrimento_planta" value="2.5">
                     </div>
                     <div class="campo">
-                        <label>Espelho do Degrau (cm):</label>
-                        <input type="text" id="espelho_planta" value="17.5">
-                    </div>
-                    <div class="campo">
-                        <label>Com Dobras nas Pontas:</label>
-                        <select id="com_dobra_planta">
+                        <label>Dobras nos Patamares:</label>
+                        <select id="com_dobra_planta" onchange="toggleDobraPlanta()">
                             <option value="1" selected>Sim</option>
                             <option value="0">Nao</option>
                         </select>
                     </div>
-                    <div class="campo">
+                    <div class="campo" id="box_comp_dobra_planta">
                         <label>Comprimento da Dobra (cm):</label>
                         <input type="text" id="comp_dobra_planta" value="15">
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTEUDO ESCADA PLISSADA -->
+            <div id="contentPlissada" class="tab-content">
+                <div class="card card-purple">
+                    <h3>Armadura de Estribos (Escada Plissada)</h3>
+                    <div class="campo">
+                        <label>Bitola do Estribo:</label>
+                        <select id="bitola_plissada">
+                            <option value="5.0">5.0 mm</option>
+                            <option value="6.3">6.3 mm</option>
+                            <option value="8.0" selected>8.0 mm</option>
+                            <option value="10.0">10.0 mm</option>
+                            <option value="12.5">12.5 mm</option>
+                            <option value="16.0">16.0 mm</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label>Espacamento (cm):</label>
+                        <input type="text" id="espacamento_plissada" value="15">
+                    </div>
+                    <div class="campo">
+                        <label>Multiplicador por Degrau (ex: 7x):</label>
+                        <input type="text" id="multiplicador_plissada" value="7">
+                    </div>
+                    <div class="campo">
+                        <label>Cobrimento (cm):</label>
+                        <input type="text" id="cobrimento_plissada" value="2.5">
+                    </div>
+                    <div class="campo">
+                        <label>Espac. Distribuicao nos Patamares (cm):</label>
+                        <input type="text" id="espac_dist_plissada" value="15">
                     </div>
                 </div>
             </div>
@@ -638,7 +697,8 @@ def identificar_geometria_planta_escada(linhas, textos=None):
                 ymax_med = sum(d[2] for d in degraus_finais) / len(degraus_finais)
                 lances_identificados.append({
                     'orientacao': 'HORIZONTAL',
-                    'n_degraus': len(degraus_finais) - 1,
+                    'n_degraus': len(degraus_finais),
+                    'n_pisos': len(degraus_finais) - 1,
                     'n_linhas_degraus': len(degraus_finais),
                     'piso': round(piso_med, 1),
                     'largura': round(largura_med, 1),
@@ -693,7 +753,8 @@ def identificar_geometria_planta_escada(linhas, textos=None):
                     xmax_med = sum(d[1] for d in degraus_finais) / len(degraus_finais)
                     lances_identificados.append({
                         'orientacao': 'VERTICAL',
-                        'n_degraus': len(degraus_finais) - 1,
+                        'n_degraus': len(degraus_finais),
+                        'n_pisos': len(degraus_finais) - 1,
                         'n_linhas_degraus': len(degraus_finais),
                         'piso': round(piso_med, 1),
                         'largura': round(largura_med, 1),
@@ -1779,39 +1840,28 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
             x_fim = l["x_fim"]
             comp_horiz = abs(x_fim - x_ini)
 
-        # Identificar numero real de degraus
-        # Se ha N linhas divisorias internas selecionadas (ex: 7 linhas), elas delimitam (N + 1) = 8 degraus
-        n_linhas = len(l.get("degraus_coords", []))
-        if n_linhas <= 0:
-            n_linhas = l.get("n_linhas_degraus", l.get("n_degraus", 0))
-
-        piso = l.get("piso", 28.0)
-        if piso <= 0:
-            piso = 28.0
-
-        n_deg_real = None
-        pat_esq_geo = geo_planta.get("patamar_esquerdo")
-        pat_dir_geo = geo_planta.get("patamar_direito")
-        if pat_esq_geo and pat_dir_geo and pat_esq_geo.get("existe") and pat_dir_geo.get("existe"):
-            vao_livre = pat_dir_geo.get("x_min", 0.0) - pat_esq_geo.get("x_max", 0.0)
-            if vao_livre > 50.0:
-                n_deg_real = int(round(vao_livre / piso))
-
-        if n_deg_real is None or n_deg_real <= 0:
-            if n_linhas > 0:
-                n_deg_real = n_linhas + 1
-            else:
-                n_deg_real = max(1, int(round(comp_horiz / piso)))
+        # Identificar numero real de degraus diretamente pelas linhas detectadas do proprio lance
+        deg_coords = l.get("degraus_coords", [])
+        if deg_coords:
+            n_deg_lance = len(deg_coords)
+        else:
+            n_deg_lance = l.get("n_degraus", max(1, int(round(comp_horiz / piso)) + 1))
 
         if is_plissada:
-            # Na escada plissada (cascata): adiciona +10 a soma dos ferros do lance
-            # Ex: 68 + 10 = 78 ferros
-            qtd_lance = max(1, int(n_deg_real * 10 - 2) + 10)
+            # Na escada plissada (cascata):
+            # Formula exata da armadura de degraus: N_degraus * ferros_por_degrau - 2 (descontando nós de borda)
+            # Ex: 8 degraus (8 linhas) -> 8 * 10 - 2 = 78 ferros
+            # Ex: 7 degraus (7 linhas) -> 7 * 10 - 2 = 68 ferros
+            # Ex: 9 degraus (9 linhas) -> 9 * 10 - 2 = 88 ferros
+            mult_deg = int(dados_ferros.get("ferros_por_degrau_plissada", 10))
+            if mult_deg <= 0:
+                mult_deg = 10
+            qtd_lance = max(1, int(n_deg_lance * mult_deg - 2))
         else:
             # Na escada convencional, a distribuicao corre ao longo do comprimento inclinado do lance
-            n_espelhos = n_deg_real + 1
+            n_espelhos = n_deg_lance
             alt_vert = n_espelhos * espelho_padrao
-            comp_inclinado = math.hypot(n_deg_real * piso, alt_vert)
+            comp_inclinado = math.hypot(max(0, n_deg_lance - 1) * piso, alt_vert)
             qtd_lance = int(math.ceil(comp_inclinado / espac)) + 1
 
         # Cobrimento rigoroso em ambas as pontas (fica fora da viga e fora da parede/vao central)
@@ -1880,7 +1930,7 @@ def desenhar_todos_ferros_planta(dwg, geo_planta, dados_ferros):
 # ==============================================================================
 def desenhar_estribos_escada_plissada(dwg, geo, dados_ferros):
     """
-    Gera as armaduras inteligentes de estribos em escada plissada (cascata/zigue-zague)
+    Gera as armaduras inteligentes de estribos em escada plissada 
     utilizando o tipo nativo TQSDwg.ICPSTR (permite alterar o formato pelo duplo clique no EAG).
     - P7: Estribo de partida (base)
     - P8: Estribos fechados horizontais nos pisos
