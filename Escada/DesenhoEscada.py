@@ -271,6 +271,14 @@ def pedir_dados_janela_windows():
                 }}
             }}
 
+            function toggleOpcoesTabela() {{
+                var box = document.getElementById('box_opcoes_tabela');
+                var gerar = document.getElementById('gerar_tabela').checked;
+                if (box) {{
+                    box.style.display = gerar ? "block" : "none";
+                }}
+            }}
+
             function initDialog() {{
                 try {{
                     window.resizeTo(1140, 780);
@@ -278,6 +286,7 @@ def pedir_dados_janela_windows():
                 }} catch(e) {{}}
                 toggleVao();
                 togglePlanta();
+                toggleOpcoesTabela();
                 toggleLances();
                 toggleLancesPlanta();
                 togglePatamarPartida();
@@ -314,6 +323,8 @@ def pedir_dados_janela_windows():
                         "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
                         "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.')),
                         "desenhar_planta": document.getElementById('desenhar_planta') ? document.getElementById('desenhar_planta').checked : false,
+                        "gerar_tabela": document.getElementById('gerar_tabela') ? document.getElementById('gerar_tabela').checked : true,
+                        "classe_agressividade": document.getElementById('classe_agressividade') ? document.getElementById('classe_agressividade').value : "III",
                         "largura_lance_1": (numLances === 1) ? (parseFloat(document.getElementById('largura_escada_1').value.replace(',', '.')) || 100.0) : (parseFloat(document.getElementById('largura_lance_1').value.replace(',', '.')) || 120.0),
                         "largura_lance_2": (numLances >= 2) ? (parseFloat(document.getElementById('largura_lance_2').value.replace(',', '.')) || 105.5) : 0.0,
                         "tem_vao_lances": document.getElementById('tem_vao_lances') ? document.getElementById('tem_vao_lances').checked : false,
@@ -341,6 +352,8 @@ def pedir_dados_janela_windows():
                                   ',"viga_largura":' + dados.viga_largura + 
                                   ',"viga_altura":' + dados.viga_altura + 
                                   ',"desenhar_planta":' + dados.desenhar_planta + 
+                                  ',"gerar_tabela":' + dados.gerar_tabela + 
+                                  ',"classe_agressividade":"' + dados.classe_agressividade + '"' + 
                                   ',"largura_lance_1":' + dados.largura_lance_1 + 
                                   ',"largura_lance_2":' + dados.largura_lance_2 + 
                                   ',"tem_vao_lances":' + dados.tem_vao_lances + 
@@ -366,7 +379,7 @@ def pedir_dados_janela_windows():
 
         <div class="container">
             <div class="img-box">
-                <img src="{img_html}" alt="Diagrama da Escada" onerror="this.parentElement.innerHTML='<div style=\'color:#888; text-align:center; padding:40px;\'>Diagrama ilustrativo indisponível</div>'" />
+                <img src="{img_html}" alt="Diagrama da Escada" onerror="this.parentElement.innerHTML='<div style=\\'color:#888; text-align:center; padding:40px;\\'>Diagrama ilustrativo indisponível</div>'" />
             </div>
 
             <div class="form-cols">
@@ -459,6 +472,25 @@ def pedir_dados_janela_windows():
                         <h3>Vigas</h3>
                         <div class="campo"><label>Largura da Viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
                         <div class="campo"><label>Altura da Viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Configurações da tabela </h3>
+                        <div class="campo">
+                            <label>Gerar Tabela de Critérios / Quantitativo?</label>
+                            <input type="checkbox" id="gerar_tabela" checked onchange="toggleOpcoesTabela()">
+                        </div>
+                        <div id="box_opcoes_tabela" class="sec-opcional" style="margin-top: 6px;">
+                            <div class="campo">
+                                <label>Classe de Agressividade (CAA):</label>
+                                <select id="classe_agressividade">
+                                    <option value="I">I - Fraca (Rural/Submerso)</option>
+                                    <option value="II">II - Moderada (Urbano)</option>
+                                    <option value="III" selected>III - Forte (Marinho)</option>
+                                    <option value="IV">IV - Muito Forte (Respingos)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1439,6 +1471,170 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
     desenhar_indicacao_corte(dwg, x_rotulo, y_rotulo, "CORTE A-A", "ESCALA: 1/20")
 
 
+# ==============================================================================
+# DESENHO DA TABELA DE CRITÉRIOS AMBIENTAIS E RESUMO DE QUANTITATIVO
+# ==============================================================================
+def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
+    """
+    Desenha a Tabela de Classe de Agressividade Ambiental e o Resumo de Quantitativo
+    a direita da escada, com layout e proporções bem ajustados.
+    """
+    draw = dwg.draw
+
+    largura_tab = 320.0
+    larg_col1 = 115.0
+    x_div = x_tab + larg_col1
+    x_fim = x_tab + largura_tab
+
+    # ==========================================================================
+    # 1. TABELA DE AGRESSIVIDADE AMBIENTAL (TOPO)
+    # ==========================================================================
+    h_header1 = 26.0
+    h_row1 = 46.0
+    h_row2 = 40.0
+
+    y_top1 = y_tab
+    y_hdr_bot1 = y_top1 - h_header1
+    y_row1_bot = y_hdr_bot1 - h_row1
+    y_row2_bot = y_row1_bot - h_row2
+
+    # --- Cabecalho (Amarelo / Nivel 245) ---
+    draw.level = 245
+    draw.color = 2  # Amarelo
+    draw.style = -1
+
+    # Retangulo do cabecalho
+    draw.Line(x_tab, y_top1, x_fim, y_top1)
+    draw.Line(x_fim, y_top1, x_fim, y_hdr_bot1)
+    draw.Line(x_fim, y_hdr_bot1, x_tab, y_hdr_bot1)
+    draw.Line(x_tab, y_hdr_bot1, x_tab, y_top1)
+
+    # Textos do cabecalho centralizados (Amarelo)
+    draw.Text(x_tab + 75.0, y_top1 - 10.0, 6.0, 0.0, "CLASSE DE AGRESSIVIDADE AMBIENTAL")
+    draw.Text(x_tab + 120.0, y_top1 - 19.5, 5.5, 0.0, "(NBR-6118: 2023)")
+
+    # --- Corpo da Tabela 1 (Bordas Magenta / Nivel 243) ---
+    draw.level = 243
+    draw.color = 6  # Magenta
+
+    # Contorno externo do corpo
+    draw.Line(x_tab, y_hdr_bot1, x_fim, y_hdr_bot1)
+    draw.Line(x_fim, y_hdr_bot1, x_fim, y_row2_bot)
+    draw.Line(x_fim, y_row2_bot, x_tab, y_row2_bot)
+    draw.Line(x_tab, y_row2_bot, x_tab, y_hdr_bot1)
+
+    # Linha divisoria vertical (entre col1 e col2)
+    draw.Line(x_div, y_hdr_bot1, x_div, y_row2_bot)
+
+    # Linha divisoria horizontal (entre row1 e row2)
+    draw.Line(x_tab, y_row1_bot, x_fim, y_row1_bot)
+
+    # --- Obter Classe de Agressividade Ambiental dos dados ---
+    classe_agr = (dados.get("classe_agressividade", "III") if dados else "III").upper()
+
+    if classe_agr == "I":
+        txt_classe_l1 = "I - FRACA"
+        txt_classe_l2 = "RURAL"
+        txt_ac = "a/c <= 0, 65"
+    elif classe_agr == "II":
+        txt_classe_l1 = "II - MODERADA"
+        txt_classe_l2 = "URBANO"
+        txt_ac = "a/c <= 0, 60"
+    elif classe_agr == "IV":
+        txt_classe_l1 = "IV - MUITO FORTE"
+        txt_classe_l2 = "RESPINGOS DE MARE"
+        txt_ac = "a/c <= 0, 45"
+    else:  # Classe III (Padrao)
+        txt_classe_l1 = "III - FORTE"
+        txt_classe_l2 = "AMBIENTE MARINHO"
+        txt_ac = "a/c <= 0, 55"
+
+    # --- Textos do Corpo da Tabela 1 (Amarelo) ---
+    draw.color = 2  # Amarelo
+
+    # Row 1 - Coluna 1: Classe de Agressividade (Centralizado)
+    larg_txt1 = len(txt_classe_l1) * (6.0 * 0.8)
+    x_c1 = x_tab + max((larg_col1 - larg_txt1) / 2.0, 5.0)
+    draw.Text(x_c1, y_hdr_bot1 - 17.0, 6.0, 0.0, txt_classe_l1)
+
+    larg_txt2 = len(txt_classe_l2) * (5.5 * 0.8)
+    x_c2 = x_tab + max((larg_col1 - larg_txt2) / 2.0, 5.0)
+    draw.Text(x_c2, y_hdr_bot1 - 30.0, 5.5, 0.0, txt_classe_l2)
+
+    # Row 1 - Coluna 2: FATORES ATENUANTES
+    draw.Text(x_div + 8.0, y_hdr_bot1 - 8.5, 5.5, 0.0, "FATORES ATENUANTES:")
+    draw.Text(x_div + 8.0, y_hdr_bot1 - 16.5, 4.2, 0.0, "-Rigido controle de qualidade e")
+    draw.Text(x_div + 12.0, y_hdr_bot1 - 23.5, 4.2, 0.0, "de tolerancia de medidas na obra.")
+    draw.Text(x_div + 8.0, y_hdr_bot1 - 31.0, 4.2, 0.0, "-Ambientes revestidos com argamassa")
+    draw.Text(x_div + 12.0, y_hdr_bot1 - 38.0, 4.2, 0.0, "e pintura.")
+
+    # Row 2 - Coluna 1: COBRIMENTOS: LAJES 2.0cm
+    draw.Text(x_tab + 12.0, y_row1_bot - 14.0, 5.5, 0.0, "COBRIMENTOS:")
+    draw.Text(x_tab + 12.0, y_row1_bot - 26.0, 5.5, 0.0, "LAJES  2.0cm")
+
+    # Row 2 - Coluna 2: FATOR AGUA/CIMENTO DO CONCRETO
+    draw.Text(x_div + 8.0, y_row1_bot - 11.0, 5.5, 0.0, "FATOR AGUA/CIMENTO")
+    draw.Text(x_div + 8.0, y_row1_bot - 19.5, 5.5, 0.0, "DO CONCRETO:")
+    draw.Text(x_div + 60.0, y_row1_bot - 31.0, 5.5, 0.0, txt_ac)
+
+    # ==========================================================================
+    # 2. TABELA DE RESUMO DE QUANTITATIVO (ABAIXO)
+    # ==========================================================================
+    gap_tabelas = 22.0
+    y_top2 = y_row2_bot - gap_tabelas
+    h_header2 = 20.0
+    h_row_q = 15.0
+
+    y_hdr_bot2 = y_top2 - h_header2
+    y_q_row1_bot = y_hdr_bot2 - h_row_q
+    y_q_row2_bot = y_q_row1_bot - h_row_q
+
+    x_div_q = x_tab + 215.0
+
+    # --- Cabecalho Quantitativo (Amarelo) ---
+    draw.level = 245
+    draw.color = 2  # Amarelo
+
+    # Retangulo cabecalho
+    draw.Line(x_tab, y_top2, x_fim, y_top2)
+    draw.Line(x_fim, y_top2, x_fim, y_hdr_bot2)
+    draw.Line(x_fim, y_hdr_bot2, x_tab, y_hdr_bot2)
+    draw.Line(x_tab, y_hdr_bot2, x_tab, y_top2)
+
+    # Texto cabecalho centralizado
+    draw.Text(x_tab + 95.0, y_top2 - 13.0, 6.5, 0.0, "**RESUMO DE QUANTITATIVO")
+
+    # --- Grade Quantitativo (Magenta) ---
+    draw.level = 243
+    draw.color = 6  # Magenta
+
+    # Contorno
+    draw.Line(x_tab, y_hdr_bot2, x_fim, y_hdr_bot2)
+    draw.Line(x_fim, y_hdr_bot2, x_fim, y_q_row2_bot)
+    draw.Line(x_fim, y_q_row2_bot, x_tab, y_q_row2_bot)
+    draw.Line(x_tab, y_q_row2_bot, x_tab, y_hdr_bot2)
+
+    # Divisoria vertical
+    draw.Line(x_div_q, y_hdr_bot2, x_div_q, y_q_row2_bot)
+
+    # Divisoria horizontal entre formas e concreto
+    draw.Line(x_tab, y_q_row1_bot, x_fim, y_q_row1_bot)
+
+    # --- Textos Quantitativo (Amarelo) ---
+    draw.color = 2  # Amarelo
+
+    # Row 1: AREA DE FORMAS
+    draw.Text(x_tab + 12.0, y_hdr_bot2 - 10.0, 5.5, 0.0, "*AREA DE FORMAS")
+    draw.Text(x_div_q + 25.0, y_hdr_bot2 - 10.0, 5.5, 0.0, "00.00m")
+
+    # Row 2: VOLUME DE CONCRETO
+    draw.Text(x_tab + 12.0, y_q_row1_bot - 10.0, 5.5, 0.0, "*VOLUME DE CONCRETO")
+    draw.Text(x_div_q + 25.0, y_q_row1_bot - 10.0, 5.5, 0.0, "00.00m")
+
+    # --- Nota de Rodape ---
+    draw.Text(x_tab + 80.0, y_q_row2_bot - 13.0, 6.0, 0.0, "**CONFERIR QUANTITATIVOS NA OBRA")
+
+
 def meucmd(eag, tqsjan):
     """Funcao principal acionada pelo menu TQS."""
     dados = pedir_dados_janela_windows()
@@ -1481,6 +1677,39 @@ def meucmd(eag, tqsjan):
             y0_lance1 = y_min_ext - dist_offset_l1 - altura_l1
 
             desenhar_perfil_lance1_isolado(tqsjan.dwg, x0, y0_lance1, dados)
+
+    # Desenha a Tabela de Criterios e Resumo de Quantitativo a direita da escada
+    gerar_tabela = dados.get("gerar_tabela", True)
+    if isinstance(gerar_tabela, str):
+        gerar_tabela = (gerar_tabela.lower() in ["true", "1", "sim"])
+
+    if gerar_tabela:
+        num_lances = dados.get("num_lances", 2)
+        piso = float(dados["piso"])
+        n1 = int(dados["n_degraus_1"])
+        espelho = float(dados["espelho"])
+        alterar_extremos = dados.get("alterar_extremos", False)
+        if isinstance(alterar_extremos, str):
+            alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
+        espelho_primeiro = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
+        altura_l1 = espelho_primeiro + (n1 - 1) * espelho
+
+        patamar_int_1 = float(dados.get("patamar_intermediario_1", 120.0))
+        patamar_chegada = float(dados.get("patamar_chegada", 150.0))
+        tem_patamar_chegada = dados.get("tem_patamar_chegada", True)
+        if isinstance(tem_patamar_chegada, str):
+            tem_patamar_chegada = (tem_patamar_chegada.lower() in ["true", "1", "sim"])
+        viga_largura = float(dados.get("viga_largura", 20.0))
+
+        if num_lances >= 2:
+            x_max_escada = x0 + (n1 - 1) * piso + patamar_int_1 + viga_largura
+        else:
+            x_max_escada = x0 + (n1 - 1) * piso + (patamar_chegada + viga_largura if tem_patamar_chegada else viga_largura)
+
+        x_tabela = x_max_escada + 120.0
+        y_tabela = y0 + altura_l1 + 10.0
+
+        desenhar_tabela_criterios_quantitativos(tqsjan.dwg, x_tabela, y_tabela, dados)
 
     tqsjan.ZoomTotal()
     tqsjan.Regen()
