@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import math
 import subprocess
 from TQS import TQSUtil, TQSGeo
 
@@ -325,6 +326,7 @@ def pedir_dados_janela_windows():
                         "desenhar_planta": document.getElementById('desenhar_planta') ? document.getElementById('desenhar_planta').checked : false,
                         "gerar_tabela": document.getElementById('gerar_tabela') ? document.getElementById('gerar_tabela').checked : true,
                         "classe_agressividade": document.getElementById('classe_agressividade') ? document.getElementById('classe_agressividade').value : "III",
+                        "cobrimento_lajes": document.getElementById('cobrimento_lajes') ? (parseFloat(document.getElementById('cobrimento_lajes').value.replace(',', '.')) || 2.0) : 2.0,
                         "largura_lance_1": (numLances === 1) ? (parseFloat(document.getElementById('largura_escada_1').value.replace(',', '.')) || 100.0) : (parseFloat(document.getElementById('largura_lance_1').value.replace(',', '.')) || 120.0),
                         "largura_lance_2": (numLances >= 2) ? (parseFloat(document.getElementById('largura_lance_2').value.replace(',', '.')) || 105.5) : 0.0,
                         "tem_vao_lances": document.getElementById('tem_vao_lances') ? document.getElementById('tem_vao_lances').checked : false,
@@ -354,6 +356,7 @@ def pedir_dados_janela_windows():
                                   ',"desenhar_planta":' + dados.desenhar_planta + 
                                   ',"gerar_tabela":' + dados.gerar_tabela + 
                                   ',"classe_agressividade":"' + dados.classe_agressividade + '"' + 
+                                  ',"cobrimento_lajes":' + dados.cobrimento_lajes + 
                                   ',"largura_lance_1":' + dados.largura_lance_1 + 
                                   ',"largura_lance_2":' + dados.largura_lance_2 + 
                                   ',"tem_vao_lances":' + dados.tem_vao_lances + 
@@ -489,6 +492,10 @@ def pedir_dados_janela_windows():
                                     <option value="III" selected>III - Forte (Marinho)</option>
                                     <option value="IV">IV - Muito Forte (Respingos)</option>
                                 </select>
+                            </div>
+                            <div class="campo" style="margin-top: 6px;">
+                                <label>Cobrimento Lajes (cm):</label>
+                                <input type="text" id="cobrimento_lajes" value="2.0">
                             </div>
                         </div>
                     </div>
@@ -1472,6 +1479,117 @@ def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
 
 
 # ==============================================================================
+# CÁLCULO AUTOMÁTICO DE QUANTITATIVOS (ÁREA DE FORMAS E VOLUME DE CONCRETO)
+# ==============================================================================
+def calcular_quantitativos_escada(dados):
+    """
+    Calcula a Area de Formas (m2) e o Volume de Concreto (m3) da escada
+    com base nas dimensoes geometricas reais.
+    """
+    if not dados:
+        return 0.0, 0.0
+
+    num_lances = int(dados.get("num_lances", 2))
+    piso = float(dados.get("piso", 28.0))
+    espelho = float(dados.get("espelho", 17.9))
+    espessura = float(dados.get("espessura", 15.0))
+    tipo_escada = str(dados.get("tipo_escada", "CONVENCIONAL")).upper()
+
+    alterar_extremos = dados.get("alterar_extremos", False)
+    if isinstance(alterar_extremos, str):
+        alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
+
+    esp_prim = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
+    esp_ult = float(dados.get("espelho_ultimo", espelho)) if alterar_extremos else espelho
+
+    n1 = int(dados.get("n_degraus_1", 8))
+    n2 = int(dados.get("n_degraus_2", 0)) if num_lances >= 2 else 0
+
+    larg_l1 = float(dados.get("largura_lance_1", 120.0))
+    larg_l2 = float(dados.get("largura_lance_2", 105.5)) if num_lances >= 2 else 0.0
+    vao = float(dados.get("vao_lances", 0.0))
+
+    tem_pat_part = dados.get("tem_patamar_partida", True)
+    if isinstance(tem_pat_part, str):
+        tem_pat_part = (tem_pat_part.lower() in ["true", "1", "sim"])
+    pat_part = float(dados.get("patamar_partida", 150.0)) if tem_pat_part else 0.0
+
+    tem_pat_cheg = dados.get("tem_patamar_chegada", True)
+    if isinstance(tem_pat_cheg, str):
+        tem_pat_cheg = (tem_pat_cheg.lower() in ["true", "1", "sim"])
+    pat_cheg = float(dados.get("patamar_chegada", 150.0)) if tem_pat_cheg else 0.0
+
+    pat_int = float(dados.get("patamar_intermediario_1", 120.0)) if num_lances >= 2 else 0.0
+
+    vol_cm3 = 0.0
+    area_form_cm2 = 0.0
+
+    # 1. Patamares
+    if tem_pat_part and pat_part > 0:
+        vol_cm3 += pat_part * espessura * larg_l1
+        area_form_cm2 += pat_part * larg_l1
+        area_form_cm2 += pat_part * espessura
+
+    if num_lances >= 2 and pat_int > 0:
+        larg_pat_int = larg_l1 + larg_l2 + vao
+        vol_cm3 += pat_int * espessura * larg_pat_int
+        area_form_cm2 += pat_int * larg_pat_int
+        area_form_cm2 += pat_int * espessura * 2.0
+
+    if tem_pat_cheg and pat_cheg > 0:
+        larg_cheg = larg_l2 if num_lances >= 2 else larg_l1
+        vol_cm3 += pat_cheg * espessura * larg_cheg
+        area_form_cm2 += pat_cheg * larg_cheg
+        area_form_cm2 += pat_cheg * espessura
+
+    # 2. Lances
+    lances = [(n1, larg_l1, True)]
+    if num_lances >= 2 and n2 > 0:
+        lances.append((n2, larg_l2, False))
+
+    for idx, (n_deg, larg_lance, is_l1) in enumerate(lances):
+        if n_deg <= 0:
+            continue
+        espelhos_lance = []
+        for i in range(n_deg):
+            if is_l1 and i == 0:
+                espelhos_lance.append(esp_prim)
+            elif (not is_l1 or num_lances == 1) and i == n_deg - 1:
+                espelhos_lance.append(esp_ult)
+            else:
+                espelhos_lance.append(espelho)
+
+        h_total_lance = sum(espelhos_lance)
+        l_horiz = max(n_deg - 1, 1) * piso
+        l_inc = math.hypot(l_horiz, h_total_lance)
+
+        # Forma dos espelhos (frente vertical)
+        for h_deg in espelhos_lance:
+            area_form_cm2 += h_deg * larg_lance
+
+        if tipo_escada == "PLISSADA":
+            for h_deg in espelhos_lance:
+                a_deg = (piso * espessura) + (h_deg * espessura) - (espessura * espessura)
+                vol_cm3 += a_deg * larg_lance
+                area_form_cm2 += (piso + h_deg) * larg_lance
+                area_form_cm2 += 2.0 * ((piso + h_deg) * espessura)
+        else:  # CONVENCIONAL
+            vol_cm3 += l_inc * espessura * larg_lance
+            for h_deg in espelhos_lance:
+                vol_cm3 += (piso * h_deg / 2.0) * larg_lance
+
+            area_form_cm2 += l_inc * larg_lance
+            area_lat_lado = l_inc * espessura
+            for h_deg in espelhos_lance:
+                area_lat_lado += (piso * h_deg / 2.0)
+            area_form_cm2 += 2.0 * area_lat_lado
+
+    vol_m3 = vol_cm3 / 1000000.0
+    area_m2 = area_form_cm2 / 10000.0
+    return area_m2, vol_m3
+
+
+# ==============================================================================
 # DESENHO DA TABELA DE CRITÉRIOS AMBIENTAIS E RESUMO DE QUANTITATIVO
 # ==============================================================================
 def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
@@ -1529,7 +1647,7 @@ def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
     # Linha divisoria horizontal (entre row1 e row2)
     draw.Line(x_tab, y_row1_bot, x_fim, y_row1_bot)
 
-    # --- Obter Classe de Agressividade Ambiental dos dados ---
+    # --- Obter Classe de Agressividade Ambiental e Cobrimento dos dados ---
     classe_agr = (dados.get("classe_agressividade", "III") if dados else "III").upper()
 
     if classe_agr == "I":
@@ -1548,6 +1666,9 @@ def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
         txt_classe_l1 = "III - FORTE"
         txt_classe_l2 = "AMBIENTE MARINHO"
         txt_ac = "a/c <= 0, 55"
+
+    cob_val = float(dados.get("cobrimento_lajes", 2.0)) if dados else 2.0
+    txt_cob = f"LAJES  {cob_val:.1f}cm"
 
     # --- Textos do Corpo da Tabela 1 (Amarelo) ---
     draw.color = 2  # Amarelo
@@ -1568,9 +1689,9 @@ def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
     draw.Text(x_div + 8.0, y_hdr_bot1 - 31.0, 4.2, 0.0, "-Ambientes revestidos com argamassa")
     draw.Text(x_div + 12.0, y_hdr_bot1 - 38.0, 4.2, 0.0, "e pintura.")
 
-    # Row 2 - Coluna 1: COBRIMENTOS: LAJES 2.0cm
+    # Row 2 - Coluna 1: COBRIMENTOS: LAJES
     draw.Text(x_tab + 12.0, y_row1_bot - 14.0, 5.5, 0.0, "COBRIMENTOS:")
-    draw.Text(x_tab + 12.0, y_row1_bot - 26.0, 5.5, 0.0, "LAJES  2.0cm")
+    draw.Text(x_tab + 12.0, y_row1_bot - 26.0, 5.5, 0.0, txt_cob)
 
     # Row 2 - Coluna 2: FATOR AGUA/CIMENTO DO CONCRETO
     draw.Text(x_div + 8.0, y_row1_bot - 11.0, 5.5, 0.0, "FATOR AGUA/CIMENTO")
@@ -1620,16 +1741,25 @@ def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
     # Divisoria horizontal entre formas e concreto
     draw.Line(x_tab, y_q_row1_bot, x_fim, y_q_row1_bot)
 
+    # --- Calcular Quantitativos Reais ---
+    area_m2, vol_m3 = calcular_quantitativos_escada(dados)
+    txt_area = f"{area_m2:.2f} m2"
+    txt_vol = f"{vol_m3:.2f} m3"
+
     # --- Textos Quantitativo (Amarelo) ---
     draw.color = 2  # Amarelo
 
     # Row 1: AREA DE FORMAS
     draw.Text(x_tab + 12.0, y_hdr_bot2 - 10.0, 5.5, 0.0, "*AREA DE FORMAS")
-    draw.Text(x_div_q + 25.0, y_hdr_bot2 - 10.0, 5.5, 0.0, "00.00m")
+    larg_txt_a = len(txt_area) * (5.5 * 0.8)
+    x_pos_a = x_div_q + max((105.0 - larg_txt_a) / 2.0, 5.0)
+    draw.Text(x_pos_a, y_hdr_bot2 - 10.0, 5.5, 0.0, txt_area)
 
     # Row 2: VOLUME DE CONCRETO
     draw.Text(x_tab + 12.0, y_q_row1_bot - 10.0, 5.5, 0.0, "*VOLUME DE CONCRETO")
-    draw.Text(x_div_q + 25.0, y_q_row1_bot - 10.0, 5.5, 0.0, "00.00m")
+    larg_txt_v = len(txt_vol) * (5.5 * 0.8)
+    x_pos_v = x_div_q + max((105.0 - larg_txt_v) / 2.0, 5.0)
+    draw.Text(x_pos_v, y_q_row1_bot - 10.0, 5.5, 0.0, txt_vol)
 
     # --- Nota de Rodape ---
     draw.Text(x_tab + 80.0, y_q_row2_bot - 13.0, 6.0, 0.0, "**CONFERIR QUANTITATIVOS NA OBRA")
