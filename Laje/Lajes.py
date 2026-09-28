@@ -7,10 +7,10 @@ from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
 
 
 # ==============================================================================
-# INTERFACE GRÁFICA (HTA) - PARÂMETROS DE ARMAÇÃO DA LAJE NERVURADA
+# INTERFACE GRÁFICA (HTA) - APENAS BITOLA E TRANSPASSE (TEMA ROXO)
 # ==============================================================================
 def pedir_dados_laje():
-    """Abre a janela nativa para coletar parâmetros da armação das nervuras da laje."""
+    """Abre janela simplificada com tema roxo para coletar bitola e transpasse."""
     caminho_script = os.path.dirname(os.path.abspath(__file__))
     hta_path = os.path.join(caminho_script, "dialogo_laje.hta")
     json_path = os.path.join(caminho_script, "dados_laje_temp.json")
@@ -28,32 +28,32 @@ def pedir_dados_laje():
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
         <meta http-equiv="x-ua-compatible" content="ie=edge" />
-        <title>Armadura de Laje Nervurada - G3 Plugins</title>
+        <title>Armadura da Laje - G3 Plugins</title>
         <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="ArmarLaje" BORDER="dialog" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
         <style>
             * {{ box-sizing: border-box; }}
             body {{
                 font-family: 'Segoe UI', Tahoma, sans-serif;
-                background: #eef1f5;
+                background: #f5f2f9;
                 margin: 0;
                 padding: 0;
-                font-size: 12.5px;
-                color: #2b2f36;
+                font-size: 13px;
+                color: #2b2736;
             }}
             .topbar {{
-                background: linear-gradient(135deg, #0d3b66 0%, #001e3d 100%);
+                background: linear-gradient(135deg, #6a1b9a 0%, #38006b 100%);
                 color: #fff;
-                padding: 12px 18px;
+                padding: 14px 20px;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.25);
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 12px;
             }}
             .topbar .icon {{
-                width: 28px;
-                height: 28px;
-                background: rgba(255,255,255,0.15);
-                border-radius: 6px;
+                width: 30px;
+                height: 30px;
+                background: rgba(255,255,255,0.18);
+                border-radius: 8px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -63,143 +63,121 @@ def pedir_dados_laje():
                 margin: 0;
                 font-size: 15px;
                 font-weight: 600;
+                letter-spacing: 0.2px;
             }}
             .topbar p {{
                 margin: 2px 0 0 0;
                 font-size: 11px;
-                color: #b8d4f0;
+                color: #e1bee7;
             }}
             .container {{
-                padding: 14px 18px 10px 18px;
-                display: flex;
-                gap: 14px;
-            }}
-            .col-form {{
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
+                padding: 16px 20px;
             }}
             .card {{
                 background: #ffffff;
-                border: 1px solid #dbe1e8;
+                border: 1px solid #e1bee7;
                 border-radius: 8px;
-                padding: 10px 14px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+                padding: 14px 16px;
+                box-shadow: 0 1px 4px rgba(106,27,154,0.06);
             }}
             .card h3 {{
-                margin: 0 0 8px 0;
-                color: #0d3b66;
+                margin: 0 0 12px 0;
+                color: #4a148c;
                 font-size: 12.5px;
                 font-weight: 600;
                 text-transform: uppercase;
-                letter-spacing: 0.3px;
-                border-bottom: 1px solid #e7ebf0;
-                padding-bottom: 5px;
+                letter-spacing: 0.4px;
+                border-bottom: 1px solid #f3e5f5;
+                padding-bottom: 6px;
             }}
             .campo {{
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 6px;
+                margin-bottom: 10px;
             }}
             .campo:last-child {{ margin-bottom: 0; }}
             label {{
                 font-weight: 500;
-                color: #45505c;
-                font-size: 12px;
+                color: #42394d;
+                font-size: 12.5px;
             }}
             input, select {{
-                width: 100px;
-                padding: 4px 6px;
+                width: 110px;
+                padding: 5px 8px;
                 text-align: right;
-                border: 1px solid #c3cbd4;
-                border-radius: 4px;
-                background: #fbfcfd;
-                font-size: 12px;
+                border: 1px solid #ceb3db;
+                border-radius: 5px;
+                background: #fdfbfe;
+                font-size: 12.5px;
+                transition: border-color 0.15s, box-shadow 0.15s;
             }}
             select {{ text-align: left; width: 140px; }}
             input:focus, select:focus {{
                 outline: none;
-                border-color: #0d3b66;
-                box-shadow: 0 0 0 2px rgba(13,59,102,0.15);
+                border-color: #6a1b9a;
+                box-shadow: 0 0 0 2px rgba(106,27,154,0.18);
                 background: #fff;
             }}
-            input[type="checkbox"] {{
-                width: auto;
-                transform: scale(1.1);
-            }}
             .info-box {{
-                background: #e8f1fa;
-                border: 1px solid #c2daf2;
+                background: #f3e5f5;
+                border: 1px solid #e1bee7;
                 border-radius: 6px;
-                padding: 8px 12px;
+                padding: 9px 12px;
                 font-size: 11.5px;
-                color: #1a4971;
-                margin-top: 4px;
+                color: #4a148c;
+                margin-top: 12px;
+                line-height: 1.4;
             }}
             .btns {{
                 display: flex;
                 justify-content: flex-end;
                 gap: 10px;
-                padding: 0 18px 14px 18px;
+                padding: 4px 20px 16px 20px;
             }}
             button {{
-                padding: 7px 18px;
+                padding: 8px 20px;
                 cursor: pointer;
-                border: 1px solid #c3cbd4;
-                border-radius: 5px;
-                background: #f4f5f7;
+                border: 1px solid #ceb3db;
+                border-radius: 6px;
+                background: #f7f3fa;
                 font-size: 12.5px;
                 font-weight: 500;
-                color: #45505c;
+                color: #4a148c;
+                transition: background 0.15s;
             }}
-            button:hover {{ background: #e6e8eb; }}
+            button:hover {{ background: #ece0f2; }}
             .btn-gerar {{
-                background: linear-gradient(135deg, #0d3b66 0%, #001e3d 100%);
+                background: linear-gradient(135deg, #6a1b9a 0%, #4a148c 100%);
                 color: #fff;
                 border: none;
                 font-weight: 600;
-                box-shadow: 0 1px 3px rgba(13,59,102,0.35);
+                box-shadow: 0 1px 4px rgba(106,27,154,0.35);
             }}
-            .btn-gerar:hover {{ background: linear-gradient(135deg, #082642 0%, #001326 100%); }}
+            .btn-gerar:hover {{ background: linear-gradient(135deg, #5c1687 0%, #3b0e70 100%); }}
         </style>
         <script type="text/javascript">
             function initDialog() {{
                 try {{
-                    window.resizeTo(780, 560);
-                    window.moveTo((screen.availWidth - 780) / 2, (screen.availHeight - 560) / 2);
+                    window.resizeTo(480, 390);
+                    window.moveTo((screen.availWidth - 480) / 2, (screen.availHeight - 390) / 2);
                 }} catch(e) {{}}
             }}
 
             function confirmar() {{
                 try {{
                     var dados = {{
-                        "direcao": document.getElementById('direcao').value,
-                        "modulo_nervura": parseFloat(document.getElementById('modulo_nervura').value.replace(',', '.')) || 65.0,
-                        "largura_nervura": parseFloat(document.getElementById('largura_nervura').value.replace(',', '.')) || 10.0,
                         "bitola": parseFloat(document.getElementById('bitola').value) || 10.0,
-                        "qtd_barras": parseInt(document.getElementById('qtd_barras').value) || 1,
-                        "tipo_gancho": document.getElementById('tipo_gancho').value,
-                        "comprimento_gancho": parseFloat(document.getElementById('comprimento_gancho').value.replace(',', '.')) || 15.0,
-                        "cobrimento": parseFloat(document.getElementById('cobrimento').value.replace(',', '.')) || 2.5,
-                        "posicao_inicial": parseInt(document.getElementById('posicao_inicial').value) || 1,
-                        "desenhar_chamada": document.getElementById('desenhar_chamada').checked
+                        "comp_max_barra": parseFloat(document.getElementById('comp_max_barra').value.replace(',', '.')) || 12.0,
+                        "transpasse": parseFloat(document.getElementById('transpasse').value.replace(',', '.')) || 60.0
                     }};
 
                     var fso = new ActiveXObject("Scripting.FileSystemObject");
                     var a = fso.CreateTextFile("{json_js}", true);
 
-                    var jsonStr = '{{"direcao":"' + dados.direcao + '"' +
-                                  ',"modulo_nervura":' + dados.modulo_nervura + 
-                                  ',"largura_nervura":' + dados.largura_nervura + 
-                                  ',"bitola":' + dados.bitola + 
-                                  ',"qtd_barras":' + dados.qtd_barras + 
-                                  ',"tipo_gancho":"' + dados.tipo_gancho + '"' + 
-                                  ',"comprimento_gancho":' + dados.comprimento_gancho + 
-                                  ',"cobrimento":' + dados.cobrimento + 
-                                  ',"posicao_inicial":' + dados.posicao_inicial + 
-                                  ',"desenhar_chamada":' + dados.desenhar_chamada + '}}';
+                    var jsonStr = '{{"bitola":' + dados.bitola + 
+                                  ',"comp_max_barra":' + dados.comp_max_barra + 
+                                  ',"transpasse":' + dados.transpasse + '}}';
 
                     a.WriteLine(jsonStr);
                     a.Close();
@@ -215,96 +193,42 @@ def pedir_dados_laje():
             <div class="icon">▦</div>
             <div>
                 <h1>Armação de Laje Nervurada</h1>
-                <p>Plugin TQS &#9679 Ediglânthio Samuel Araújo Brandão &#9679 G3 Engenharia</p>
+                <p>Plugin TQS &#9679 G3 Engenharia</p>
             </div>
         </div>
 
         <div class="container">
-            <div class="col-form">
-                <div class="card">
-                    <h3>Disposição das Nervuras</h3>
-                    <div class="campo">
-                        <label>Direção da Armadura:</label>
-                        <select id="direcao">
-                            <option value="XY" selected>Eixos X e Y (Ambas)</option>
-                            <option value="X">Apenas Eixo X (Horizontal)</option>
-                            <option value="Y">Apenas Eixo Y (Vertical)</option>
-                        </select>
-                    </div>
-                    <div class="campo">
-                        <label>Espaçamento entre Eixos (cm):</label>
-                        <input type="text" id="modulo_nervura" value="65">
-                    </div>
-                    <div class="campo">
-                        <label>Largura da Nervura (cm):</label>
-                        <input type="text" id="largura_nervura" value="10">
-                    </div>
+            <div class="card">
+                <h3>Parâmetros da Barra</h3>
+                <div class="campo">
+                    <label>Bitola da Barra (&Phi; mm):</label>
+                    <select id="bitola">
+                        <option value="6.3">&Phi; 6.3 mm</option>
+                        <option value="8.0">&Phi; 8.0 mm</option>
+                        <option value="10.0" selected>&Phi; 10.0 mm</option>
+                        <option value="12.5">&Phi; 12.5 mm</option>
+                        <option value="16.0">&Phi; 16.0 mm</option>
+                        <option value="20.0">&Phi; 20.0 mm</option>
+                    </select>
                 </div>
-
-                <div class="card">
-                    <h3>Armadura Positiva</h3>
-                    <div class="campo">
-                        <label>Bitola da Barra (&Phi; mm):</label>
-                        <select id="bitola">
-                            <option value="6.3">&Phi; 6.3 mm</option>
-                            <option value="8.0">&Phi; 8.0 mm</option>
-                            <option value="10.0" selected>&Phi; 10.0 mm</option>
-                            <option value="12.5">&Phi; 12.5 mm</option>
-                            <option value="16.0">&Phi; 16.0 mm</option>
-                        </select>
-                    </div>
-                    <div class="campo">
-                        <label>Barras por Nervura:</label>
-                        <select id="qtd_barras">
-                            <option value="1" selected>1 Barra</option>
-                            <option value="2">2 Barras</option>
-                        </select>
-                    </div>
+                <div class="campo">
+                    <label>Comprimento Comercial Máx. (m):</label>
+                    <input type="text" id="comp_max_barra" value="12.0">
+                </div>
+                <div class="campo">
+                    <label>Transpasse entre Barras (cm):</label>
+                    <input type="text" id="transpasse" value="60">
                 </div>
             </div>
 
-            <div class="col-form">
-                <div class="card">
-                    <h3>Ancoragens e Extremidades</h3>
-                    <div class="campo">
-                        <label>Tipo de Dobra / Gancho:</label>
-                        <select id="tipo_gancho">
-                            <option value="90" selected>Gancho a 90&deg;</option>
-                            <option value="135">Gancho a 135&deg;</option>
-                            <option value="RETO">Reta (Sem Gancho)</option>
-                        </select>
-                    </div>
-                    <div class="campo">
-                        <label>Comprimento Gancho (cm):</label>
-                        <input type="text" id="comprimento_gancho" value="15">
-                    </div>
-                    <div class="campo">
-                        <label>Cobrimento da Ponta (cm):</label>
-                        <input type="text" id="cobrimento" value="2.5">
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3>Identificação no Desenho</h3>
-                    <div class="campo">
-                        <label>Posição Inicial (N):</label>
-                        <input type="text" id="posicao_inicial" value="1">
-                    </div>
-                    <div class="campo" style="margin-top: 6px;">
-                        <label>Desenhar linha de chamada?</label>
-                        <input type="checkbox" id="desenhar_chamada" checked>
-                    </div>
-                </div>
-
-                <div class="info-box">
-                    💡 <b>Como funciona:</b> Ao clicar em Avançar, você selecionará 2 cantos no EAG para definir o alinhamento da região das cubetas.
-                </div>
+            <div class="info-box">
+                ℹ️ <b>Como funciona:</b> Se o vão ultrapassar <b>12 metros</b>, o plugin dividirá automaticamente a armadura em barras emendadas com o <b>transpasse</b> configurado.
             </div>
         </div>
 
         <div class="btns">
             <button onclick="window.close()">Cancelar</button>
-            <button class="btn-gerar" onclick="confirmar()">Selecionar Região no EAG</button>
+            <button class="btn-gerar" onclick="confirmar()">Avançar</button>
         </div>
     </body>
     </html>
@@ -331,136 +255,91 @@ def pedir_dados_laje():
 
 
 # ==============================================================================
-# FUNÇÃO PARA DESENHAR OS FERROS DAS NERVURAS NA REGIÃO SELECIONADA
+# DESENHO DA BARRA COM TRANSPASSE (LIMITE 12 METROS)
 # ==============================================================================
-def armar_regiao_laje(dwg, p1, p2, dados):
+def desenhar_ferro_com_transpasse(dwg, p1, p2, dados):
     """
-    Gera as barras de armadura positiva nas nervuras entre p1 e p2.
+    Desenha o ferro entre p1 e p2 no EAG. Se o comprimento for maior que 12m,
+    cria as barras emendadas com o transpasse informado.
     """
-    x1, y1 = min(p1[0], p2[0]), min(p1[1], p2[1])
-    x2, y2 = max(p1[0], p2[0]), max(p1[1], p2[1])
-
-    direcao = dados.get("direcao", "XY").upper()
-    modulo = float(dados.get("modulo_nervura", 65.0))
-    bitola = float(dados.get("bitola", 10.0))
-    cobrimento = float(dados.get("cobrimento", 2.5))
-    tipo_gancho = str(dados.get("tipo_gancho", "90"))
-    comp_gancho = float(dados.get("comprimento_gancho", 15.0))
-    desenhar_chamada = bool(dados.get("desenhar_chamada", True))
-    pos_ini = int(dados.get("posicao_inicial", 1))
-
     draw = dwg.draw
 
     # Nível do ferro no TQS (Nível 220 = Linha que representa o ferro)
     draw.level = 220
-    draw.color = 3   # Verde (Cor padrão de armadura positiva no TQS)
+    draw.color = 3   # Verde padrão de armadura positiva
     draw.style = 0
 
-    largura_total = x2 - x1
-    altura_total = y2 - y1
+    x1, y1 = p1
+    x2, y2 = p2
 
-    pos_atual = pos_ini
+    dx = x2 - x1
+    dy = y2 - y1
+    dist_total = math.hypot(dx, dy)
 
-    # --------------------------------------------------------------------------
-    # 1. FERROS HORIZONTAIS (EIXO X)
-    # --------------------------------------------------------------------------
-    if direcao in ["XY", "X"]:
-        num_nervuras_y = int(altura_total / modulo)
-        if num_nervuras_y <= 0:
-            num_nervuras_y = 1
+    if dist_total <= 1e-4:
+        return
 
-        sobra_y = altura_total - (num_nervuras_y * modulo)
-        y_offset_ini = y1 + (modulo / 2.0) + (sobra_y / 2.0)
+    ux = dx / dist_total
+    uy = dy / dist_total
 
-        x_ini_ferro = x1 + cobrimento
-        x_fim_ferro = x2 - cobrimento
+    # Vetor perpendicular para afastar as barras no transpasse
+    perp_x = -uy
+    perp_y = ux
+    afastamento_transpasse = 3.0  # 3 cm de afastamento visual no desenho
 
-        for i in range(num_nervuras_y):
-            y_nerv = y_offset_ini + i * modulo
-            if y_nerv > y2:
+    comp_max_cm = float(dados.get("comp_max_barra", 12.0)) * 100.0  # metros para cm (ex: 1200 cm)
+    transpasse_cm = float(dados.get("transpasse", 60.0))
+
+    # Caso simples: menor ou igual a 12 metros (não precisa de emenda)
+    if dist_total <= comp_max_cm:
+        draw.Line(x1, y1, x2, y2)
+    else:
+        # Precisa de emenda / transpasse
+        comp_util_por_barra = comp_max_cm - transpasse_cm
+        dist_atual = 0.0
+        barra_idx = 0
+
+        while dist_atual < dist_total:
+            fim_barra = min(dist_atual + comp_max_cm, dist_total)
+
+            # Alterna o lado do transpasse para visualização clara no CAD
+            sinal = 1.0 if (barra_idx % 2 == 1) else 0.0
+            off_x = sinal * perp_x * afastamento_transpasse
+            off_y = sinal * perp_y * afastamento_transpasse
+
+            bx1 = x1 + dist_atual * ux + off_x
+            by1 = y1 + dist_atual * uy + off_y
+            bx2 = x1 + fim_barra * ux + off_x
+            by2 = y1 + fim_barra * uy + off_y
+
+            draw.Line(bx1, by1, bx2, by2)
+
+            if fim_barra >= dist_total:
                 break
 
-            # Linha longitudinal principal do ferro
-            draw.Line(x_ini_ferro, y_nerv, x_fim_ferro, y_nerv)
-
-            # Ganchos de ancoragem nas pontas
-            if tipo_gancho == "90":
-                draw.Line(x_ini_ferro, y_nerv, x_ini_ferro, y_nerv + comp_gancho)
-                draw.Line(x_fim_ferro, y_nerv, x_fim_ferro, y_nerv + comp_gancho)
-            elif tipo_gancho == "135":
-                diag = comp_gancho * 0.7071
-                draw.Line(x_ini_ferro, y_nerv, x_ini_ferro + diag, y_nerv + diag)
-                draw.Line(x_fim_ferro, y_nerv, x_fim_ferro - diag, y_nerv + diag)
-
-            # Texto de chamada do ferro (se habilitado)
-            if desenhar_chamada and i == int(num_nervuras_y / 2):
-                draw.level = 220
-                draw.color = 7  # Branco/Texto
-                txt_ferro = f"N{pos_atual} 1 %%{bitola:.1f} c/{modulo:.0f}"
-                draw.Text((x_ini_ferro + x_fim_ferro) / 2.0 - 25.0, y_nerv + 6.0, 7.0, 0.0, txt_ferro)
-                draw.color = 3
-
-        pos_atual += 1
-
-    # --------------------------------------------------------------------------
-    # 2. FERROS VERTICAIS (EIXO Y)
-    # --------------------------------------------------------------------------
-    if direcao in ["XY", "Y"]:
-        num_nervuras_x = int(largura_total / modulo)
-        if num_nervuras_x <= 0:
-            num_nervuras_x = 1
-
-        sobra_x = largura_total - (num_nervuras_x * modulo)
-        x_offset_ini = x1 + (modulo / 2.0) + (sobra_x / 2.0)
-
-        y_ini_ferro = y1 + cobrimento
-        y_fim_ferro = y2 - cobrimento
-
-        for j in range(num_nervuras_x):
-            x_nerv = x_offset_ini + j * modulo
-            if x_nerv > x2:
-                break
-
-            # Linha longitudinal vertical do ferro
-            draw.Line(x_nerv, y_ini_ferro, x_nerv, y_fim_ferro)
-
-            # Ganchos de ancoragem nas pontas
-            if tipo_gancho == "90":
-                draw.Line(x_nerv, y_ini_ferro, x_nerv + comp_gancho, y_ini_ferro)
-                draw.Line(x_nerv, y_fim_ferro, x_nerv + comp_gancho, y_fim_ferro)
-            elif tipo_gancho == "135":
-                diag = comp_gancho * 0.7071
-                draw.Line(x_nerv, y_ini_ferro, x_nerv + diag, y_ini_ferro + diag)
-                draw.Line(x_nerv, y_fim_ferro, x_nerv + diag, y_fim_ferro - diag)
-
-            # Texto de chamada do ferro vertical (se habilitado)
-            if desenhar_chamada and j == int(num_nervuras_x / 2):
-                draw.level = 220
-                draw.color = 7  # Branco/Texto
-                txt_ferro = f"N{pos_atual} 1 %%{bitola:.1f} c/{modulo:.0f}"
-                draw.Text(x_nerv + 6.0, (y_ini_ferro + y_fim_ferro) / 2.0, 7.0, 90.0, txt_ferro)
-                draw.color = 3
+            dist_atual += comp_util_por_barra
+            barra_idx += 1
 
 
 # ==============================================================================
-# ENTRY POINT PRINCIPAL DO COMANDO NO TQS EAG
+# ENTRY POINT PRINCIPAL NO TQS EAG
 # ==============================================================================
 def meucmd(eag, tqsjan):
-    """Funcao chamada pelo menu TQS para armar a laje nervurada."""
+    """Comando acionado pelo menu TQS na aba G3 Plugins."""
     dados = pedir_dados_laje()
     if dados is None:
         return
 
-    # Solicita a selecao dos dois pontos do retangulo da regiao das nervuras
-    icod1, x1, y1 = eag.locate.GetPoint(tqsjan, "Clique no 1º canto da região da laje (ex: inferior esquerdo)")
+    # Pede o ponto inicial e final do alinhamento da nervura / ferro
+    icod1, x1, y1 = eag.locate.GetPoint(tqsjan, "Clique no ponto inicial da barra / nervura")
     if icod1 == -1:
         return
 
-    icod2, x2, y2 = eag.locate.GetPoint(tqsjan, "Clique no 2º canto oposto da região da laje")
+    icod2, x2, y2 = eag.locate.GetPoint(tqsjan, "Clique no ponto final da barra / nervura")
     if icod2 == -1:
         return
 
-    armar_regiao_laje(tqsjan.dwg, (x1, y1), (x2, y2), dados)
+    desenhar_ferro_com_transpasse(tqsjan.dwg, (x1, y1), (x2, y2), dados)
 
     tqsjan.ZoomTotal()
     tqsjan.Regen()
