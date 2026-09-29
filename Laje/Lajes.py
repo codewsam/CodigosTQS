@@ -360,9 +360,54 @@ def coletar_linhas_nivel_201_dwg(dwg):
     return linhas_201
 
 
+def encontrar_nervuras_y(linhas_coletadas, xm_trecho=None, x_tol=100.0):
+    """
+    Encontra as posições Y centrais das nervuras (canais entre as cubetas)
+    analisando as arestas horizontais das cubetas selecionadas.
+    """
+    y_arestas = []
+    for elem in linhas_coletadas:
+        lx1, ly1, lx2, ly2, nivel = elem
+        if abs(ly1 - ly2) <= 3.0 and abs(lx2 - lx1) >= 15.0:  # Aresta horizontal
+            if xm_trecho is not None:
+                min_x = min(lx1, lx2)
+                max_x = max(lx1, lx2)
+                if not (min_x - x_tol <= xm_trecho <= max_x + x_tol):
+                    continue
+            y_arestas.append((ly1 + ly2) / 2.0)
+
+    if not y_arestas:
+        return []
+
+    y_arestas.sort()
+
+    # Agrupar arestas com Y muito próximos (+- 3.0 cm)
+    clusters_y = []
+    for y in y_arestas:
+        if not clusters_y or abs(y - clusters_y[-1]['mean']) > 4.0:
+            clusters_y.append({'sum': y, 'count': 1, 'mean': y})
+        else:
+            clusters_y[-1]['sum'] += y
+            clusters_y[-1]['count'] += 1
+            clusters_y[-1]['mean'] = clusters_y[-1]['sum'] / clusters_y[-1]['count']
+
+    y_niveis = [c['mean'] for c in clusters_y]
+
+    # Identificar os vãos entre cubetas (nervuras: 8cm a 25cm)
+    nervuras_y = []
+    for i in range(len(y_niveis) - 1):
+        gap = y_niveis[i + 1] - y_niveis[i]
+        if 8.0 <= gap <= 25.0:
+            y_nerv = (y_niveis[i] + y_niveis[i + 1]) / 2.0
+            nervuras_y.append(y_nerv)
+
+    return sorted(nervuras_y)
+
+
 def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
     """
     Gera a armadura da faixa selecionada:
+    - As barras horizontais ficam exatamente nos canais (nervuras) entre as cubetas.
     - O limite da reta vertical é travado nas linhas de contorno de Nível 201.
     - Conta os espaços entre cubetas ao longo desse limite exato (ex: 17x1).
     - Divide a extensão X em trechos comerciais de até 11.80m com transpasse.
@@ -394,7 +439,10 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
 
     y_mid_faixa = (y1_faixa + y2_faixa) / 2.0
 
-    # 2. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
+    # 2. Detectar as nervuras (canais entre as cubetas)
+    todas_nervuras_y = encontrar_nervuras_y(linhas_coletadas)
+
+    # 3. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
     trechos_x = []
     x_curr = x1_faixa
     idx_t = 0
@@ -408,7 +456,7 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         x_curr = x_fim_t - transpasse_cm
         idx_t += 1
 
-    # 3. Desenhar para cada trecho a Barra, a Reta Vertical e a Cota
+    # 4. Desenhar para cada trecho a Barra, a Reta Vertical e a Cota
     pos_num = 1
 
     for i_t, (xa_t, xb_t, idx_trecho) in enumerate(trechos_x):
@@ -446,13 +494,32 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         altura_reta = abs(y_max_reta - y_min_reta)
         qtd_espacos = max(int(round(altura_reta / modulo_padrao)), 1)
 
-        y_centro_reta = (y_min_reta + y_max_reta) / 2.0
+        # Posição da barra entre a 3ª e a 4ª cubeta a partir do topo
+        passo_real = altura_reta / qtd_espacos
+        # Se houver mais de 4 cubetas na altura, posiciona entre a 3ª e 4ª cubeta (3 módulos do topo)
+        # Senão, posiciona no meio
+        offset_cubetas = 3.0 if qtd_espacos >= 5 else max(1.0, qtd_espacos / 2.0)
+        y_alvo_barra = y_max_reta - (offset_cubetas * passo_real)
 
-        # Alternar o Y da barra nas emendas para ficarem paralelas (de lado)
-        off_y = 3.5 if (idx_trecho % 2 == 1) else 0.0
-        y_barra = y_centro_reta + off_y
+        # Buscar se há nervuras reais detectadas próximas dessa posição (+- 35cm)
+        nervuras_locais = encontrar_nervuras_y(linhas_coletadas, xm_trecho=xm_trecho)
+        if not nervuras_locais:
+            nervuras_locais = todas_nervuras_y
 
-        # A) Barra horizontal no meio da faixa
+        nervuras_proximas = [yn for yn in nervuras_locais if abs(yn - y_alvo_barra) <= 35.0]
+
+        if nervuras_proximas:
+            y_nervura_base = min(nervuras_proximas, key=lambda yn: abs(yn - y_alvo_barra))
+        else:
+            y_nervura_base = y_alvo_barra
+
+        # Alternar o Y da barra dentro da nervura nas emendas para ficarem paralelas (de lado)
+        off_y = 2.5 if (idx_trecho % 2 == 1) else -2.5
+        if len(trechos_x) == 1:
+            off_y = 0.0
+        y_barra = y_nervura_base + off_y
+
+        # A) Barra horizontal entre a 3ª e 4ª cubeta do topo (dentro do canal da nervura)
         draw.level = 220
         draw.color = 3  # Verde (Armadura)
         draw.style = 0
