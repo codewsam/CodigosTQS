@@ -246,7 +246,7 @@ def pedir_dados_laje():
             </div>
 
             <div class="info-box">
-                💡 <b>Armação de Faixa:</b> Arraste uma janela sobre a faixa de cubetas. O plugin gera os trechos de até 11.80m, as retas verticais com setas e as cotas de transpasse.
+                💡 <b>Armação de Faixa:</b> Selecione a faixa por janela. O plugin conta os espaços entre cubetas ao longo da reta vertical e gera os trechos de 11.80m com transpasse.
             </div>
         </div>
 
@@ -316,16 +316,18 @@ def desenhar_cota_transpasse(draw, x_ini, x_fim, y_barra, dist_t):
 # ==============================================================================
 def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
     """
-    Gera a armadura horizontal para a faixa selecionada:
-    - Identifica as nervuras em Y pelo vão selecionado (ou pelas linhas das cubetas).
+    Gera a armadura da faixa selecionada:
+    - A reta vertical cobre exatamente a altura total selecionada (de Y_min a Y_max).
+    - Conta os espaços entre cubetas: Qtd = round(Altura / 65cm) -> ex: 17x1.
     - Divide a extensão X em trechos comerciais de até 11.80m com transpasse.
-    - Gera para cada trecho a sua barra horizontal, a sua reta vertical com setas (ex: 12x1) e a cota no transpasse.
+    - Barra horizontal no centro da faixa e cota de transpasse.
     """
     draw = dwg.draw
 
     bitola = float(dados.get("bitola", 16.0))
     transpasse_cm = float(dados.get("transpasse", TABELA_TRANSPASSE.get(bitola, 90.0)))
     comp_max_barra = 1180.0  # Comprimento máximo comercial da barra (11.80m)
+    modulo_padrao = 65.0     # Módulo padrão da laje nervurada (65cm)
 
     x1_faixa = min(todos_xs)
     x2_faixa = max(todos_xs)
@@ -338,43 +340,14 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
     if largura_total <= 5.0 or altura_total <= 5.0:
         return
 
-    # 1. Identificar as linhas horizontais de cubetas dentro da seleção
-    linhas_h = []
-    for lx1, ly1, lx2, ly2 in linhas_coletadas:
-        if abs(ly1 - ly2) <= 1.5 and abs(lx2 - lx1) >= 15.0:
-            linhas_h.append((lx1, ly1, lx2, ly2))
+    # 1. Contagem exata de espaços entre cubetas na extensão da reta vertical
+    qtd_espacos = max(int(round(altura_total / modulo_padrao)), 1)
 
-    # 2. Identificar os eixos Y das nervuras
-    niveis_y = []
-    for lx1, ly1, lx2, ly2 in linhas_h:
-        ym_l = (ly1 + ly2) / 2.0
-        if not any(abs(ny - ym_l) <= 2.0 for ny in niveis_y):
-            niveis_y.append(ym_l)
-    niveis_y.sort()
+    y_min_reta = y1_faixa
+    y_max_reta = y2_faixa
+    y_mid_faixa = (y1_faixa + y2_faixa) / 2.0
 
-    nervuras_y = []
-    for i in range(len(niveis_y) - 1):
-        dist = niveis_y[i + 1] - niveis_y[i]
-        # Distância correspondente à largura da nervura (5 a 28 cm)
-        if 5.0 <= dist <= 28.0:
-            nervuras_y.append((niveis_y[i] + niveis_y[i + 1]) / 2.0)
-
-    # Se não identificou pares explícitos de linhas, distribui pelo módulo padrão (65cm)
-    if len(nervuras_y) < 1:
-        modulo = 65.0
-        num_n = max(int(round(altura_total / modulo)), 1)
-        passo = altura_total / float(num_n)
-        for i in range(num_n):
-            nervuras_y.append(y1_faixa + (i + 0.5) * passo)
-
-    nervuras_y.sort()
-    num_nervuras = len(nervuras_y)
-
-    y_min_n = min(nervuras_y)
-    y_max_n = max(nervuras_y)
-    y_mid_n = nervuras_y[num_nervuras // 2]
-
-    # 3. Particionar a extensão horizontal X em trechos comerciais de até 11.80m
+    # 2. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
     trechos_x = []
     x_curr = x1_faixa
     idx_t = 0
@@ -388,24 +361,24 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         x_curr = x_fim_t - transpasse_cm
         idx_t += 1
 
-    # 4. Desenhar para cada trecho: Barra, Reta Vertical de Distribuição e Cota
+    # 3. Desenhar para cada trecho a Barra, a Reta Vertical e a Cota
     pos_num = 1
 
     for i_t, (xa_t, xb_t, idx_trecho) in enumerate(trechos_x):
         comp_trecho = xb_t - xa_t
         xm_trecho = (xa_t + xb_t) / 2.0
 
-        # Alternar o Y da barra nas emendas para que fiquem paralelas (de lado)
+        # Alternar o Y da barra nas emendas para ficarem paralelas (de lado)
         off_y = 3.5 if (idx_trecho % 2 == 1) else 0.0
-        y_barra = y_mid_n + off_y
+        y_barra = y_mid_faixa + off_y
 
-        # A) Desenhar a barra horizontal
+        # A) Barra horizontal no meio da faixa
         draw.level = 220
         draw.color = 3  # Verde (Armadura)
         draw.style = 0
         draw.Line(xa_t, y_barra, xb_t, y_barra)
 
-        # B) Cota de transpasse se for trecho subsequente
+        # B) Cota de transpasse se for trecho posterior
         if i_t > 0:
             x_trans_ini = xa_t
             x_trans_fim = trechos_x[i_t - 1][1]
@@ -413,20 +386,20 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
             if dist_t > 1.0:
                 desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_barra, dist_t)
 
-        # C) Reta vertical de distribuição com setas cobrindo as nervuras da faixa
-        if num_nervuras > 1:
+        # C) Reta vertical com setas cobrindo toda a extensão da faixa (de Y_min a Y_max)
+        if qtd_espacos > 1:
             draw.level = 220
             draw.color = 3  # Verde
             draw.style = 1  # Tracejado
-            draw.Line(xm_trecho, y_min_n, xm_trecho, y_max_n)
+            draw.Line(xm_trecho, y_min_reta, xm_trecho, y_max_reta)
 
             # Setas nas extremidades da reta vertical
-            raio_seta = 4.0
+            raio_seta = 5.0
             draw.style = 0
-            draw.Line(xm_trecho, y_min_n, xm_trecho - raio_seta, y_min_n + raio_seta * 1.5)
-            draw.Line(xm_trecho, y_min_n, xm_trecho + raio_seta, y_min_n + raio_seta * 1.5)
-            draw.Line(xm_trecho, y_max_n, xm_trecho - raio_seta, y_max_n - raio_seta * 1.5)
-            draw.Line(xm_trecho, y_max_n, xm_trecho + raio_seta, y_max_n - raio_seta * 1.5)
+            draw.Line(xm_trecho, y_min_reta, xm_trecho - raio_seta, y_min_reta + raio_seta * 1.5)
+            draw.Line(xm_trecho, y_min_reta, xm_trecho + raio_seta, y_min_reta + raio_seta * 1.5)
+            draw.Line(xm_trecho, y_max_reta, xm_trecho - raio_seta, y_max_reta - raio_seta * 1.5)
+            draw.Line(xm_trecho, y_max_reta, xm_trecho + raio_seta, y_max_reta - raio_seta * 1.5)
 
         # D) Texto de chamada do ferro (Amarelo)
         draw.level = 220
@@ -436,8 +409,8 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         comp_int = int(round(comp_trecho))
         pos_str = f"P{pos_num}"
 
-        if num_nervuras > 1:
-            prefixo = f"{num_nervuras}x1"
+        if qtd_espacos > 1:
+            prefixo = f"{qtd_espacos}x1"
         else:
             prefixo = "1"
 
