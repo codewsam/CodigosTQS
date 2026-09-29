@@ -246,7 +246,7 @@ def pedir_dados_laje():
             </div>
 
             <div class="info-box">
-                💡 <b>Armação de Faixa:</b> Selecione a faixa por janela. O plugin conta os espaços entre cubetas ao longo da reta vertical e gera os trechos de 11.80m com transpasse.
+                💡 <b>Armação de Faixa:</b> O limite da reta vertical para exatamente na linha de contorno (Nível 201).
             </div>
         </div>
 
@@ -312,15 +312,60 @@ def desenhar_cota_transpasse(draw, x_ini, x_fim, y_barra, dist_t):
 
 
 # ==============================================================================
-# GERAÇÃO DA FAIXA: TRECHOS HORIZONTAIS DE 11.80m E RETAS VERTICAIS
+# GERAÇÃO DA FAIXA COM LIMITE RIGOROSO NO NÍVEL 201
 # ==============================================================================
+def coletar_linhas_nivel_201_dwg(dwg):
+    """Varre todo o desenho em busca de linhas/polilinhas de contorno no Nível 201."""
+    linhas_201 = []
+    try:
+        dwg.iterator.Begin()
+        while True:
+            itipo = dwg.iterator.Next()
+            if itipo == 0 or itipo is None:
+                break
+            nivel = getattr(dwg.iterator, "level", 0)
+            if nivel != 201:
+                continue
+
+            if itipo == TQSDwg.DWGTYPE_LINE:
+                lx1 = dwg.iterator.x1
+                ly1 = dwg.iterator.y1
+                lx2 = dwg.iterator.x2
+                ly2 = dwg.iterator.y2
+                if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
+                    linhas_201.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
+
+            elif itipo == TQSDwg.DWGTYPE_POLYLINE:
+                try:
+                    npts = dwg.iterator.xySize
+                    pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                    for i in range(len(pts)):
+                        p_a = pts[i]
+                        p_b = pts[(i + 1) % len(pts)]
+                        if abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 5.0:
+                            linhas_201.append((min(p_a[0], p_b[0]), (p_a[1] + p_b[1]) / 2.0, max(p_a[0], p_b[0])))
+                except Exception:
+                    pass
+
+            elif itipo == TQSDwg.DWGTYPE_RECTANGLE:
+                rx1 = dwg.iterator.x1
+                ry1 = dwg.iterator.y1
+                rx2 = dwg.iterator.x2
+                ry2 = dwg.iterator.y2
+                linhas_201.append((min(rx1, rx2), ry1, max(rx1, rx2)))
+                linhas_201.append((min(rx1, rx2), ry2, max(rx1, rx2)))
+    except Exception:
+        pass
+
+    return linhas_201
+
+
 def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
     """
     Gera a armadura da faixa selecionada:
-    - A reta vertical cobre exatamente a altura total selecionada (de Y_min a Y_max).
-    - Conta os espaços entre cubetas: Qtd = round(Altura / 65cm) -> ex: 17x1.
+    - O limite da reta vertical é travado nas linhas de contorno de Nível 201.
+    - Conta os espaços entre cubetas ao longo desse limite exato (ex: 17x1).
     - Divide a extensão X em trechos comerciais de até 11.80m com transpasse.
-    - Barra horizontal no centro da faixa e cota de transpasse.
     """
     draw = dwg.draw
 
@@ -340,11 +385,13 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
     if largura_total <= 5.0 or altura_total <= 5.0:
         return
 
-    # 1. Contagem exata de espaços entre cubetas na extensão da reta vertical
-    qtd_espacos = max(int(round(altura_total / modulo_padrao)), 1)
+    # 1. Coletar todas as linhas do Nível 201 (Limite de contorno da laje) tanto da seleção quanto do DWG
+    linhas_limite_201 = coletar_linhas_nivel_201_dwg(dwg)
+    for elem in linhas_coletadas:
+        lx1, ly1, lx2, ly2, nivel = elem
+        if nivel == 201 and abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
+            linhas_limite_201.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
 
-    y_min_reta = y1_faixa
-    y_max_reta = y2_faixa
     y_mid_faixa = (y1_faixa + y2_faixa) / 2.0
 
     # 2. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
@@ -368,9 +415,42 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         comp_trecho = xb_t - xa_t
         xm_trecho = (xa_t + xb_t) / 2.0
 
+        # Encontrar os limites superior e inferior no Nível 201 que cobrem xm_trecho
+        y_top_limit = None
+        y_bot_limit = None
+
+        # Busca com tolerância em X
+        for x_a, y_lim, x_b in linhas_limite_201:
+            if (x_a - 100.0) <= xm_trecho <= (x_b + 100.0):
+                if y_lim >= y_mid_faixa:
+                    if y_top_limit is None or y_lim < y_top_limit:
+                        y_top_limit = y_lim
+                elif y_lim <= y_mid_faixa:
+                    if y_bot_limit is None or y_lim > y_bot_limit:
+                        y_bot_limit = y_lim
+
+        # Se não encontrou cobrindo xm_trecho, busca qualquer linha 201 próxima dos extremos da faixa
+        if y_top_limit is None or y_bot_limit is None:
+            for x_a, y_lim, x_b in linhas_limite_201:
+                if y_lim >= y_mid_faixa:
+                    if y_top_limit is None or abs(y_lim - y2_faixa) < abs(y_top_limit - y2_faixa):
+                        y_top_limit = y_lim
+                elif y_lim <= y_mid_faixa:
+                    if y_bot_limit is None or abs(y_lim - y1_faixa) < abs(y_bot_limit - y1_faixa):
+                        y_bot_limit = y_lim
+
+        # Se encontrou o limite no nível 201, usa ele; senão usa os extremos dos elementos selecionados
+        y_max_reta = y_top_limit if y_top_limit is not None else y2_faixa
+        y_min_reta = y_bot_limit if y_bot_limit is not None else y1_faixa
+
+        altura_reta = abs(y_max_reta - y_min_reta)
+        qtd_espacos = max(int(round(altura_reta / modulo_padrao)), 1)
+
+        y_centro_reta = (y_min_reta + y_max_reta) / 2.0
+
         # Alternar o Y da barra nas emendas para ficarem paralelas (de lado)
         off_y = 3.5 if (idx_trecho % 2 == 1) else 0.0
-        y_barra = y_mid_faixa + off_y
+        y_barra = y_centro_reta + off_y
 
         # A) Barra horizontal no meio da faixa
         draw.level = 220
@@ -386,7 +466,7 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
             if dist_t > 1.0:
                 desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_barra, dist_t)
 
-        # C) Reta vertical com setas cobrindo toda a extensão da faixa (de Y_min a Y_max)
+        # C) Reta vertical com setas travada rigorosamente no Nível 201
         if qtd_espacos > 1:
             draw.level = 220
             draw.color = 3  # Verde
@@ -443,10 +523,10 @@ def meucmd(eag, tqsjan):
             return
 
         linhas_coletadas = []
-        todos_xs = []
-        todos_ys = []
+        xs_elementos = []
+        ys_elementos = []
 
-        # 1. Coletar linhas e polilinhas das cubetas englobadas
+        # 1. Coletar linhas, polilinhas e blocos selecionados
         try:
             eag.locate.BeginSelection(tqsjan)
             while True:
@@ -455,15 +535,16 @@ def meucmd(eag, tqsjan):
                     break
                 tqsjan.dwg.iterator.SetPosition(h_elem)
                 itipo = tqsjan.dwg.iterator.Next()
+                nivel_elem = getattr(tqsjan.dwg.iterator, "level", 0)
 
                 if itipo == TQSDwg.DWGTYPE_LINE:
                     lx1 = tqsjan.dwg.iterator.x1
                     ly1 = tqsjan.dwg.iterator.y1
                     lx2 = tqsjan.dwg.iterator.x2
                     ly2 = tqsjan.dwg.iterator.y2
-                    linhas_coletadas.append((lx1, ly1, lx2, ly2))
-                    todos_xs.extend([lx1, lx2])
-                    todos_ys.extend([ly1, ly2])
+                    linhas_coletadas.append((lx1, ly1, lx2, ly2, nivel_elem))
+                    xs_elementos.extend([lx1, lx2])
+                    ys_elementos.extend([ly1, ly2])
 
                 elif itipo == TQSDwg.DWGTYPE_POLYLINE:
                     try:
@@ -472,58 +553,37 @@ def meucmd(eag, tqsjan):
                         for i in range(len(pts)):
                             p_a = pts[i]
                             p_b = pts[(i + 1) % len(pts)]
-                            linhas_coletadas.append((p_a[0], p_a[1], p_b[0], p_b[1]))
-                            todos_xs.append(p_a[0])
-                            todos_ys.append(p_a[1])
+                            linhas_coletadas.append((p_a[0], p_a[1], p_b[0], p_b[1], nivel_elem))
+                            xs_elementos.append(p_a[0])
+                            ys_elementos.append(p_a[1])
                     except Exception:
                         pass
-                elif itipo == TQSDwg.DWGTYPE_INSERT:
-                    todos_xs.append(tqsjan.dwg.iterator.x1)
-                    todos_ys.append(tqsjan.dwg.iterator.y1)
+                elif itipo == TQSDwg.DWGTYPE_INSERT or itipo == TQSDwg.DWGTYPE_RECTANGLE:
+                    xs_elementos.append(tqsjan.dwg.iterator.x1)
+                    ys_elementos.append(tqsjan.dwg.iterator.y1)
+                    if hasattr(tqsjan.dwg.iterator, "x2") and hasattr(tqsjan.dwg.iterator, "y2"):
+                        xs_elementos.append(tqsjan.dwg.iterator.x2)
+                        ys_elementos.append(tqsjan.dwg.iterator.y2)
         except Exception:
             pass
 
-        # 2. Coordenadas dos cantos da janela de seleção
-        if xs is not None:
+        # Se nenhum elemento interno foi coletado mas temos a janela de clique
+        if not xs_elementos and xs is not None:
             if isinstance(xs, (list, tuple)):
-                for x in xs:
-                    if x is not None:
-                        try:
-                            fx = float(x)
-                            if not math.isnan(fx):
-                                todos_xs.append(fx)
-                        except:
-                            pass
+                xs_elementos = [float(x) for x in xs if x is not None]
             else:
-                try:
-                    fx = float(xs)
-                    if not math.isnan(fx):
-                        todos_xs.append(fx)
-                except:
-                    pass
+                xs_elementos = [float(xs)]
 
-        if ys is not None:
+        if not ys_elementos and ys is not None:
             if isinstance(ys, (list, tuple)):
-                for y in ys:
-                    if y is not None:
-                        try:
-                            fy = float(y)
-                            if not math.isnan(fy):
-                                todos_ys.append(fy)
-                        except:
-                            pass
+                ys_elementos = [float(y) for y in ys if y is not None]
             else:
-                try:
-                    fy = float(ys)
-                    if not math.isnan(fy):
-                        todos_ys.append(fy)
-                except:
-                    pass
+                ys_elementos = [float(ys)]
 
-        if not todos_xs or not todos_ys:
+        if not xs_elementos or not ys_elementos:
             return
 
-        processar_faixa_laje(tqsjan.dwg, linhas_coletadas, todos_xs, todos_ys, dados)
+        processar_faixa_laje(tqsjan.dwg, linhas_coletadas, xs_elementos, ys_elementos, dados)
         tqsjan.Regen()
 
     except Exception as e:
