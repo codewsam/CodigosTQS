@@ -564,62 +564,76 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         eh_ponta_esq = (i_t == 0)
         eh_ponta_dir = (i_t == len(trechos_x) - 1)
 
-        # A) Barra horizontal exatamente no espaço entre as cubetas (canal da nervura)
-        draw.level = 220
-        draw.color = 3  # Verde (Armadura)
-        draw.style = 0
-        draw.Line(xa_t, y_barra, xb_t, y_barra)
+        # A) Criar SmartRebar Inteligente Nativo TQS (Barra + Dobras)
+        try:
+            rebar = TQSDwg.SmartRebar(dwg)
+            rebar.type = TQSDwg.ICPFRT
+            rebar.diameter = bitola
+            rebar.quantity = qtd_espacos if qtd_espacos > 1 else 1
+            rebar.spacing = modulo_padrao
+            rebar.comment = "C/NERV"
+            try:
+                if hasattr(dwg, 'globalrebar') and hasattr(dwg.globalrebar, 'FreeMark'):
+                    f_mark = dwg.globalrebar.FreeMark()
+                    rebar.mark = f_mark if f_mark > 0 else pos_num
+                else:
+                    rebar.mark = pos_num
+            except:
+                rebar.mark = pos_num
 
-        # Dobras nas extremidades da laje
-        if eh_ponta_esq and comp_dobra > 0:
-            draw.Line(xa_t, y_barra, xa_t, y_barra - comp_dobra)
+            rebar.straightBarMainLength = comp_trecho
+            rebar.straightBarLeftLength = comp_dobra if eh_ponta_esq else 0.0
+            rebar.straightBarRightLength = comp_dobra if eh_ponta_dir else 0.0
+            rebar.straightBarTextPosition = 2  # Posiciona o texto abaixo da barra
 
-        if eh_ponta_dir and comp_dobra > 0:
-            draw.Line(xb_t, y_barra, xb_t, y_barra - comp_dobra)
+            ipatas = 1 if (eh_ponta_esq or eh_ponta_dir) else 0
 
-        # B) Cota de transpasse se for trecho posterior
-        if i_t > 0:
-            x_trans_ini = xa_t
-            x_trans_fim = trechos_x[i_t - 1][1]
-            dist_t = x_trans_fim - x_trans_ini
-            if dist_t > 1.0:
-                desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_barra, dist_t)
+            # Inserir o ferro inteligente (Nível 220, Estilo Contínuo 0, Cor Verde 3)
+            rebar.RebarLine(xa_t, y_barra, 0.0, 1.0, 1, 0, ipatas, 0, 220, 0, 3)
 
-        # C) Reta vertical com setas travada rigorosamente no Nível 201
-        if qtd_espacos > 1:
-            draw.level = 220
-            draw.color = 3  # Verde
-            draw.style = 1  # Tracejado
-            draw.Line(xm_trecho, y_min_reta, xm_trecho, y_max_reta)
+            # B) Cota de transpasse se for trecho posterior
+            if i_t > 0:
+                x_trans_ini = xa_t
+                x_trans_fim = trechos_x[i_t - 1][1]
+                dist_t = x_trans_fim - x_trans_ini
+                if dist_t > 1.0:
+                    desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_barra, dist_t)
 
-            # Setas nas extremidades da reta vertical
-            raio_seta = 5.0
-            draw.style = 0
-            draw.Line(xm_trecho, y_min_reta, xm_trecho - raio_seta, y_min_reta + raio_seta * 1.5)
-            draw.Line(xm_trecho, y_min_reta, xm_trecho + raio_seta, y_min_reta + raio_seta * 1.5)
-            draw.Line(xm_trecho, y_max_reta, xm_trecho - raio_seta, y_max_reta - raio_seta * 1.5)
-            draw.Line(xm_trecho, y_max_reta, xm_trecho + raio_seta, y_max_reta - raio_seta * 1.5)
+            # C) Reta vertical contínua, setas e círculo de vínculo CONECTADOS ao SmartRebar
+            if qtd_espacos > 1:
+                # 1. Reta vertical contínua acoplada ao ferro
+                rebar.AdditionalLineInit(220, 0, 3)
+                rebar.AdditionalLineInitPoint(xm_trecho, y_min_reta, 0.0, 0)
+                rebar.AdditionalLineInitPoint(xm_trecho, y_max_reta, 0.0, 0)
 
-        # D) Texto de chamada do ferro (Amarelo)
-        draw.level = 220
-        draw.color = 2  # Amarelo
-        draw.style = 0
-        bitola_str = f"{bitola:g}"
-        comp_total_barra = comp_trecho + (comp_dobra if eh_ponta_esq else 0.0) + (comp_dobra if eh_ponta_dir else 0.0)
-        comp_int = int(round(comp_total_barra))
-        pos_str = f"P{pos_num}"
+                # 2. Círculo de vínculo concêntrico no cruzamento ("O" de ligação entre ferro e distribuição)
+                r_circ = 3.8
+                n_pts_circ = 16
+                rebar.AdditionalLineInit(220, 0, 3)
+                for i_pt in range(n_pts_circ + 1):
+                    ang_c = (2.0 * math.pi * i_pt) / n_pts_circ
+                    rebar.AdditionalLineInitPoint(
+                        xm_trecho + r_circ * math.cos(ang_c),
+                        y_barra + r_circ * math.sin(ang_c),
+                        0.0, 0
+                    )
 
-        if qtd_espacos > 1:
-            prefixo = f"{qtd_espacos}x1"
-        else:
-            prefixo = "1"
+                # 3. Setas nas extremidades da reta vertical
+                raio_seta = 5.0
+                # Seta inferior
+                rebar.AdditionalLineInit(220, 0, 3)
+                rebar.AdditionalLineInitPoint(xm_trecho - raio_seta, y_min_reta + raio_seta * 1.5, 0.0, 0)
+                rebar.AdditionalLineInitPoint(xm_trecho, y_min_reta, 0.0, 0)
+                rebar.AdditionalLineInitPoint(xm_trecho + raio_seta, y_min_reta + raio_seta * 1.5, 0.0, 0)
 
-        txt_chamada = f"{prefixo} {pos_str} %% {bitola_str} C/NERV C={comp_int}"
-        tam_txt = 8.5
-        larg_txt = len(txt_chamada) * (tam_txt * 0.72)
+                # Seta superior
+                rebar.AdditionalLineInit(220, 0, 3)
+                rebar.AdditionalLineInitPoint(xm_trecho - raio_seta, y_max_reta - raio_seta * 1.5, 0.0, 0)
+                rebar.AdditionalLineInitPoint(xm_trecho, y_max_reta, 0.0, 0)
+                rebar.AdditionalLineInitPoint(xm_trecho + raio_seta, y_max_reta - raio_seta * 1.5, 0.0, 0)
 
-        # Posicionado 12cm abaixo da barra para clareza
-        draw.Text(xm_trecho - larg_txt / 2.0, y_barra - 12.0, tam_txt, 0.0, txt_chamada)
+        except Exception as e:
+            TQSUtil.writef("Erro ao gerar SmartRebar da laje: %s" % str(e))
 
         pos_num += 1
 
