@@ -321,13 +321,13 @@ def coletar_linhas_nivel_201_dwg(dwg):
         dwg.iterator.Begin()
         while True:
             itipo = dwg.iterator.Next()
-            if itipo == 0 or itipo is None:
+            if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
                 break
             nivel = getattr(dwg.iterator, "level", 0)
             if nivel != 201:
                 continue
 
-            if itipo == TQSDwg.DWGTYPE_LINE:
+            if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                 lx1 = dwg.iterator.x1
                 ly1 = dwg.iterator.y1
                 lx2 = dwg.iterator.x2
@@ -335,7 +335,7 @@ def coletar_linhas_nivel_201_dwg(dwg):
                 if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
                     linhas_201.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
 
-            elif itipo == TQSDwg.DWGTYPE_POLYLINE:
+            elif itipo == getattr(TQSDwg, "DWGTYPE_POLYLINE", 6) or itipo == getattr(TQSDwg, "DWGTYPE_CURVE", 2):
                 try:
                     npts = dwg.iterator.xySize
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
@@ -346,62 +346,79 @@ def coletar_linhas_nivel_201_dwg(dwg):
                             linhas_201.append((min(p_a[0], p_b[0]), (p_a[1] + p_b[1]) / 2.0, max(p_a[0], p_b[0])))
                 except Exception:
                     pass
-
-            elif itipo == TQSDwg.DWGTYPE_RECTANGLE:
-                rx1 = dwg.iterator.x1
-                ry1 = dwg.iterator.y1
-                rx2 = dwg.iterator.x2
-                ry2 = dwg.iterator.y2
-                linhas_201.append((min(rx1, rx2), ry1, max(rx1, rx2)))
-                linhas_201.append((min(rx1, rx2), ry2, max(rx1, rx2)))
     except Exception:
         pass
 
     return linhas_201
 
 
-def encontrar_nervuras_y(linhas_coletadas, xm_trecho=None, x_tol=100.0):
+def encontrar_nervuras_y(linhas_coletadas, dwg=None):
     """
-    Encontra as posições Y centrais das nervuras (canais entre as cubetas)
-    analisando as arestas horizontais das cubetas selecionadas.
+    Encontra os eixos Y exatos dos espaços (canais/nervuras) entre as fileiras de cubetas,
+    analisando a repetição das arestas horizontais.
     """
-    y_arestas = []
+    from collections import Counter
+
+    y_vals = []
+    # 1. Coletar arestas horizontais da seleção
     for elem in linhas_coletadas:
         lx1, ly1, lx2, ly2, nivel = elem
-        if abs(ly1 - ly2) <= 3.0 and abs(lx2 - lx1) >= 15.0:  # Aresta horizontal
-            if xm_trecho is not None:
-                min_x = min(lx1, lx2)
-                max_x = max(lx1, lx2)
-                if not (min_x - x_tol <= xm_trecho <= max_x + x_tol):
-                    continue
-            y_arestas.append((ly1 + ly2) / 2.0)
+        if abs(ly1 - ly2) <= 2.0 and abs(lx2 - lx1) >= 8.0:
+            y_vals.append(round((ly1 + ly2) / 2.0, 1))
 
-    if not y_arestas:
+    # 2. Se a seleção tiver poucas arestas, varre o DWG
+    if len(y_vals) < 10 and dwg is not None:
+        try:
+            dwg.iterator.Begin()
+            while True:
+                itipo = dwg.iterator.Next()
+                if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
+                    break
+                if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                    if abs(dwg.iterator.y1 - dwg.iterator.y2) <= 2.0 and abs(dwg.iterator.x2 - dwg.iterator.x1) >= 8.0:
+                        y_vals.append(round((dwg.iterator.y1 + dwg.iterator.y2) / 2.0, 1))
+                elif itipo == getattr(TQSDwg, "DWGTYPE_POLYLINE", 6):
+                    try:
+                        npts = dwg.iterator.xySize
+                        pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                        for i in range(len(pts)):
+                            p_a = pts[i]
+                            p_b = pts[(i + 1) % len(pts)]
+                            if abs(p_a[1] - p_b[1]) <= 2.0 and abs(p_b[0] - p_a[0]) >= 8.0:
+                                y_vals.append(round((p_a[1] + p_b[1]) / 2.0, 1))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    if not y_vals:
         return []
 
-    y_arestas.sort()
+    # 3. Agrupar picos de arestas de cubetas (aparecem com alta frequência)
+    contagem = Counter(y_vals)
+    niveis_unicos = sorted(contagem.keys())
 
-    # Agrupar arestas com Y muito próximos (+- 3.0 cm)
-    clusters_y = []
-    for y in y_arestas:
-        if not clusters_y or abs(y - clusters_y[-1]['mean']) > 4.0:
-            clusters_y.append({'sum': y, 'count': 1, 'mean': y})
+    picos_y = []
+    for y in niveis_unicos:
+        qtd = contagem[y]
+        if not picos_y or abs(y - picos_y[-1]['y']) > 3.0:
+            picos_y.append({'y': y, 'qtd': qtd})
         else:
-            clusters_y[-1]['sum'] += y
-            clusters_y[-1]['count'] += 1
-            clusters_y[-1]['mean'] = clusters_y[-1]['sum'] / clusters_y[-1]['count']
+            tot = picos_y[-1]['qtd'] + qtd
+            picos_y[-1]['y'] = (picos_y[-1]['y'] * picos_y[-1]['qtd'] + y * qtd) / tot
+            picos_y[-1]['qtd'] = tot
 
-    y_niveis = [c['mean'] for c in clusters_y]
+    niveis = sorted([p['y'] for p in picos_y])
 
-    # Identificar os vãos entre cubetas (nervuras: 8cm a 25cm)
-    nervuras_y = []
-    for i in range(len(y_niveis) - 1):
-        gap = y_niveis[i + 1] - y_niveis[i]
-        if 8.0 <= gap <= 25.0:
-            y_nerv = (y_niveis[i] + y_niveis[i + 1]) / 2.0
-            nervuras_y.append(y_nerv)
+    # 4. Identificar os vãos livres entre arestas (nervuras: 5.5cm a 24cm)
+    canais = []
+    for i in range(len(niveis) - 1):
+        gap = niveis[i + 1] - niveis[i]
+        if 5.5 <= gap <= 24.0:
+            canal_meio = (niveis[i] + niveis[i + 1]) / 2.0
+            canais.append(canal_meio)
 
-    return sorted(nervuras_y)
+    return sorted(canais)
 
 
 def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
@@ -439,8 +456,8 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
 
     y_mid_faixa = (y1_faixa + y2_faixa) / 2.0
 
-    # 2. Detectar as nervuras (canais entre as cubetas)
-    todas_nervuras_y = encontrar_nervuras_y(linhas_coletadas)
+    # 2. Detectar todos os canais reais (espaços entre cubetas)
+    todos_canais_y = encontrar_nervuras_y(linhas_coletadas, dwg)
 
     # 3. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
     trechos_x = []
@@ -491,35 +508,34 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         y_max_reta = y_top_limit if y_top_limit is not None else y2_faixa
         y_min_reta = y_bot_limit if y_bot_limit is not None else y1_faixa
 
+        # Altura e passo modular
         altura_reta = abs(y_max_reta - y_min_reta)
         qtd_espacos = max(int(round(altura_reta / modulo_padrao)), 1)
-
-        # Posição da barra entre a 3ª e a 4ª cubeta a partir do topo
         passo_real = altura_reta / qtd_espacos
-        # Se houver mais de 4 cubetas na altura, posiciona entre a 3ª e 4ª cubeta (3 módulos do topo)
-        # Senão, posiciona no meio
-        offset_cubetas = 3.0 if qtd_espacos >= 5 else max(1.0, qtd_espacos / 2.0)
-        y_alvo_barra = y_max_reta - (offset_cubetas * passo_real)
 
-        # Buscar se há nervuras reais detectadas próximas dessa posição (+- 35cm)
-        nervuras_locais = encontrar_nervuras_y(linhas_coletadas, xm_trecho=xm_trecho)
-        if not nervuras_locais:
-            nervuras_locais = todas_nervuras_y
+        # Filtrar apenas canais que pertencem à faixa selecionada da laje
+        canais_da_faixa = [y for y in todos_canais_y if (y_min_reta + 15.0) <= y <= (y_max_reta - 15.0)]
 
-        nervuras_proximas = [yn for yn in nervuras_locais if abs(yn - y_alvo_barra) <= 35.0]
-
-        if nervuras_proximas:
-            y_nervura_base = min(nervuras_proximas, key=lambda yn: abs(yn - y_alvo_barra))
+        # Posicionamento no vão entre a 1ª e 2ª cubeta a partir do topo (no canal livre)
+        if canais_da_faixa:
+            # canais ordenados de baixo para cima dentro da faixa:
+            # [-1] é o 1º canal livre logo abaixo da 1ª fileira de cubetas (entre a 1ª e 2ª cubeta)
+            y_nervura_base = canais_da_faixa[-1]
         else:
-            y_nervura_base = y_alvo_barra
+            # Fallback modular: 1 módulo abaixo do topo da laje
+            y_nervura_base = y_max_reta - (1.0 * passo_real)
 
         # Alternar o Y da barra dentro da nervura nas emendas para ficarem paralelas (de lado)
-        off_y = 2.5 if (idx_trecho % 2 == 1) else -2.5
+        off_y = 1.5 if (idx_trecho % 2 == 1) else -1.5
         if len(trechos_x) == 1:
             off_y = 0.0
-        y_barra = y_nervura_base + off_y
 
-        # A) Barra horizontal entre a 3ª e 4ª cubeta do topo (dentro do canal da nervura)
+        # >>> AJUSTE MANUAL DA ALTURA (cm): valor negativo desce (-) e positivo sobe (+) <<<
+        DESLOCAMENTO_Y_FERROS = -37.0  # Ex: -15.0 desce 15cm | -65.0 desce 1 cubeta inteira
+
+        y_barra = y_nervura_base + off_y + DESLOCAMENTO_Y_FERROS
+
+        # A) Barra horizontal exatamente no espaço entre as cubetas (canal da nervura)
         draw.level = 220
         draw.color = 3  # Verde (Armadura)
         draw.style = 0
@@ -604,7 +620,7 @@ def meucmd(eag, tqsjan):
                 itipo = tqsjan.dwg.iterator.Next()
                 nivel_elem = getattr(tqsjan.dwg.iterator, "level", 0)
 
-                if itipo == TQSDwg.DWGTYPE_LINE:
+                if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                     lx1 = tqsjan.dwg.iterator.x1
                     ly1 = tqsjan.dwg.iterator.y1
                     lx2 = tqsjan.dwg.iterator.x2
@@ -613,7 +629,7 @@ def meucmd(eag, tqsjan):
                     xs_elementos.extend([lx1, lx2])
                     ys_elementos.extend([ly1, ly2])
 
-                elif itipo == TQSDwg.DWGTYPE_POLYLINE:
+                elif itipo == getattr(TQSDwg, "DWGTYPE_POLYLINE", 6) or itipo == getattr(TQSDwg, "DWGTYPE_CURVE", 2):
                     try:
                         npts = tqsjan.dwg.iterator.xySize
                         pts = [tqsjan.dwg.iterator.GetPolylinePt(i) for i in range(npts)]
@@ -621,16 +637,17 @@ def meucmd(eag, tqsjan):
                             p_a = pts[i]
                             p_b = pts[(i + 1) % len(pts)]
                             linhas_coletadas.append((p_a[0], p_a[1], p_b[0], p_b[1], nivel_elem))
-                            xs_elementos.append(p_a[0])
-                            ys_elementos.append(p_a[1])
+                            xs_elementos.extend([p_a[0], p_b[0]])
+                            ys_elementos.extend([p_a[1], p_b[1]])
                     except Exception:
                         pass
-                elif itipo == TQSDwg.DWGTYPE_INSERT or itipo == TQSDwg.DWGTYPE_RECTANGLE:
-                    xs_elementos.append(tqsjan.dwg.iterator.x1)
-                    ys_elementos.append(tqsjan.dwg.iterator.y1)
-                    if hasattr(tqsjan.dwg.iterator, "x2") and hasattr(tqsjan.dwg.iterator, "y2"):
-                        xs_elementos.append(tqsjan.dwg.iterator.x2)
-                        ys_elementos.append(tqsjan.dwg.iterator.y2)
+
+                elif itipo in (getattr(TQSDwg, "DWGTYPE_INSERT", 4), getattr(TQSDwg, "DWGTYPE_BLOCK", 4)):
+                    ix = getattr(tqsjan.dwg.iterator, "x1", getattr(tqsjan.dwg.iterator, "x", None))
+                    iy = getattr(tqsjan.dwg.iterator, "y1", getattr(tqsjan.dwg.iterator, "y", None))
+                    if ix is not None and iy is not None:
+                        xs_elementos.append(ix)
+                        ys_elementos.append(iy)
         except Exception:
             pass
 
