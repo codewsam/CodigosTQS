@@ -246,7 +246,7 @@ def pedir_dados_laje():
             </div>
 
             <div class="info-box">
-                💡 <b>Armação de Faixa:</b> O limite da reta vertical para exatamente na linha de contorno (Nível 201).
+                💡 <b>Limites da Faixa:</b> Os ferros e a reta vertical param rigorosamente no contorno tracejado (Nível 201), com dobra padrão de 15cm nas pontas.
             </div>
         </div>
 
@@ -315,8 +315,9 @@ def desenhar_cota_transpasse(draw, x_ini, x_fim, y_barra, dist_t):
 # GERAÇÃO DA FAIXA COM LIMITE RIGOROSO NO NÍVEL 201
 # ==============================================================================
 def coletar_linhas_nivel_201_dwg(dwg):
-    """Varre todo o desenho em busca de linhas/polilinhas de contorno no Nível 201."""
-    linhas_201 = []
+    """Varre todo o desenho em busca de linhas/polilinhas de contorno no Nível 201 (horizontais e verticais)."""
+    linhas_201_horiz = []
+    linhas_201_vert = []
     try:
         dwg.iterator.Begin()
         while True:
@@ -333,7 +334,9 @@ def coletar_linhas_nivel_201_dwg(dwg):
                 lx2 = dwg.iterator.x2
                 ly2 = dwg.iterator.y2
                 if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
-                    linhas_201.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
+                    linhas_201_horiz.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
+                elif abs(lx1 - lx2) <= 5.0 and abs(ly1 - ly2) >= 5.0:
+                    linhas_201_vert.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2)))
 
             elif itipo == getattr(TQSDwg, "DWGTYPE_POLYLINE", 6) or itipo == getattr(TQSDwg, "DWGTYPE_CURVE", 2):
                 try:
@@ -343,13 +346,15 @@ def coletar_linhas_nivel_201_dwg(dwg):
                         p_a = pts[i]
                         p_b = pts[(i + 1) % len(pts)]
                         if abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 5.0:
-                            linhas_201.append((min(p_a[0], p_b[0]), (p_a[1] + p_b[1]) / 2.0, max(p_a[0], p_b[0])))
+                            linhas_201_horiz.append((min(p_a[0], p_b[0]), (p_a[1] + p_b[1]) / 2.0, max(p_a[0], p_b[0])))
+                        elif abs(p_a[0] - p_b[0]) <= 5.0 and abs(p_b[1] - p_a[1]) >= 5.0:
+                            linhas_201_vert.append(((p_a[0] + p_b[0]) / 2.0, min(p_a[1], p_b[1]), max(p_a[1], p_b[1])))
                 except Exception:
                     pass
     except Exception:
         pass
 
-    return linhas_201
+    return linhas_201_horiz, linhas_201_vert
 
 
 def encontrar_nervuras_y(linhas_coletadas, dwg=None):
@@ -424,6 +429,8 @@ def encontrar_nervuras_y(linhas_coletadas, dwg=None):
 def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
     """
     Gera a armadura da faixa selecionada:
+    - O comprimento horizontal X é travado nas linhas verticais de contorno do Nível 201.
+    - Dobras nas extremidades esquerda e direita da laje.
     - As barras horizontais ficam exatamente nos canais (nervuras) entre as cubetas.
     - O limite da reta vertical é travado nas linhas de contorno de Nível 201.
     - Conta os espaços entre cubetas ao longo desse limite exato (ex: 17x1).
@@ -433,6 +440,7 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
 
     bitola = float(dados.get("bitola", 16.0))
     transpasse_cm = float(dados.get("transpasse", TABELA_TRANSPASSE.get(bitola, 90.0)))
+    comp_dobra = float(dados.get("dobra", 15.0))
     comp_max_barra = 1180.0  # Comprimento máximo comercial da barra (11.80m)
     modulo_padrao = 65.0     # Módulo padrão da laje nervurada (65cm)
 
@@ -448,32 +456,52 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         return
 
     # 1. Coletar todas as linhas do Nível 201 (Limite de contorno da laje) tanto da seleção quanto do DWG
-    linhas_limite_201 = coletar_linhas_nivel_201_dwg(dwg)
+    linhas_limite_201_horiz, linhas_limite_201_vert = coletar_linhas_nivel_201_dwg(dwg)
     for elem in linhas_coletadas:
         lx1, ly1, lx2, ly2, nivel = elem
-        if nivel == 201 and abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
-            linhas_limite_201.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
+        if nivel == 201:
+            if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
+                linhas_limite_201_horiz.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
+            elif abs(lx1 - lx2) <= 5.0 and abs(ly1 - ly2) >= 5.0:
+                linhas_limite_201_vert.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2)))
 
+    x_mid_faixa = (x1_faixa + x2_faixa) / 2.0
     y_mid_faixa = (y1_faixa + y2_faixa) / 2.0
 
-    # 2. Detectar todos os canais reais (espaços entre cubetas)
+    # 2. Encontrar limites horizontais X no Nível 201 (borda esquerda e borda direita)
+    x_left_limit = None
+    x_right_limit = None
+
+    for x_lim, y_a, y_b in linhas_limite_201_vert:
+        if (min(y_a, y_b) - 50.0) <= y_mid_faixa <= (max(y_a, y_b) + 50.0) or (min(y_a, y_b) <= y2_faixa and max(y_a, y_b) >= y1_faixa):
+            if x_lim <= x_mid_faixa:
+                if x_left_limit is None or abs(x_lim - x1_faixa) < abs(x_left_limit - x1_faixa):
+                    x_left_limit = x_lim
+            elif x_lim >= x_mid_faixa:
+                if x_right_limit is None or abs(x_lim - x2_faixa) < abs(x_right_limit - x2_faixa):
+                    x_right_limit = x_lim
+
+    x_ini_real = x_left_limit if x_left_limit is not None else x1_faixa
+    x_fim_real = x_right_limit if x_right_limit is not None else x2_faixa
+
+    # 3. Detectar todos os canais reais (espaços entre cubetas)
     todos_canais_y = encontrar_nervuras_y(linhas_coletadas, dwg)
 
-    # 3. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
+    # 4. Particionar a extensão horizontal X em trechos de até 11.80m com transpasse
     trechos_x = []
-    x_curr = x1_faixa
+    x_curr = x_ini_real
     idx_t = 0
 
-    while x_curr < x2_faixa:
-        x_fim_t = min(x_curr + comp_max_barra, x2_faixa)
+    while x_curr < x_fim_real:
+        x_fim_t = min(x_curr + comp_max_barra, x_fim_real)
         trechos_x.append((x_curr, x_fim_t, idx_t))
 
-        if x_fim_t >= x2_faixa:
+        if x_fim_t >= x_fim_real:
             break
         x_curr = x_fim_t - transpasse_cm
         idx_t += 1
 
-    # 4. Desenhar para cada trecho a Barra, a Reta Vertical e a Cota
+    # 5. Desenhar para cada trecho a Barra, a Reta Vertical e a Cota
     pos_num = 1
 
     for i_t, (xa_t, xb_t, idx_trecho) in enumerate(trechos_x):
@@ -485,7 +513,7 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         y_bot_limit = None
 
         # Busca com tolerância em X
-        for x_a, y_lim, x_b in linhas_limite_201:
+        for x_a, y_lim, x_b in linhas_limite_201_horiz:
             if (x_a - 100.0) <= xm_trecho <= (x_b + 100.0):
                 if y_lim >= y_mid_faixa:
                     if y_top_limit is None or y_lim < y_top_limit:
@@ -496,7 +524,7 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
 
         # Se não encontrou cobrindo xm_trecho, busca qualquer linha 201 próxima dos extremos da faixa
         if y_top_limit is None or y_bot_limit is None:
-            for x_a, y_lim, x_b in linhas_limite_201:
+            for x_a, y_lim, x_b in linhas_limite_201_horiz:
                 if y_lim >= y_mid_faixa:
                     if y_top_limit is None or abs(y_lim - y2_faixa) < abs(y_top_limit - y2_faixa):
                         y_top_limit = y_lim
@@ -518,11 +546,8 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
 
         # Posicionamento no vão entre a 1ª e 2ª cubeta a partir do topo (no canal livre)
         if canais_da_faixa:
-            # canais ordenados de baixo para cima dentro da faixa:
-            # [-1] é o 1º canal livre logo abaixo da 1ª fileira de cubetas (entre a 1ª e 2ª cubeta)
             y_nervura_base = canais_da_faixa[-1]
         else:
-            # Fallback modular: 1 módulo abaixo do topo da laje
             y_nervura_base = y_max_reta - (1.0 * passo_real)
 
         # Alternar o Y da barra dentro da nervura nas emendas para ficarem paralelas (de lado)
@@ -531,15 +556,26 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
             off_y = 0.0
 
         # >>> AJUSTE MANUAL DA ALTURA (cm): valor negativo desce (-) e positivo sobe (+) <<<
-        DESLOCAMENTO_Y_FERROS = -37.0  # Ex: -15.0 desce 15cm | -65.0 desce 1 cubeta inteira
+        DESLOCAMENTO_Y_FERROS = -37.0
 
         y_barra = y_nervura_base + off_y + DESLOCAMENTO_Y_FERROS
+
+        # Identificar extremidades com dobra
+        eh_ponta_esq = (i_t == 0)
+        eh_ponta_dir = (i_t == len(trechos_x) - 1)
 
         # A) Barra horizontal exatamente no espaço entre as cubetas (canal da nervura)
         draw.level = 220
         draw.color = 3  # Verde (Armadura)
         draw.style = 0
         draw.Line(xa_t, y_barra, xb_t, y_barra)
+
+        # Dobras nas extremidades da laje
+        if eh_ponta_esq and comp_dobra > 0:
+            draw.Line(xa_t, y_barra, xa_t, y_barra - comp_dobra)
+
+        if eh_ponta_dir and comp_dobra > 0:
+            draw.Line(xb_t, y_barra, xb_t, y_barra - comp_dobra)
 
         # B) Cota de transpasse se for trecho posterior
         if i_t > 0:
@@ -569,7 +605,8 @@ def processar_faixa_laje(dwg, linhas_coletadas, todos_xs, todos_ys, dados):
         draw.color = 2  # Amarelo
         draw.style = 0
         bitola_str = f"{bitola:g}"
-        comp_int = int(round(comp_trecho))
+        comp_total_barra = comp_trecho + (comp_dobra if eh_ponta_esq else 0.0) + (comp_dobra if eh_ponta_dir else 0.0)
+        comp_int = int(round(comp_total_barra))
         pos_str = f"P{pos_num}"
 
         if qtd_espacos > 1:
