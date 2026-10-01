@@ -594,22 +594,28 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
 
     # ── Os 2 pontos definem a reta vertical ──
     x_reta = (x1 + x2) / 2.0
-    y_min_reta = min(y1, y2)
-    y_max_reta = max(y1, y2)
+    y_p1 = min(y1, y2)
+    y_p2 = max(y1, y2)
 
-    extensao_vertical = y_max_reta - y_min_reta
+    extensao_vertical = y_p2 - y_p1
     if extensao_vertical < 10.0:
         return
 
-    # ── Detectar canais reais (rejeitando os maciços) ──
-    canais_reais, qtd_nervuras = detectar_canais_reais_entre_pontos(dwg, y_min_reta, y_max_reta, x_reta, modulo)
+    # ── Detectar canais reais (espaços vazios entre cubetas) ──
+    canais_reais, qtd_nervuras = detectar_canais_reais_entre_pontos(dwg, y_p1, y_p2, x_reta, modulo)
 
-    # ── Posicionar o ferro Y dentro de um canal real de nervura ──
-    if len(canais_reais) >= 2:
-        y_barra = canais_reais[-2]
-    elif len(canais_reais) == 1:
-        y_barra = canais_reais[0]
+    if canais_reais:
+        # Travar a reta vertical exatamente no centro da 1ª e da última nervura real
+        y_min_reta = min(canais_reais)
+        y_max_reta = max(canais_reais)
+        # Posicionar o ferro em uma nervura um pouco mais abaixo do topo (entre 1ª e 2ª fileira)
+        if len(canais_reais) >= 2:
+            y_barra = canais_reais[-2]
+        else:
+            y_barra = canais_reais[0]
     else:
+        y_min_reta = y_p1
+        y_max_reta = y_p2
         y_barra = y_max_reta - (0.5 * modulo)
 
     # ── Encontrar limites X no Nível 201 (comprimento do ferro) ──
