@@ -662,18 +662,92 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
         eh_ponta_esq = (i_t == 0)
         eh_ponta_dir = (i_t == len(trechos_x) - 1)
 
-        # A) Barra horizontal
-        draw.level = 220
-        draw.color = 3  # Verde (Armadura)
-        draw.style = 0
-        draw.Line(xa_t, y_ferro, xb_t, y_ferro)
+        # ── SMARTREBAR NATIVO CONECTADO COM QUANTIDADE EXATA ──
+        usou_smart = False
+        try:
+            sr = TQSDwg.SmartRebar(dwg)
+            sr.type = getattr(TQSDwg, "ICPFRT", 1)
+            sr.diameter = float(bitola)
+            sr.mark = int(pos_num)
+            sr.quantity = int(qtd_nervuras)
+            sr.spacing = float(modulo)
+            sr.ribbed = 1
+            sr.showRibbed = 1
+            sr.straightBarMainLength = float(comp_trecho)
+            sr.straightBarLeftLength = float(comp_dobra if eh_ponta_esq else 0.0)
+            sr.straightBarRightLength = float(comp_dobra if eh_ponta_dir else 0.0)
+            sr.straightBarTextPosition = 2
+            sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
 
-        # Dobras nas extremidades da laje
-        if eh_ponta_esq and comp_dobra > 0:
-            draw.Line(xa_t, y_ferro, xa_t, y_ferro - comp_dobra)
+            # Associar a faixa de distribuição conectada no 1º trecho
+            if i_t == 0 and qtd_nervuras > 1:
+                comp_faixa = abs(y_max_reta - y_min_reta)
+                esp_faixa = (comp_faixa / float(qtd_nervuras)) if qtd_nervuras > 0 else float(modulo)
+                sr.RebarDistrAdd(
+                    getattr(TQSDwg, "ICPESP", 2),
+                    90.0,
+                    x_reta, y_min_reta,
+                    x_reta, y_max_reta,
+                    x_reta, (y_min_reta + y_max_reta) / 2.0,
+                    0, 0, 0, 0, 0,  # Linha limpa sem texto vertical repetido
+                    getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+                    getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0),
+                    "", 0, 0, 1, 0, 0,
+                    float(esp_faixa), 1.0
+                )
 
-        if eh_ponta_dir and comp_dobra > 0:
-            draw.Line(xb_t, y_ferro, xb_t, y_ferro - comp_dobra)
+            sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 0, 1, 0, 220, 0, 3)
+            usou_smart = True
+        except Exception:
+            usou_smart = False
+
+        # ── FALLBACK CAD DIRETO SE NECESSÁRIO ──
+        if not usou_smart:
+            # A) Barra horizontal
+            draw.level = 220
+            draw.color = 3  # Verde (Armadura)
+            draw.style = 0  # Contínuo
+            draw.Line(xa_t, y_ferro, xb_t, y_ferro)
+
+            # Dobras nas extremidades da laje
+            if eh_ponta_esq and comp_dobra > 0:
+                draw.Line(xa_t, y_ferro, xa_t, y_ferro - comp_dobra)
+
+            if eh_ponta_dir and comp_dobra > 0:
+                draw.Line(xb_t, y_ferro, xb_t, y_ferro - comp_dobra)
+
+            # C) Reta vertical com setas (linha contínua verde)
+            if i_t == 0 and qtd_nervuras > 1:
+                draw.level = 220
+                draw.color = 3  # Verde
+                draw.style = 0  # Linha Contínua Sólida
+                draw.Line(x_reta, y_min_reta, x_reta, y_max_reta)
+
+                # Setas nas extremidades da reta vertical
+                raio_seta = 5.0
+                draw.Line(x_reta, y_min_reta, x_reta - raio_seta, y_min_reta + raio_seta * 1.5)
+                draw.Line(x_reta, y_min_reta, x_reta + raio_seta, y_min_reta + raio_seta * 1.5)
+                draw.Line(x_reta, y_max_reta, x_reta - raio_seta, y_max_reta - raio_seta * 1.5)
+                draw.Line(x_reta, y_max_reta, x_reta + raio_seta, y_max_reta - raio_seta * 1.5)
+
+            # D) Texto de chamada do ferro (Amarelo)
+            draw.level = 220
+            draw.color = 2  # Amarelo
+            draw.style = 0
+            bitola_str = f"{bitola:g}"
+            comp_total_barra = comp_trecho + (comp_dobra if eh_ponta_esq else 0.0) + (comp_dobra if eh_ponta_dir else 0.0)
+            comp_int = int(round(comp_total_barra))
+            pos_str = f"P{pos_num}"
+
+            if qtd_nervuras > 1:
+                prefixo = f"{qtd_nervuras}x1"
+            else:
+                prefixo = "1"
+
+            txt_chamada = f"{prefixo} {pos_str} %% {bitola_str} C/NERV C={comp_int}"
+            tam_txt = 8.5
+            larg_txt = len(txt_chamada) * (tam_txt * 0.72)
+            draw.Text(xm_trecho - larg_txt / 2.0, y_ferro - 12.0, tam_txt, 0.0, txt_chamada)
 
         # B) Cota de transpasse se for trecho posterior
         if i_t > 0:
@@ -682,42 +756,6 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
             dist_t = x_trans_fim - x_trans_ini
             if dist_t > 1.0:
                 desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_ferro, dist_t)
-
-        # C) Reta vertical com setas (no local exato X onde o usuário desenhou)
-        if i_t == 0 and qtd_nervuras > 1:
-            draw.level = 220
-            draw.color = 3  # Verde
-            draw.style = 1  # Tracejado
-            draw.Line(x_reta, y_min_reta, x_reta, y_max_reta)
-
-            # Setas nas extremidades da reta vertical
-            raio_seta = 5.0
-            draw.style = 0
-            draw.Line(x_reta, y_min_reta, x_reta - raio_seta, y_min_reta + raio_seta * 1.5)
-            draw.Line(x_reta, y_min_reta, x_reta + raio_seta, y_min_reta + raio_seta * 1.5)
-            draw.Line(x_reta, y_max_reta, x_reta - raio_seta, y_max_reta - raio_seta * 1.5)
-            draw.Line(x_reta, y_max_reta, x_reta + raio_seta, y_max_reta - raio_seta * 1.5)
-
-        # D) Texto de chamada do ferro (Amarelo)
-        draw.level = 220
-        draw.color = 2  # Amarelo
-        draw.style = 0
-        bitola_str = f"{bitola:g}"
-        comp_total_barra = comp_trecho + (comp_dobra if eh_ponta_esq else 0.0) + (comp_dobra if eh_ponta_dir else 0.0)
-        comp_int = int(round(comp_total_barra))
-        pos_str = f"P{pos_num}"
-
-        if qtd_nervuras > 1:
-            prefixo = f"{qtd_nervuras}x1"
-        else:
-            prefixo = "1"
-
-        txt_chamada = f"{prefixo} {pos_str} %% {bitola_str} C/NERV C={comp_int}"
-        tam_txt = 8.5
-        larg_txt = len(txt_chamada) * (tam_txt * 0.72)
-
-        # Posicionado 12cm abaixo da barra para clareza
-        draw.Text(xm_trecho - larg_txt / 2.0, y_ferro - 12.0, tam_txt, 0.0, txt_chamada)
 
         pos_num += 1
 
