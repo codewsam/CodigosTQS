@@ -320,23 +320,135 @@ def desenhar_cota_transpasse(draw, x_ini, x_fim, y_barra, dist_t):
 
 
 # ==============================================================================
-# CONTAR NERVURAS ENTRE DOIS PONTOS
+# DETECTAR CANAIS REAIS DE NERVURA (IGNORANDO MACIÇOS E CAPITÉIS)
 # ==============================================================================
-def contar_nervuras_entre_pontos(y_min, y_max, modulo):
+def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
     """
-    Conta quantas nervuras cabem entre y_min e y_max usando o módulo informado.
-
-    O módulo é o espaçamento entre eixos de nervura (tipicamente 65cm).
-    Cada nervura = 1 ferro, então a contagem é o número de nervuras inteiras
-    que cabem na extensão vertical.
+    Varre o desenho e encontra APENAS as nervuras reais (espaços entre 5cm e 24cm
+    entre fileiras de cubetas), ignorando totalmente as regiões maciças de pilares/capitéis.
     """
-    extensao = abs(y_max - y_min)
-    if extensao < modulo * 0.5:
-        return 1
+    from collections import Counter
 
-    # Quantidade de nervuras = extensão / módulo (arredondado)
-    qtd = int(round(extensao / modulo))
-    return max(qtd, 1)
+    y_horiz = []
+    linhas_201_horiz = []
+
+    try:
+        dwg.iterator.Begin()
+        while True:
+            itipo = dwg.iterator.Next()
+            if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
+                break
+
+            nivel = getattr(dwg.iterator, "level", 0)
+
+            # Nível 201 (Borda/Viga)
+            if nivel == 201:
+                if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                    lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
+                    lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
+                    if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
+                        linhas_201_horiz.append((ly1 + ly2) / 2.0)
+                elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
+                    try:
+                        npts = dwg.iterator.xySize
+                        pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                        for i in range(len(pts)):
+                            p_a = pts[i]
+                            p_b = pts[(i + 1) % len(pts)]
+                            if abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 5.0:
+                                linhas_201_horiz.append((p_a[1] + p_b[1]) / 2.0)
+                    except Exception:
+                        pass
+                continue
+
+            if nivel >= 220:
+                continue
+
+            # Linhas horizontais de cubeta
+            if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
+                lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
+                dy = abs(ly2 - ly1)
+                dx = abs(lx2 - lx1)
+                ym = (ly1 + ly2) / 2.0
+
+                if dy <= 3.0 and dx >= 8.0:
+                    if (y_min - 20.0) <= ym <= (y_max + 20.0):
+                        y_horiz.append(round(ym, 1))
+
+            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
+                try:
+                    npts = dwg.iterator.xySize
+                    pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                    for i in range(len(pts)):
+                        p_a = pts[i]
+                        p_b = pts[(i + 1) % len(pts)]
+                        dy = abs(p_b[1] - p_a[1])
+                        dx = abs(p_b[0] - p_a[0])
+                        ym = (p_a[1] + p_b[1]) / 2.0
+                        if dy <= 3.0 and dx >= 8.0:
+                            if (y_min - 20.0) <= ym <= (y_max + 20.0):
+                                y_horiz.append(round(ym, 1))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    if not y_horiz:
+        # Fallback modular
+        extensao = abs(y_max - y_min)
+        qtd = max(int(round(extensao / modulo)), 1)
+        return [], qtd
+
+    # Agrupar níveis horizontais com tolerância de 3cm
+    contagem = Counter(y_horiz)
+    niveis_unicos = sorted(contagem.keys())
+
+    picos_y = []
+    for y in niveis_unicos:
+        qtd = contagem[y]
+        if not picos_y or abs(y - picos_y[-1]['y']) > 3.0:
+            picos_y.append({'y': y, 'qtd': qtd})
+        else:
+            tot = picos_y[-1]['qtd'] + qtd
+            picos_y[-1]['y'] = (picos_y[-1]['y'] * picos_y[-1]['qtd'] + y * qtd) / tot
+            picos_y[-1]['qtd'] = tot
+
+    niveis = sorted([p['y'] for p in picos_y if p['qtd'] >= 1])
+
+    # ── IDENTIFICAR APENAS OS VÃOS DE NERVURA (5cm a 24cm) ──
+    # Espaços maiores que 24cm (como maciços de pilares e capitéis) são sumariamente descartados!
+    canais_reais = []
+    for i in range(len(niveis) - 1):
+        gap = niveis[i + 1] - niveis[i]
+        if 5.0 <= gap <= 24.0:
+            canal_meio = (niveis[i] + niveis[i + 1]) / 2.0
+            if y_min - 10.0 <= canal_meio <= y_max + 10.0:
+                canais_reais.append(canal_meio)
+
+    # Checar bordo Nível 201
+    if niveis:
+        y_cubeta_inf = min(niveis)
+        y_cubeta_sup = max(niveis)
+        for y_201 in linhas_201_horiz:
+            if y_201 <= y_cubeta_inf + 20.0 and y_min <= y_201 + 25.0:
+                y_b_inf = (y_201 + y_cubeta_inf) / 2.0
+                if not any(abs(y_b_inf - c) < 5.0 for c in canais_reais):
+                    canais_reais.insert(0, y_b_inf)
+            if y_201 >= y_cubeta_sup - 20.0 and y_max >= y_201 - 25.0:
+                y_b_sup = (y_201 + y_cubeta_sup) / 2.0
+                if not any(abs(y_b_sup - c) < 5.0 for c in canais_reais):
+                    canais_reais.append(y_b_sup)
+
+    canais_reais = sorted(list(set(round(c, 1) for c in canais_reais)))
+    qtd_final = max(len(canais_reais), 1)
+
+    try:
+        TQSUtil.writef(f"\n[G3 Lajes] Deteccao Geometrica: {qtd_final} nervuras reais (macicos de pilar desconsiderados)\n")
+    except:
+        pass
+
+    return canais_reais, qtd_final
 
 
 # ==============================================================================
@@ -417,8 +529,8 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
     """
     A partir dos 2 pontos selecionados pelo usuário:
     1. Usa o X dos pontos como posição da reta vertical
-    2. Usa o Y dos pontos como extensão vertical (de onde a onde contar nervuras)
-    3. Conta quantas nervuras cabem nessa extensão
+    2. Usa o Y dos pontos como extensão vertical
+    3. Detecta os canais reais de nervura (ignorando maciços de pilares)
     4. Procura os limites X no Nível 201 para definir o comprimento do ferro
     5. Divide em trechos comerciais se necessário (transpasse)
     6. Desenha tudo: reta vertical, ferro horizontal, texto de chamada
@@ -432,7 +544,6 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
     modulo = float(dados.get("modulo", 65.0))
 
     # ── Os 2 pontos definem a reta vertical ──
-    # X da reta vertical: média dos X dos 2 pontos (ou se clicou na mesma coluna, usa esse X)
     x_reta = (x1 + x2) / 2.0
     y_min_reta = min(y1, y2)
     y_max_reta = max(y1, y2)
@@ -441,14 +552,21 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
     if extensao_vertical < 10.0:
         return
 
-    # ── Contar nervuras ──
-    qtd_nervuras = contar_nervuras_entre_pontos(y_min_reta, y_max_reta, modulo)
+    # ── Detectar canais reais (rejeitando os maciços) ──
+    canais_reais, qtd_nervuras = detectar_canais_reais_entre_pontos(dwg, y_min_reta, y_max_reta, x_reta, modulo)
+
+    # ── Posicionar o ferro Y dentro de um canal real de nervura ──
+    if len(canais_reais) >= 2:
+        y_barra = canais_reais[-2]
+    elif len(canais_reais) == 1:
+        y_barra = canais_reais[0]
+    else:
+        y_barra = y_max_reta - (0.5 * modulo)
 
     # ── Encontrar limites X no Nível 201 (comprimento do ferro) ──
-    x_left_201, x_right_201 = encontrar_limites_x_201(dwg, (y_min_reta + y_max_reta) / 2.0, x_reta)
+    x_left_201, x_right_201 = encontrar_limites_x_201(dwg, y_barra, x_reta)
 
     if x_left_201 is None or x_right_201 is None:
-        # Fallback: se não achou 201, usa extensão razoável baseada no ponto
         if x_left_201 is None:
             x_left_201 = x_reta - 500.0
         if x_right_201 is None:
@@ -456,10 +574,6 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
 
     x_ini_ferro = x_left_201
     x_fim_ferro = x_right_201
-
-    # ── Posicionar o ferro Y num canal entre cubetas (perto do topo da reta) ──
-    # O ferro fica no canal logo abaixo do ponto superior (entre 1ª e 2ª cubeta)
-    y_barra = y_max_reta - (0.5 * modulo)
 
     # ── Dividir em trechos comerciais (≤ 11.80m) com transpasse ──
     trechos_x = []
