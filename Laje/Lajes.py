@@ -683,20 +683,20 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
             if dist_t > 1.0:
                 desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_ferro, dist_t)
 
-        # C) Reta vertical com setas (só no primeiro trecho)
+        # C) Reta vertical com setas (no local exato X onde o usuário desenhou)
         if i_t == 0 and qtd_nervuras > 1:
             draw.level = 220
             draw.color = 3  # Verde
             draw.style = 1  # Tracejado
-            draw.Line(xm_trecho, y_min_reta, xm_trecho, y_max_reta)
+            draw.Line(x_reta, y_min_reta, x_reta, y_max_reta)
 
             # Setas nas extremidades da reta vertical
             raio_seta = 5.0
             draw.style = 0
-            draw.Line(xm_trecho, y_min_reta, xm_trecho - raio_seta, y_min_reta + raio_seta * 1.5)
-            draw.Line(xm_trecho, y_min_reta, xm_trecho + raio_seta, y_min_reta + raio_seta * 1.5)
-            draw.Line(xm_trecho, y_max_reta, xm_trecho - raio_seta, y_max_reta - raio_seta * 1.5)
-            draw.Line(xm_trecho, y_max_reta, xm_trecho + raio_seta, y_max_reta - raio_seta * 1.5)
+            draw.Line(x_reta, y_min_reta, x_reta - raio_seta, y_min_reta + raio_seta * 1.5)
+            draw.Line(x_reta, y_min_reta, x_reta + raio_seta, y_min_reta + raio_seta * 1.5)
+            draw.Line(x_reta, y_max_reta, x_reta - raio_seta, y_max_reta - raio_seta * 1.5)
+            draw.Line(x_reta, y_max_reta, x_reta + raio_seta, y_max_reta - raio_seta * 1.5)
 
         # D) Texto de chamada do ferro (Amarelo)
         draw.level = 220
