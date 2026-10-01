@@ -499,27 +499,76 @@ def coletar_linhas_nivel_201_dwg(dwg):
 
 def encontrar_limites_x_201(dwg, y_ponto, x_ponto):
     """
-    Procura as linhas verticais do Nível 201 mais próximas do ponto clicado
-    para determinar x_esquerdo e x_direito (extensão horizontal do ferro).
+    Determina os limites externos X (borda esquerda e borda direita) da laje
+    para a cota Y informada, garantindo que a armadura se estenda de fora a fora.
     """
     linhas_201_horiz, linhas_201_vert = coletar_linhas_nivel_201_dwg(dwg)
 
-    x_left = None
-    x_right = None
+    # 1. Encontrar a extensão horizontal real das cubetas/desenho na cota Y da barra
+    xs_cubetas_y = []
+    try:
+        dwg.iterator.Begin()
+        while True:
+            itipo = dwg.iterator.Next()
+            if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
+                break
+            nivel = getattr(dwg.iterator, "level", 0)
+            if nivel >= 220:
+                continue
 
+            if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
+                lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
+                ym = (ly1 + ly2) / 2.0
+                if abs(ym - y_ponto) <= 45.0 and abs(lx2 - lx1) >= 8.0:
+                    xs_cubetas_y.extend([lx1, lx2])
+
+            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
+                try:
+                    npts = dwg.iterator.xySize
+                    pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                    for p in pts:
+                        if abs(p[1] - y_ponto) <= 45.0:
+                            xs_cubetas_y.append(p[0])
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 2. Filtrar linhas verticais do Nível 201 que cobrem a cota Y
+    linhas_vert_cobrindo_y = []
     for x_lim, y_a, y_b in linhas_201_vert:
-        # A linha vertical deve cobrir a região Y do ponto
-        if not (min(y_a, y_b) - 50.0 <= y_ponto <= max(y_a, y_b) + 50.0):
-            continue
+        if (min(y_a, y_b) - 60.0) <= y_ponto <= (max(y_a, y_b) + 60.0):
+            linhas_vert_cobrindo_y.append(x_lim)
 
-        if x_lim <= x_ponto:
-            if x_left is None or x_lim > x_left:
-                x_left = x_lim
+    # Se encontramos a extensão das cubetas nessa faixa Y
+    if xs_cubetas_y:
+        x_cub_min = min(xs_cubetas_y)
+        x_cub_max = max(xs_cubetas_y)
+
+        # Borda esquerda: linha 201 mais próxima do início da 1ª cubeta (à esquerda)
+        candidatos_esq = [x for x in linhas_vert_cobrindo_y if x <= x_cub_min + 20.0]
+        if candidatos_esq:
+            x_left = max(candidatos_esq)  # A linha 201 mais externa colada na cubeta
         else:
-            if x_right is None or x_lim < x_right:
-                x_right = x_lim
+            x_left = x_cub_min - 15.0
 
-    return x_left, x_right
+        # Borda direita: linha 201 mais externa que cobre toda a laje à direita
+        candidatos_dir = [x for x in linhas_vert_cobrindo_y if x >= x_cub_max - 20.0]
+        if candidatos_dir:
+            x_right = min(candidatos_dir)  # A linha 201 mais externa colada na última cubeta
+        else:
+            x_right = x_cub_max + 15.0
+
+        return x_left, x_right
+
+    # Fallback se não achou cubetas específicas: pega os extremos de todas as verticais 201
+    if linhas_vert_cobrindo_y:
+        x_left = min(linhas_vert_cobrindo_y)
+        x_right = max(linhas_vert_cobrindo_y)
+        return x_left, x_right
+
+    return None, None
 
 
 # ==============================================================================
