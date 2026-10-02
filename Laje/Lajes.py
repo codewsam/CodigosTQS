@@ -692,18 +692,17 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
     # ── Detectar canais reais (espaços vazios entre cubetas) ──
     canais_reais, qtd_nervuras = detectar_canais_reais_entre_pontos(dwg, y_p1, y_p2, x_reta, modulo)
 
+    # ── A linha vertical começa e termina no local exato onde o usuário clicou ──
+    y_min_reta = y_p1
+    y_max_reta = y_p2
+
     if canais_reais:
-        # Travar a reta vertical exatamente no centro da 1ª e da última nervura real
-        y_min_reta = min(canais_reais)
-        y_max_reta = max(canais_reais)
         # Posicionar o ferro em uma nervura um pouco mais abaixo do topo (entre 1ª e 2ª fileira)
         if len(canais_reais) >= 2:
             y_barra = canais_reais[-2]
         else:
             y_barra = canais_reais[0]
     else:
-        y_min_reta = y_p1
-        y_max_reta = y_p2
         y_barra = y_max_reta - (0.5 * modulo)
 
     # ── Encontrar limites X (Nível 201 e Nível 237 rosa com cobrimento 2.5cm) ──
@@ -811,12 +810,18 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
                 draw.style = 0  # Linha Contínua Sólida
                 draw.Line(x_reta, y_min_reta, x_reta, y_max_reta)
 
-                # Setas nas extremidades da reta vertical
-                raio_seta = 5.0
-                draw.Line(x_reta, y_min_reta, x_reta - raio_seta, y_min_reta + raio_seta * 1.5)
-                draw.Line(x_reta, y_min_reta, x_reta + raio_seta, y_min_reta + raio_seta * 1.5)
-                draw.Line(x_reta, y_max_reta, x_reta - raio_seta, y_max_reta - raio_seta * 1.5)
-                draw.Line(x_reta, y_max_reta, x_reta + raio_seta, y_max_reta - raio_seta * 1.5)
+                # Setas e traços alargados nas extremidades da reta vertical para visualização perfeita
+                larg_seta = 8.0
+                alt_seta = 12.0
+                # Ponta inferior (exatamente onde o mouse clicou)
+                draw.Line(x_reta - larg_seta, y_min_reta, x_reta + larg_seta, y_min_reta)
+                draw.Line(x_reta, y_min_reta, x_reta - (larg_seta * 0.7), y_min_reta + alt_seta)
+                draw.Line(x_reta, y_min_reta, x_reta + (larg_seta * 0.7), y_min_reta + alt_seta)
+
+                # Ponta superior (exatamente onde o mouse clicou)
+                draw.Line(x_reta - larg_seta, y_max_reta, x_reta + larg_seta, y_max_reta)
+                draw.Line(x_reta, y_max_reta, x_reta - (larg_seta * 0.7), y_max_reta - alt_seta)
+                draw.Line(x_reta, y_max_reta, x_reta + (larg_seta * 0.7), y_max_reta - alt_seta)
 
             # D) Texto de chamada do ferro (Amarelo)
             draw.level = 220
@@ -871,14 +876,14 @@ def meucmd(eag, tqsjan):
 
         faixa_idx = 1
         while True:
-            # 2. Primeiro ponto da faixa (ou Enter/Esc para encerrar)
-            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa (ou <Enter>/<Esc> para concluir):"
+            # 2. Primeiro ponto da faixa (ou <Esc> para encerrar)
+            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa (ou <Esc> para encerrar):"
             icod1, x1, y1 = eag.locate.GetPoint(tqsjan, prompt1)
             if icod1 != 1:
                 break
 
-            # 3. Segundo ponto da faixa com linha elástica
-            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa:"
+            # 3. Segundo ponto da faixa com linha elástica (ou <Esc> para cancelar esta faixa)
+            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa (ou <Esc> para cancelar):"
             icod2, x2, y2 = eag.locate.GetSecondPoint(
                 tqsjan, x1, y1,
                 TQSEag.EAG_RUBLINEAR,
