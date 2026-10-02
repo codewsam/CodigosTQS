@@ -447,12 +447,15 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
 
 
 # ==============================================================================
-# ENCONTRAR LIMITES X A PARTIR DO NÍVEL 201 (CONTORNO DA LAJE)
+# ENCONTRAR LIMITES X A PARTIR DO NÍVEL 228 (LINHA BRANCA) E NÍVEL 201 (BORDO)
 # ==============================================================================
-def coletar_linhas_nivel_201_dwg(dwg):
-    """Varre todo o desenho em busca de linhas/polilinhas de contorno no Nível 201 (horizontais e verticais)."""
-    linhas_201_horiz = []
-    linhas_201_vert = []
+def coletar_linhas_borda_dwg(dwg):
+    """
+    Varre o desenho em busca de linhas/polilinhas de contorno no Nível 228 (linha branca de borda)
+    e Nível 201 (vigas/contorno da laje), separando horizontais e verticais.
+    """
+    linhas_borda_horiz = []
+    linhas_borda_vert = []
     try:
         dwg.iterator.Begin()
         while True:
@@ -460,8 +463,10 @@ def coletar_linhas_nivel_201_dwg(dwg):
             if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
                 break
             nivel = getattr(dwg.iterator, "level", 0)
-            if nivel != 201:
+            if nivel not in (228, 201):
                 continue
+
+            eh_228 = (nivel == 228)
 
             if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                 lx1 = dwg.iterator.x1
@@ -469,11 +474,11 @@ def coletar_linhas_nivel_201_dwg(dwg):
                 lx2 = dwg.iterator.x2
                 ly2 = dwg.iterator.y2
                 if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
-                    linhas_201_horiz.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2)))
+                    linhas_borda_horiz.append((min(lx1, lx2), (ly1 + ly2) / 2.0, max(lx1, lx2), eh_228))
                 elif abs(lx1 - lx2) <= 5.0 and abs(ly1 - ly2) >= 5.0:
-                    linhas_201_vert.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2)))
+                    linhas_borda_vert.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2), eh_228))
 
-            elif itipo == getattr(TQSDwg, "DWGTYPE_POLYLINE", 6) or itipo == getattr(TQSDwg, "DWGTYPE_CURVE", 2):
+            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                 try:
                     npts = dwg.iterator.xySize
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
@@ -481,23 +486,23 @@ def coletar_linhas_nivel_201_dwg(dwg):
                         p_a = pts[i]
                         p_b = pts[(i + 1) % len(pts)]
                         if abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 5.0:
-                            linhas_201_horiz.append((min(p_a[0], p_b[0]), (p_a[1] + p_b[1]) / 2.0, max(p_a[0], p_b[0])))
+                            linhas_borda_horiz.append((min(p_a[0], p_b[0]), (p_a[1] + p_b[1]) / 2.0, max(p_a[0], p_b[0]), eh_228))
                         elif abs(p_a[0] - p_b[0]) <= 5.0 and abs(p_b[1] - p_a[1]) >= 5.0:
-                            linhas_201_vert.append(((p_a[0] + p_b[0]) / 2.0, min(p_a[1], p_b[1]), max(p_a[1], p_b[1])))
+                            linhas_borda_vert.append(((p_a[0] + p_b[0]) / 2.0, min(p_a[1], p_b[1]), max(p_a[1], p_b[1]), eh_228))
                 except Exception:
                     pass
     except Exception:
         pass
 
-    return linhas_201_horiz, linhas_201_vert
+    return linhas_borda_horiz, linhas_borda_vert
 
 
-def encontrar_limites_x_201(dwg, y_ponto, x_ponto):
+def encontrar_limites_x_bordas(dwg, y_ponto, x_ponto):
     """
     Determina os limites externos X (borda esquerda e borda direita) da laje
-    para a cota Y informada, garantindo que a armadura se estenda de fora a fora.
+    para a cota Y informada, priorizando a linha branca do Nível 228 onde os ferros laterais devem parar.
     """
-    linhas_201_horiz, linhas_201_vert = coletar_linhas_nivel_201_dwg(dwg)
+    linhas_borda_horiz, linhas_borda_vert = coletar_linhas_borda_dwg(dwg)
 
     # 1. Encontrar a extensão horizontal real das cubetas/desenho na cota Y da barra
     xs_cubetas_y = []
@@ -530,38 +535,53 @@ def encontrar_limites_x_201(dwg, y_ponto, x_ponto):
     except Exception:
         pass
 
-    # 2. Filtrar linhas verticais do Nível 201 que cobrem a cota Y
+    # 2. Filtrar linhas verticais de borda que cobrem a cota Y
     linhas_vert_cobrindo_y = []
-    for x_lim, y_a, y_b in linhas_201_vert:
+    for x_lim, y_a, y_b, eh_228 in linhas_borda_vert:
         if (min(y_a, y_b) - 60.0) <= y_ponto <= (max(y_a, y_b) + 60.0):
-            linhas_vert_cobrindo_y.append(x_lim)
+            linhas_vert_cobrindo_y.append((x_lim, eh_228))
 
     # Se encontramos a extensão das cubetas nessa faixa Y
     if xs_cubetas_y:
         x_cub_min = min(xs_cubetas_y)
         x_cub_max = max(xs_cubetas_y)
 
-        # Borda esquerda: linha 201 mais próxima do início da 1ª cubeta (à esquerda)
-        candidatos_esq = [x for x in linhas_vert_cobrindo_y if x <= x_cub_min + 20.0]
-        if candidatos_esq:
-            x_left = max(candidatos_esq)  # A linha 201 mais externa colada na cubeta
+        # Borda esquerda: priorizar linha 228 (branca) colada na cubeta
+        cands_esq_228 = [x for x, eh_228 in linhas_vert_cobrindo_y if eh_228 and x <= x_cub_min + 30.0]
+        cands_esq_todos = [x for x, eh_228 in linhas_vert_cobrindo_y if x <= x_cub_min + 30.0]
+
+        if cands_esq_228:
+            x_left = max(cands_esq_228)
+        elif cands_esq_todos:
+            x_left = max(cands_esq_todos)
         else:
             x_left = x_cub_min - 15.0
 
-        # Borda direita: linha 201 mais externa que cobre toda a laje à direita
-        candidatos_dir = [x for x in linhas_vert_cobrindo_y if x >= x_cub_max - 20.0]
-        if candidatos_dir:
-            x_right = min(candidatos_dir)  # A linha 201 mais externa colada na última cubeta
+        # Borda direita: priorizar linha 228 (branca) colada na última cubeta
+        cands_dir_228 = [x for x, eh_228 in linhas_vert_cobrindo_y if eh_228 and x >= x_cub_max - 30.0]
+        cands_dir_todos = [x for x, eh_228 in linhas_vert_cobrindo_y if x >= x_cub_max - 30.0]
+
+        if cands_dir_228:
+            x_right = min(cands_dir_228)
+        elif cands_dir_todos:
+            x_right = min(cands_dir_todos)
         else:
             x_right = x_cub_max + 15.0
 
         return x_left, x_right
 
-    # Fallback se não achou cubetas específicas: pega os extremos de todas as verticais 201
+    # Fallback se não achou cubetas específicas: pega os extremos verticais
     if linhas_vert_cobrindo_y:
-        x_left = min(linhas_vert_cobrindo_y)
-        x_right = max(linhas_vert_cobrindo_y)
-        return x_left, x_right
+        cands_228 = [x for x, eh_228 in linhas_vert_cobrindo_y if eh_228]
+        if cands_228:
+            esq = [x for x in cands_228 if x < x_ponto]
+            dir = [x for x in cands_228 if x > x_ponto]
+            x_left = max(esq) if esq else min(cands_228)
+            x_right = min(dir) if dir else max(cands_228)
+            return x_left, x_right
+
+        todos_x = [x for x, _ in linhas_vert_cobrindo_y]
+        return min(todos_x), max(todos_x)
 
     return None, None
 
@@ -587,10 +607,8 @@ def coletar_obstaculos_nivel_237(dwg):
                 ly1 = dwg.iterator.y1
                 lx2 = dwg.iterator.x2
                 ly2 = dwg.iterator.y2
-                # Aresta vertical
                 if abs(lx1 - lx2) <= 5.0 and abs(ly1 - ly2) >= 3.0:
                     obstaculos_237.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2)))
-                # Aresta horizontal (marcar os cantos X)
                 elif abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 3.0:
                     ym = (ly1 + ly2) / 2.0
                     obstaculos_237.append((min(lx1, lx2), ym - 5.0, ym + 5.0))
@@ -620,25 +638,23 @@ def coletar_obstaculos_nivel_237(dwg):
 def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5):
     """
     Determina os limites X (borda esquerda e direita) da armadura:
-    1. Busca os limites normais no Nível 201 (vigas/contorno).
+    1. Busca os limites normais no Nível 228 (linha branca de borda) e Nível 201.
     2. Se houver elemento no Nível 237 (rosa) cobrindo a cota Y da barra:
        - Para antes dele com cobrimento de 2.5cm (x_rosa - 2.5 à direita ou x_rosa + 2.5 à esquerda).
     Retorna: (x_left, x_right, parou_237_esq, parou_237_dir)
     """
-    x_left_201, x_right_201 = encontrar_limites_x_201(dwg, y_ponto, x_ponto)
+    x_left_borda, x_right_borda = encontrar_limites_x_bordas(dwg, y_ponto, x_ponto)
 
-    x_left = x_left_201 if x_left_201 is not None else (x_ponto - 500.0)
-    x_right = x_right_201 if x_right_201 is not None else (x_ponto + 500.0)
+    x_left = x_left_borda if x_left_borda is not None else (x_ponto - 500.0)
+    x_right = x_right_borda if x_right_borda is not None else (x_ponto + 500.0)
 
     parou_237_esq = False
     parou_237_dir = False
 
     obstaculos_237 = coletar_obstaculos_nivel_237(dwg)
     if obstaculos_237:
-        # Filtrar obstáculos rosa que cobrem a cota Y da barra
         obst_y = [x_obs for x_obs, y_a, y_b in obstaculos_237 if (min(y_a, y_b) - 10.0) <= y_ponto <= (max(y_a, y_b) + 10.0)]
 
-        # Obstáculos à direita de x_ponto (entre x_ponto e x_right)
         obs_dir = [x for x in obst_y if x_ponto < x <= (x_right + 5.0)]
         if obs_dir:
             x_rosa_dir = min(obs_dir)
@@ -647,7 +663,6 @@ def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5)
                 x_right = x_novo_dir
                 parou_237_dir = True
 
-        # Obstáculos à esquerda de x_ponto (entre x_left e x_ponto)
         obs_esq = [x for x in obst_y if (x_left - 5.0) <= x < x_ponto]
         if obs_esq:
             x_rosa_esq = max(obs_esq)
