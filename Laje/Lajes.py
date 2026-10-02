@@ -443,11 +443,6 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
     canais_reais = sorted(list(set(round(c, 1) for c in canais_reais)))
     qtd_final = max(len(canais_reais), 1)
 
-    try:
-        TQSUtil.writef(f"\n[G3 Lajes] Deteccao Geometrica: {qtd_final} nervuras reais (macicos de pilar desconsiderados)\n")
-    except:
-        pass
-
     return canais_reais, qtd_final
 
 
@@ -571,6 +566,99 @@ def encontrar_limites_x_201(dwg, y_ponto, x_ponto):
     return None, None
 
 
+def coletar_obstaculos_nivel_237(dwg):
+    """
+    Varre o desenho procurando linhas, polilinhas e caixas no Nível 237 (elementos rosa).
+    Retorna lista de arestas verticais e caixas: [(x_lim, y_min, y_max), ...]
+    """
+    obstaculos_237 = []
+    try:
+        dwg.iterator.Begin()
+        while True:
+            itipo = dwg.iterator.Next()
+            if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
+                break
+            nivel = getattr(dwg.iterator, "level", 0)
+            if nivel != 237:
+                continue
+
+            if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                lx1 = dwg.iterator.x1
+                ly1 = dwg.iterator.y1
+                lx2 = dwg.iterator.x2
+                ly2 = dwg.iterator.y2
+                # Aresta vertical
+                if abs(lx1 - lx2) <= 5.0 and abs(ly1 - ly2) >= 3.0:
+                    obstaculos_237.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2)))
+                # Aresta horizontal (marcar os cantos X)
+                elif abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 3.0:
+                    ym = (ly1 + ly2) / 2.0
+                    obstaculos_237.append((min(lx1, lx2), ym - 5.0, ym + 5.0))
+                    obstaculos_237.append((max(lx1, lx2), ym - 5.0, ym + 5.0))
+
+            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
+                try:
+                    npts = dwg.iterator.xySize
+                    pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                    for i in range(len(pts)):
+                        p_a = pts[i]
+                        p_b = pts[(i + 1) % len(pts)]
+                        if abs(p_a[0] - p_b[0]) <= 5.0 and abs(p_a[1] - p_b[1]) >= 3.0:
+                            obstaculos_237.append(((p_a[0] + p_b[0]) / 2.0, min(p_a[1], p_b[1]), max(p_a[1], p_b[1])))
+                        elif abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 3.0:
+                            ym = (p_a[1] + p_b[1]) / 2.0
+                            obstaculos_237.append((min(p_a[0], p_b[0]), ym - 5.0, ym + 5.0))
+                            obstaculos_237.append((max(p_a[0], p_b[0]), ym - 5.0, ym + 5.0))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return obstaculos_237
+
+
+def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5):
+    """
+    Determina os limites X (borda esquerda e direita) da armadura:
+    1. Busca os limites normais no Nível 201 (vigas/contorno).
+    2. Se houver elemento no Nível 237 (rosa) cobrindo a cota Y da barra:
+       - Para antes dele com cobrimento de 2.5cm (x_rosa - 2.5 à direita ou x_rosa + 2.5 à esquerda).
+    Retorna: (x_left, x_right, parou_237_esq, parou_237_dir)
+    """
+    x_left_201, x_right_201 = encontrar_limites_x_201(dwg, y_ponto, x_ponto)
+
+    x_left = x_left_201 if x_left_201 is not None else (x_ponto - 500.0)
+    x_right = x_right_201 if x_right_201 is not None else (x_ponto + 500.0)
+
+    parou_237_esq = False
+    parou_237_dir = False
+
+    obstaculos_237 = coletar_obstaculos_nivel_237(dwg)
+    if obstaculos_237:
+        # Filtrar obstáculos rosa que cobrem a cota Y da barra
+        obst_y = [x_obs for x_obs, y_a, y_b in obstaculos_237 if (min(y_a, y_b) - 10.0) <= y_ponto <= (max(y_a, y_b) + 10.0)]
+
+        # Obstáculos à direita de x_ponto (entre x_ponto e x_right)
+        obs_dir = [x for x in obst_y if x_ponto < x <= (x_right + 5.0)]
+        if obs_dir:
+            x_rosa_dir = min(obs_dir)
+            x_novo_dir = x_rosa_dir - float(cobrimento_237)
+            if x_novo_dir < x_right:
+                x_right = x_novo_dir
+                parou_237_dir = True
+
+        # Obstáculos à esquerda de x_ponto (entre x_left e x_ponto)
+        obs_esq = [x for x in obst_y if (x_left - 5.0) <= x < x_ponto]
+        if obs_esq:
+            x_rosa_esq = max(obs_esq)
+            x_novo_esq = x_rosa_esq + float(cobrimento_237)
+            if x_novo_esq > x_left:
+                x_left = x_novo_esq
+                parou_237_esq = True
+
+    return x_left, x_right, parou_237_esq, parou_237_dir
+
+
 # ==============================================================================
 # GERAÇÃO DO FERRO HORIZONTAL COM RETA VERTICAL E CONTAGEM
 # ==============================================================================
@@ -580,7 +668,7 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
     1. Usa o X dos pontos como posição da reta vertical
     2. Usa o Y dos pontos como extensão vertical
     3. Detecta os canais reais de nervura (ignorando maciços de pilares)
-    4. Procura os limites X no Nível 201 para definir o comprimento do ferro
+    4. Procura os limites X (Nível 201 e Nível 237 rosa com cobrimento 2.5cm)
     5. Divide em trechos comerciais se necessário (transpasse)
     6. Desenha tudo: reta vertical, ferro horizontal, texto de chamada
     """
@@ -618,17 +706,17 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
         y_max_reta = y_p2
         y_barra = y_max_reta - (0.5 * modulo)
 
-    # ── Encontrar limites X no Nível 201 (comprimento do ferro) ──
-    x_left_201, x_right_201 = encontrar_limites_x_201(dwg, y_barra, x_reta)
+    # ── Encontrar limites X (Nível 201 e Nível 237 rosa com cobrimento 2.5cm) ──
+    x_left, x_right, parou_237_esq, parou_237_dir = encontrar_limites_x_com_nivel_237(
+        dwg, y_barra, x_reta, cobrimento_237=2.5
+    )
 
-    if x_left_201 is None or x_right_201 is None:
-        if x_left_201 is None:
-            x_left_201 = x_reta - 500.0
-        if x_right_201 is None:
-            x_right_201 = x_reta + 500.0
+    x_ini_ferro = x_left
+    x_fim_ferro = x_right
 
-    x_ini_ferro = x_left_201
-    x_fim_ferro = x_right_201
+    # Dobras nas pontas (se parou no Nível 237 é barra reta sem dobra)
+    dobra_esq_efetiva = 0.0 if parou_237_esq else comp_dobra
+    dobra_dir_efetiva = 0.0 if parou_237_dir else comp_dobra
 
     # ── Dividir em trechos comerciais (≤ 11.80m) com transpasse ──
     trechos_x = []
@@ -674,8 +762,8 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
             sr.ribbed = 1
             sr.showRibbed = 1
             sr.straightBarMainLength = float(comp_trecho)
-            sr.straightBarLeftLength = float(comp_dobra if eh_ponta_esq else 0.0)
-            sr.straightBarRightLength = float(comp_dobra if eh_ponta_dir else 0.0)
+            sr.straightBarLeftLength = float(dobra_esq_efetiva if eh_ponta_esq else 0.0)
+            sr.straightBarRightLength = float(dobra_dir_efetiva if eh_ponta_dir else 0.0)
             sr.straightBarTextPosition = 2
             sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
 
@@ -710,11 +798,11 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
             draw.Line(xa_t, y_ferro, xb_t, y_ferro)
 
             # Dobras nas extremidades da laje
-            if eh_ponta_esq and comp_dobra > 0:
-                draw.Line(xa_t, y_ferro, xa_t, y_ferro - comp_dobra)
+            if eh_ponta_esq and dobra_esq_efetiva > 0:
+                draw.Line(xa_t, y_ferro, xa_t, y_ferro - dobra_esq_efetiva)
 
-            if eh_ponta_dir and comp_dobra > 0:
-                draw.Line(xb_t, y_ferro, xb_t, y_ferro - comp_dobra)
+            if eh_ponta_dir and dobra_dir_efetiva > 0:
+                draw.Line(xb_t, y_ferro, xb_t, y_ferro - dobra_dir_efetiva)
 
             # C) Reta vertical com setas (linha contínua verde)
             if i_t == 0 and qtd_nervuras > 1:
@@ -735,7 +823,7 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
             draw.color = 2  # Amarelo
             draw.style = 0
             bitola_str = f"{bitola:g}"
-            comp_total_barra = comp_trecho + (comp_dobra if eh_ponta_esq else 0.0) + (comp_dobra if eh_ponta_dir else 0.0)
+            comp_total_barra = comp_trecho + (dobra_esq_efetiva if eh_ponta_esq else 0.0) + (dobra_dir_efetiva if eh_ponta_dir else 0.0)
             comp_int = int(round(comp_total_barra))
             pos_str = f"P{pos_num}"
 
@@ -761,44 +849,50 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
 
 
 # ==============================================================================
-# ENTRY POINT PRINCIPAL NO TQS EAG
+# ENTRY POINT PRINCIPAL NO TQS EAG (MODO CONTÍNUO MULTI-FAIXAS)
 # ==============================================================================
 def meucmd(eag, tqsjan):
     """
     Comando acionado pelo menu TQS na aba G3 Plugins.
 
-    Fluxo:
-    1. Abre janela HTA para parâmetros (bitola, transpasse, módulo)
-    2. Pede ao usuário para clicar 2 pontos (extensão vertical das nervuras)
-    3. Conta nervuras, encontra limites X, desenha ferro + reta + texto
+    Fluxo Contínuo / Múltiplas Faixas:
+    1. Abre janela HTA para parâmetros (bitola, transpasse, módulo) uma única vez.
+    2. Em loop contínuo:
+       - Pede o 1º ponto (ou <Enter>/<Esc> para finalizar).
+       - Pede o 2º ponto (com linha elástica).
+       - Desenha o ferro horizontal e a linha vertical conectada.
+       - Atualiza a tela (Regen) e já pede a próxima faixa.
     """
     try:
-        # 1. Parâmetros via HTA
+        # 1. Parâmetros via HTA (apenas uma vez para todas as faixas)
         dados = pedir_dados_laje()
         if dados is None:
             return
 
-        # 2. Primeiro ponto: topo (ou base) da extensão das nervuras
-        icod1, x1, y1 = eag.locate.GetPoint(
-            tqsjan,
-            "Clique o PRIMEIRO ponto da extensão das nervuras"
-        )
-        if icod1 != 1:
-            return
+        faixa_idx = 1
+        while True:
+            # 2. Primeiro ponto da faixa (ou Enter/Esc para encerrar)
+            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa (ou <Enter>/<Esc> para concluir):"
+            icod1, x1, y1 = eag.locate.GetPoint(tqsjan, prompt1)
+            if icod1 != 1:
+                break
 
-        # 3. Segundo ponto: com rubber band (linha elástica) a partir do primeiro
-        icod2, x2, y2 = eag.locate.GetSecondPoint(
-            tqsjan, x1, y1,
-            TQSEag.EAG_RUBLINEAR,
-            TQSEag.EAG_RUBRET_NAOPREEN,
-            "Clique o SEGUNDO ponto (outra extremidade das nervuras)"
-        )
-        if icod2 != 1:
-            return
+            # 3. Segundo ponto da faixa com linha elástica
+            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa:"
+            icod2, x2, y2 = eag.locate.GetSecondPoint(
+                tqsjan, x1, y1,
+                TQSEag.EAG_RUBLINEAR,
+                TQSEag.EAG_RUBRET_NAOPREEN,
+                prompt2
+            )
+            if icod2 != 1:
+                break
 
-        # 4. Processar e desenhar
-        processar_ferro_por_2pontos(tqsjan.dwg, x1, y1, x2, y2, dados)
-        tqsjan.Regen()
+            # 4. Processar e desenhar a faixa imediatamente
+            processar_ferro_por_2pontos(tqsjan.dwg, x1, y1, x2, y2, dados)
+            tqsjan.Regen()
+
+            faixa_idx += 1
 
     except Exception as e:
         try:
