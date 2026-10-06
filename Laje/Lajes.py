@@ -188,8 +188,8 @@ def pedir_dados_laje():
 
             function initDialog() {{
                 try {{
-                    window.resizeTo(450, 420);
-                    window.moveTo((screen.availWidth - 450) / 2, (screen.availHeight - 420) / 2);
+                    window.resizeTo(450, 480);
+                    window.moveTo((screen.availWidth - 450) / 2, (screen.availHeight - 480) / 2);
                 }} catch(e) {{}}
                 atualizarTranspasse();
             }}
@@ -199,6 +199,7 @@ def pedir_dados_laje():
                     var bit = parseFloat(document.getElementById('bitola').value) || 16.0;
                     var trans = parseFloat(document.getElementById('transpasse').value.replace(',', '.')) || (tabelaTranspasse[bit] || 90.0);
                     var modulo = parseFloat(document.getElementById('modulo').value.replace(',', '.')) || 65.0;
+                    var dobra = parseFloat(document.getElementById('dobra').value.replace(',', '.')) || 15.0;
 
                     var fso = new ActiveXObject("Scripting.FileSystemObject");
                     var a = fso.CreateTextFile("{json_js}", true);
@@ -207,6 +208,7 @@ def pedir_dados_laje():
                         '"bitola":' + bit +
                         ',"transpasse":' + trans +
                         ',"modulo":' + modulo +
+                        ',"dobra":' + dobra +
                         '}}';
 
                     a.WriteLine(jsonStr);
@@ -244,6 +246,10 @@ def pedir_dados_laje():
                 <div class="campo">
                     <label>Transpasse entre Barras (cm):</label>
                     <input type="text" id="transpasse" value="90">
+                </div>
+                <div class="campo">
+                    <label>Comprimento da Dobra (cm):</label>
+                    <input type="text" id="dobra" value="15">
                 </div>
                 <div class="campo">
                     <label>Módulo da Nervura (cm):</label>
@@ -639,14 +645,25 @@ def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5)
     """
     Determina os limites X (borda esquerda e direita) da armadura:
     1. Busca os limites normais no Nível 228 (linha branca de borda) e Nível 201.
-    2. Se houver elemento no Nível 237 (rosa) cobrindo a cota Y da barra:
+    2. Aplica cobrimento de 2.5cm nas dobras das bordas (recuo para dentro da laje).
+    3. Se houver elemento no Nível 237 (rosa) cobrindo a cota Y da barra:
        - Para antes dele com cobrimento de 2.5cm (x_rosa - 2.5 à direita ou x_rosa + 2.5 à esquerda).
     Retorna: (x_left, x_right, parou_237_esq, parou_237_dir)
     """
     x_left_borda, x_right_borda = encontrar_limites_x_bordas(dwg, y_ponto, x_ponto)
 
-    x_left = x_left_borda if x_left_borda is not None else (x_ponto - 500.0)
-    x_right = x_right_borda if x_right_borda is not None else (x_ponto + 500.0)
+    cobrimento_val = float(cobrimento_237)
+
+    # Aplicar cobrimento de 2.5cm nas bordas da laje (recuo a partir da linha branca 228 / 201)
+    if x_left_borda is not None:
+        x_left = x_left_borda + cobrimento_val
+    else:
+        x_left = x_ponto - 500.0
+
+    if x_right_borda is not None:
+        x_right = x_right_borda - cobrimento_val
+    else:
+        x_right = x_ponto + 500.0
 
     parou_237_esq = False
     parou_237_dir = False
@@ -655,18 +672,18 @@ def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5)
     if obstaculos_237:
         obst_y = [x_obs for x_obs, y_a, y_b in obstaculos_237 if (min(y_a, y_b) - 10.0) <= y_ponto <= (max(y_a, y_b) + 10.0)]
 
-        obs_dir = [x for x in obst_y if x_ponto < x <= (x_right + 5.0)]
+        obs_dir = [x for x in obst_y if x_ponto < x <= (x_right + 10.0)]
         if obs_dir:
             x_rosa_dir = min(obs_dir)
-            x_novo_dir = x_rosa_dir - float(cobrimento_237)
+            x_novo_dir = x_rosa_dir - cobrimento_val
             if x_novo_dir < x_right:
                 x_right = x_novo_dir
                 parou_237_dir = True
 
-        obs_esq = [x for x in obst_y if (x_left - 5.0) <= x < x_ponto]
+        obs_esq = [x for x in obst_y if (x_left - 10.0) <= x < x_ponto]
         if obs_esq:
             x_rosa_esq = max(obs_esq)
-            x_novo_esq = x_rosa_esq + float(cobrimento_237)
+            x_novo_esq = x_rosa_esq + cobrimento_val
             if x_novo_esq > x_left:
                 x_left = x_novo_esq
                 parou_237_esq = True
@@ -856,6 +873,18 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
             tam_txt = 8.5
             larg_txt = len(txt_chamada) * (tam_txt * 0.72)
             draw.Text(xm_trecho - larg_txt / 2.0, y_ferro - 12.0, tam_txt, 0.0, txt_chamada)
+
+        # E) Texto com o valor da dobra nas extremidades
+        draw.level = 220
+        draw.color = 2  # Amarelo
+        draw.style = 0
+        if eh_ponta_esq and dobra_esq_efetiva > 0:
+            txt_d_esq = f"{int(round(dobra_esq_efetiva))}"
+            draw.Text(xa_t - 7.5, y_ferro - (dobra_esq_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_esq)
+
+        if eh_ponta_dir and dobra_dir_efetiva > 0:
+            txt_d_dir = f"{int(round(dobra_dir_efetiva))}"
+            draw.Text(xb_t + 2.5, y_ferro - (dobra_dir_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_dir)
 
         # B) Cota de transpasse se for trecho posterior
         if i_t > 0:
