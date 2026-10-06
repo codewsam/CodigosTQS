@@ -422,8 +422,7 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
 
     niveis = sorted([p['y'] for p in picos_y if p['qtd'] >= 1])
 
-    # ── IDENTIFICAR APENAS OS VÃOS DE NERVURA (5cm a 24cm) ──
-    # Espaços maiores que 24cm (como maciços de pilares e capitéis) são sumariamente descartados!
+    # ── IDENTIFICAR OS VÃOS DE NERVURA (5cm a 24cm) ──
     canais_reais = []
     for i in range(len(niveis) - 1):
         gap = niveis[i + 1] - niveis[i]
@@ -503,15 +502,26 @@ def coletar_linhas_borda_dwg(dwg):
     return linhas_borda_horiz, linhas_borda_vert
 
 
-def encontrar_limites_x_bordas(dwg, y_ponto, x_ponto):
+def encontrar_limites_x_bordas(dwg, y_min_band, y_max_band, x_ponto, canais_reais=None):
     """
     Determina os limites externos X (borda esquerda e borda direita) da laje
-    para a cota Y informada, priorizando a linha branca do Nível 228 onde os ferros laterais devem parar.
+    para toda a faixa vertical [y_min_band, y_max_band], priorizando a linha branca
+    do Nível 228 onde os ferros laterais devem parar.
+    Garante que nenhuma barra da faixa ultrapasse a borda em qualquer uma das nervuras.
     """
     linhas_borda_horiz, linhas_borda_vert = coletar_linhas_borda_dwg(dwg)
 
-    # 1. Encontrar a extensão horizontal real das cubetas/desenho na cota Y da barra
-    xs_cubetas_y = []
+    # Definir pontos Y de amostragem na faixa (todas as nervuras reais ou passos regulares)
+    if canais_reais and len(canais_reais) > 0:
+        pontos_y = [y for y in canais_reais if (y_min_band - 5.0) <= y <= (y_max_band + 5.0)]
+        if not pontos_y:
+            pontos_y = list(canais_reais)
+    else:
+        num_passos = max(int(round(abs(y_max_band - y_min_band) / 20.0)), 1)
+        pontos_y = [y_min_band + i * (y_max_band - y_min_band) / float(num_passos) for i in range(num_passos + 1)]
+
+    # Coletar todas as entidades de cubetas (nível < 220) na faixa vertical
+    cubetas_segmentos = []
     try:
         dwg.iterator.Begin()
         while True:
@@ -525,79 +535,103 @@ def encontrar_limites_x_bordas(dwg, y_ponto, x_ponto):
             if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                 lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
                 lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
-                ym = (ly1 + ly2) / 2.0
-                if abs(ym - y_ponto) <= 45.0 and abs(lx2 - lx1) >= 8.0:
-                    xs_cubetas_y.extend([lx1, lx2])
+                ymin_seg = min(ly1, ly2)
+                ymax_seg = max(ly1, ly2)
+                if ymax_seg >= (y_min_band - 30.0) and ymin_seg <= (y_max_band + 30.0):
+                    if abs(lx2 - lx1) >= 8.0:
+                        cubetas_segmentos.append((min(lx1, lx2), max(lx1, lx2), ymin_seg, ymax_seg))
 
             elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                 try:
                     npts = dwg.iterator.xySize
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
-                    for p in pts:
-                        if abs(p[1] - y_ponto) <= 45.0:
-                            xs_cubetas_y.append(p[0])
+                    if pts:
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        ymin_poly = min(ys)
+                        ymax_poly = max(ys)
+                        if ymax_poly >= (y_min_band - 30.0) and ymin_poly <= (y_max_band + 30.0):
+                            cubetas_segmentos.append((min(xs), max(xs), ymin_poly, ymax_poly))
                 except Exception:
                     pass
     except Exception:
         pass
 
-    # 2. Filtrar linhas verticais de borda que cobrem a cota Y
-    linhas_vert_cobrindo_y = []
-    for x_lim, y_a, y_b, eh_228 in linhas_borda_vert:
-        if (min(y_a, y_b) - 60.0) <= y_ponto <= (max(y_a, y_b) + 60.0):
-            linhas_vert_cobrindo_y.append((x_lim, eh_228))
+    limites_esq = []
+    limites_dir = []
 
-    # Se encontramos a extensão das cubetas nessa faixa Y
-    if xs_cubetas_y:
-        x_cub_min = min(xs_cubetas_y)
-        x_cub_max = max(xs_cubetas_y)
+    for y_amostra in pontos_y:
+        # Cubetas cobrindo este Y específico
+        xs_neste_y = []
+        for xmin_c, xmax_c, ymin_c, ymax_c in cubetas_segmentos:
+            if (ymin_c - 20.0) <= y_amostra <= (ymax_c + 20.0):
+                xs_neste_y.extend([xmin_c, xmax_c])
 
-        # Borda esquerda: priorizar linha 228 (branca) colada na cubeta
-        cands_esq_228 = [x for x, eh_228 in linhas_vert_cobrindo_y if eh_228 and x <= x_cub_min + 30.0]
-        cands_esq_todos = [x for x, eh_228 in linhas_vert_cobrindo_y if x <= x_cub_min + 30.0]
+        # Linhas verticais de borda cobrindo este Y específico
+        linhas_vert_y = []
+        for x_lim, y_a, y_b, eh_228 in linhas_borda_vert:
+            if (min(y_a, y_b) - 40.0) <= y_amostra <= (max(y_a, y_b) + 40.0):
+                linhas_vert_y.append((x_lim, eh_228))
 
-        if cands_esq_228:
-            x_left = max(cands_esq_228)
-        elif cands_esq_todos:
-            x_left = max(cands_esq_todos)
-        else:
-            x_left = x_cub_min - 15.0
+        if xs_neste_y:
+            x_cub_min = min(xs_neste_y)
+            x_cub_max = max(xs_neste_y)
 
-        # Borda direita: priorizar linha 228 (branca) colada na última cubeta
-        cands_dir_228 = [x for x, eh_228 in linhas_vert_cobrindo_y if eh_228 and x >= x_cub_max - 30.0]
-        cands_dir_todos = [x for x, eh_228 in linhas_vert_cobrindo_y if x >= x_cub_max - 30.0]
+            # Borda esquerda
+            cands_esq_228 = [x for x, eh_228 in linhas_vert_y if eh_228 and x <= x_cub_min + 30.0]
+            cands_esq_todos = [x for x, eh_228 in linhas_vert_y if x <= x_cub_min + 30.0]
+            if cands_esq_228:
+                limites_esq.append(max(cands_esq_228))
+            elif cands_esq_todos:
+                limites_esq.append(max(cands_esq_todos))
+            else:
+                limites_esq.append(x_cub_min - 15.0)
 
-        if cands_dir_228:
-            x_right = min(cands_dir_228)
-        elif cands_dir_todos:
-            x_right = min(cands_dir_todos)
-        else:
-            x_right = x_cub_max + 15.0
+            # Borda direita
+            cands_dir_228 = [x for x, eh_228 in linhas_vert_y if eh_228 and x >= x_cub_max - 30.0]
+            cands_dir_todos = [x for x, eh_228 in linhas_vert_y if x >= x_cub_max - 30.0]
+            if cands_dir_228:
+                limites_dir.append(min(cands_dir_228))
+            elif cands_dir_todos:
+                limites_dir.append(min(cands_dir_todos))
+            else:
+                limites_dir.append(x_cub_max + 15.0)
+        elif linhas_vert_y:
+            cands_228 = [x for x, eh_228 in linhas_vert_y if eh_228]
+            if cands_228:
+                esq = [x for x in cands_228 if x < x_ponto]
+                dir = [x for x in cands_228 if x > x_ponto]
+                if esq:
+                    limites_esq.append(max(esq))
+                if dir:
+                    limites_dir.append(min(dir))
+            else:
+                esq = [x for x, _ in linhas_vert_y if x < x_ponto]
+                dir = [x for x, _ in linhas_vert_y if x > x_ponto]
+                if esq:
+                    limites_esq.append(max(esq))
+                if dir:
+                    limites_dir.append(min(dir))
 
-        return x_left, x_right
+    # O limite da faixa inteira deve ser o mais restritivo (nenhuma barra sai para fora)
+    x_left = max(limites_esq) if limites_esq else None
+    x_right = min(limites_dir) if limites_dir else None
 
-    # Fallback se não achou cubetas específicas: pega os extremos verticais
-    if linhas_vert_cobrindo_y:
-        cands_228 = [x for x, eh_228 in linhas_vert_cobrindo_y if eh_228]
-        if cands_228:
-            esq = [x for x in cands_228 if x < x_ponto]
-            dir = [x for x in cands_228 if x > x_ponto]
-            x_left = max(esq) if esq else min(cands_228)
-            x_right = min(dir) if dir else max(cands_228)
-            return x_left, x_right
-
-        todos_x = [x for x, _ in linhas_vert_cobrindo_y]
-        return min(todos_x), max(todos_x)
-
-    return None, None
+    return x_left, x_right
 
 
-def coletar_obstaculos_nivel_237(dwg):
+def coletar_obstaculos_e_vazios(dwg):
     """
-    Varre o desenho procurando linhas, polilinhas e caixas no Nível 237 (elementos rosa).
-    Retorna lista de arestas verticais e caixas: [(x_lim, y_min, y_max), ...]
+    Varre o desenho em busca de obstáculos e aberturas:
+    1. Elementos no Nível 237 (rosa)
+    2. Linhas e polilinhas diagonais formando o 'X' dos espaços vazios / furos / shafts
+    3. Linhas/caixas vermelhas (cor 1) APENAS quando estiverem próximas (<= 40cm) de um 'X' de abertura
+    Retorna lista de dicionários com limites: [{'xmin': ..., 'xmax': ..., 'ymin': ..., 'ymax': ...}, ...]
     """
-    obstaculos_237 = []
+    obstaculos_rosa = []
+    vazios_x = []
+    linhas_vermelhas = []
+
     try:
         dwg.iterator.Begin()
         while True:
@@ -605,56 +639,136 @@ def coletar_obstaculos_nivel_237(dwg):
             if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
                 break
             nivel = getattr(dwg.iterator, "level", 0)
-            if nivel != 237:
+            cor = getattr(dwg.iterator, "color", 0)
+
+            # 1. Elementos rosa no Nível 237
+            if nivel == 237:
+                if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                    lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
+                    lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
+                    obstaculos_rosa.append({
+                        'xmin': min(lx1, lx2),
+                        'xmax': max(lx1, lx2),
+                        'ymin': min(ly1, ly2),
+                        'ymax': max(ly1, ly2)
+                    })
+                elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
+                    try:
+                        npts = dwg.iterator.xySize
+                        pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                        if pts:
+                            xs = [p[0] for p in pts]
+                            ys = [p[1] for p in pts]
+                            obstaculos_rosa.append({
+                                'xmin': min(xs),
+                                'xmax': max(xs),
+                                'ymin': min(ys),
+                                'ymax': max(ys)
+                            })
+                    except Exception:
+                        pass
                 continue
 
+            # 2. Linhas diagonais com 'X' e linhas vermelhas
             if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
-                lx1 = dwg.iterator.x1
-                ly1 = dwg.iterator.y1
-                lx2 = dwg.iterator.x2
-                ly2 = dwg.iterator.y2
-                if abs(lx1 - lx2) <= 5.0 and abs(ly1 - ly2) >= 3.0:
-                    obstaculos_237.append(((lx1 + lx2) / 2.0, min(ly1, ly2), max(ly1, ly2)))
-                elif abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 3.0:
-                    ym = (ly1 + ly2) / 2.0
-                    obstaculos_237.append((min(lx1, lx2), ym - 5.0, ym + 5.0))
-                    obstaculos_237.append((max(lx1, lx2), ym - 5.0, ym + 5.0))
+                lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
+                lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
+                dx = abs(lx2 - lx1)
+                dy = abs(ly2 - ly1)
+                if dx >= 15.0 and dy >= 15.0:
+                    vazios_x.append({
+                        'xmin': min(lx1, lx2),
+                        'xmax': max(lx1, lx2),
+                        'ymin': min(ly1, ly2),
+                        'ymax': max(ly1, ly2)
+                    })
+                elif cor == 1 and (dx >= 10.0 or dy >= 10.0):
+                    linhas_vermelhas.append({
+                        'xmin': min(lx1, lx2),
+                        'xmax': max(lx1, lx2),
+                        'ymin': min(ly1, ly2),
+                        'ymax': max(ly1, ly2)
+                    })
 
+            # 3. Polilinhas com segmentos diagonais ou contornos vermelhos
             elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                 try:
                     npts = dwg.iterator.xySize
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
-                    for i in range(len(pts)):
-                        p_a = pts[i]
-                        p_b = pts[(i + 1) % len(pts)]
-                        if abs(p_a[0] - p_b[0]) <= 5.0 and abs(p_a[1] - p_b[1]) >= 3.0:
-                            obstaculos_237.append(((p_a[0] + p_b[0]) / 2.0, min(p_a[1], p_b[1]), max(p_a[1], p_b[1])))
-                        elif abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 3.0:
-                            ym = (p_a[1] + p_b[1]) / 2.0
-                            obstaculos_237.append((min(p_a[0], p_b[0]), ym - 5.0, ym + 5.0))
-                            obstaculos_237.append((max(p_a[0], p_b[0]), ym - 5.0, ym + 5.0))
+                    if pts:
+                        tem_diag = False
+                        for i in range(len(pts) - 1):
+                            p_a = pts[i]
+                            p_b = pts[i + 1]
+                            if abs(p_b[0] - p_a[0]) >= 15.0 and abs(p_b[1] - p_a[1]) >= 15.0:
+                                tem_diag = True
+                                break
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        if tem_diag:
+                            vazios_x.append({
+                                'xmin': min(xs),
+                                'xmax': max(xs),
+                                'ymin': min(ys),
+                                'ymax': max(ys)
+                            })
+                        elif cor == 1:
+                            linhas_vermelhas.append({
+                                'xmin': min(xs),
+                                'xmax': max(xs),
+                                'ymin': min(ys),
+                                'ymax': max(ys)
+                            })
                 except Exception:
                     pass
     except Exception:
         pass
 
-    return obstaculos_237
+    # Associar linhas vermelhas aos vazios com 'X' (se estiverem a até 40cm de distância)
+    obstaculos_vazios = []
+    for vx in vazios_x:
+        x_min_v = vx['xmin']
+        x_max_v = vx['xmax']
+        y_min_v = vx['ymin']
+        y_max_v = vx['ymax']
+
+        # Expandir com contorno vermelho próximo
+        for red in linhas_vermelhas:
+            if (x_min_v - 40.0) <= red['xmax'] and red['xmin'] <= (x_max_v + 40.0):
+                if (y_min_v - 40.0) <= red['ymax'] and red['ymin'] <= (y_max_v + 40.0):
+                    x_min_v = min(x_min_v, red['xmin'])
+                    x_max_v = max(x_max_v, red['xmax'])
+                    y_min_v = min(y_min_v, red['ymin'])
+                    y_max_v = max(y_max_v, red['ymax'])
+
+        obstaculos_vazios.append({
+            'xmin': x_min_v,
+            'xmax': x_max_v,
+            'ymin': y_min_v,
+            'ymax': y_max_v
+        })
+
+    return obstaculos_rosa + obstaculos_vazios
 
 
-def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5):
+def coletar_obstaculos_nivel_237(dwg):
+    """Mantido por compatibilidade: redireciona para coletar_obstaculos_e_vazios."""
+    return coletar_obstaculos_e_vazios(dwg)
+
+
+def encontrar_limites_x_rib(dwg, y_rib, x_ponto, cobrimento_237=2.5):
     """
-    Determina os limites X (borda esquerda e direita) da armadura:
-    1. Busca os limites normais no Nível 228 (linha branca de borda) e Nível 201.
+    Determina os limites X (borda esquerda e direita) da armadura para uma nervura na cota y_rib:
+    1. Busca os limites no Nível 228 (linha branca de borda) e Nível 201 na vizinhança de y_rib.
     2. Aplica cobrimento de 2.5cm nas dobras das bordas (recuo para dentro da laje).
-    3. Se houver elemento no Nível 237 (rosa) cobrindo a cota Y da barra:
-       - Para antes dele com cobrimento de 2.5cm (x_rosa - 2.5 à direita ou x_rosa + 2.5 à esquerda).
+    3. Se houver elemento no Nível 237 (rosa) ou VAZIO com 'X' cobrindo a cota y_rib (+/- 12cm):
+       - Para antes dele com cobrimento de 2.5cm (x_obs_min - 2.5 à direita ou x_obs_max + 2.5 à esquerda).
     Retorna: (x_left, x_right, parou_237_esq, parou_237_dir)
     """
-    x_left_borda, x_right_borda = encontrar_limites_x_bordas(dwg, y_ponto, x_ponto)
+    x_left_borda, x_right_borda = encontrar_limites_x_bordas(dwg, y_rib - 15.0, y_rib + 15.0, x_ponto)
 
     cobrimento_val = float(cobrimento_237)
 
-    # Aplicar cobrimento de 2.5cm nas bordas da laje (recuo a partir da linha branca 228 / 201)
     if x_left_borda is not None:
         x_left = x_left_borda + cobrimento_val
     else:
@@ -668,22 +782,72 @@ def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5)
     parou_237_esq = False
     parou_237_dir = False
 
-    obstaculos_237 = coletar_obstaculos_nivel_237(dwg)
-    if obstaculos_237:
-        obst_y = [x_obs for x_obs, y_a, y_b in obstaculos_237 if (min(y_a, y_b) - 10.0) <= y_ponto <= (max(y_a, y_b) + 10.0)]
+    obstaculos = coletar_obstaculos_e_vazios(dwg)
+    if obstaculos:
+        obst_na_nervura = [
+            obs for obs in obstaculos
+            if obs['ymin'] <= (y_rib + 12.0) and obs['ymax'] >= (y_rib - 12.0)
+        ]
 
-        obs_dir = [x for x in obst_y if x_ponto < x <= (x_right + 10.0)]
+        obs_dir = [obs['xmin'] for obs in obst_na_nervura if obs['xmin'] > x_ponto]
         if obs_dir:
-            x_rosa_dir = min(obs_dir)
-            x_novo_dir = x_rosa_dir - cobrimento_val
+            x_obs_dir = min(obs_dir)
+            x_novo_dir = x_obs_dir - cobrimento_val
             if x_novo_dir < x_right:
                 x_right = x_novo_dir
                 parou_237_dir = True
 
-        obs_esq = [x for x in obst_y if (x_left - 10.0) <= x < x_ponto]
+        obs_esq = [obs['xmax'] for obs in obst_na_nervura if obs['xmax'] < x_ponto]
         if obs_esq:
-            x_rosa_esq = max(obs_esq)
-            x_novo_esq = x_rosa_esq + cobrimento_val
+            x_obs_esq = max(obs_esq)
+            x_novo_esq = x_obs_esq + cobrimento_val
+            if x_novo_esq > x_left:
+                x_left = x_novo_esq
+                parou_237_esq = True
+
+    return x_left, x_right, parou_237_esq, parou_237_dir
+
+
+def encontrar_limites_x_com_nivel_237(dwg, y_min_band, y_max_band, x_ponto, cobrimento_237=2.5, canais_reais=None):
+    """
+    Determina os limites X (borda esquerda e direita) da armadura para TODA a faixa vertical [y_min_band, y_max_band].
+    """
+    x_left_borda, x_right_borda = encontrar_limites_x_bordas(dwg, y_min_band, y_max_band, x_ponto, canais_reais)
+
+    cobrimento_val = float(cobrimento_237)
+
+    if x_left_borda is not None:
+        x_left = x_left_borda + cobrimento_val
+    else:
+        x_left = x_ponto - 500.0
+
+    if x_right_borda is not None:
+        x_right = x_right_borda - cobrimento_val
+    else:
+        x_right = x_ponto + 500.0
+
+    parou_237_esq = False
+    parou_237_dir = False
+
+    obstaculos = coletar_obstaculos_e_vazios(dwg)
+    if obstaculos:
+        obst_na_faixa = [
+            obs for obs in obstaculos
+            if obs['ymin'] <= (y_max_band + 5.0) and obs['ymax'] >= (y_min_band - 5.0)
+        ]
+
+        obs_dir = [obs['xmin'] for obs in obst_na_faixa if obs['xmin'] > x_ponto]
+        if obs_dir:
+            x_obs_dir = min(obs_dir)
+            x_novo_dir = x_obs_dir - cobrimento_val
+            if x_novo_dir < x_right:
+                x_right = x_novo_dir
+                parou_237_dir = True
+
+        obs_esq = [obs['xmax'] for obs in obst_na_faixa if obs['xmax'] < x_ponto]
+        if obs_esq:
+            x_obs_esq = max(obs_esq)
+            x_novo_esq = x_obs_esq + cobrimento_val
             if x_novo_esq > x_left:
                 x_left = x_novo_esq
                 parou_237_esq = True
@@ -697,12 +861,12 @@ def encontrar_limites_x_com_nivel_237(dwg, y_ponto, x_ponto, cobrimento_237=2.5)
 def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
     """
     A partir dos 2 pontos selecionados pelo usuário:
-    1. Usa o X dos pontos como posição da reta vertical
-    2. Usa o Y dos pontos como extensão vertical
-    3. Detecta os canais reais de nervura (ignorando maciços de pilares)
-    4. Procura os limites X (Nível 201 e Nível 237 rosa com cobrimento 2.5cm)
-    5. Divide em trechos comerciais se necessário (transpasse)
-    6. Desenha tudo: reta vertical, ferro horizontal, texto de chamada
+    1. Usa o X dos pontos como posição da reta vertical.
+    2. Usa o Y dos pontos como extensão vertical.
+    3. Detecta os canais reais de nervura (ignorando maciços de pilares).
+    4. Agrupa nervuras contíguas com a mesma geometria (permite que nervuras livres continuem
+       e nervuras com obstáculo parem no Nível 237 rosa com cobrimento 2.5cm).
+    5. Divide em trechos comerciais com transpasse e desenha armadura, chamada e distribuição.
     """
     draw = dwg.draw
 
@@ -722,179 +886,221 @@ def processar_ferro_por_2pontos(dwg, x1, y1, x2, y2, dados):
         return
 
     # ── Detectar canais reais (espaços vazios entre cubetas) ──
-    canais_reais, qtd_nervuras = detectar_canais_reais_entre_pontos(dwg, y_p1, y_p2, x_reta, modulo)
+    canais_reais, total_nervuras = detectar_canais_reais_entre_pontos(dwg, y_p1, y_p2, x_reta, modulo)
 
-    # ── A linha vertical começa e termina no local exato onde o usuário clicou ──
-    y_min_reta = y_p1
-    y_max_reta = y_p2
-
+    # ── Identificar grupos contíguos de nervuras com mesma geometria/obstáculos ──
+    grupos = []
     if canais_reais:
-        # Posicionar o ferro em uma nervura um pouco mais abaixo do topo (entre 1ª e 2ª fileira)
-        if len(canais_reais) >= 2:
-            y_barra = canais_reais[-2]
-        else:
-            y_barra = canais_reais[0]
+        grupo_atual = None
+        for y_rib in canais_reais:
+            x_l, x_r, p_esq, p_dir = encontrar_limites_x_rib(dwg, y_rib, x_reta, cobrimento_237=2.5)
+            if grupo_atual is None:
+                grupo_atual = {
+                    'ribs': [y_rib],
+                    'x_left': x_l,
+                    'x_right': x_r,
+                    'parou_esq': p_esq,
+                    'parou_dir': p_dir
+                }
+            else:
+                mesmo_x_esq = (abs(x_l - grupo_atual['x_left']) <= 3.0)
+                mesmo_x_dir = (abs(x_r - grupo_atual['x_right']) <= 3.0)
+                mesmo_p_esq = (p_esq == grupo_atual['parou_esq'])
+                mesmo_p_dir = (p_dir == grupo_atual['parou_dir'])
+                if mesmo_x_esq and mesmo_x_dir and mesmo_p_esq and mesmo_p_dir:
+                    grupo_atual['ribs'].append(y_rib)
+                else:
+                    grupos.append(grupo_atual)
+                    grupo_atual = {
+                        'ribs': [y_rib],
+                        'x_left': x_l,
+                        'x_right': x_r,
+                        'parou_esq': p_esq,
+                        'parou_dir': p_dir
+                    }
+        if grupo_atual:
+            grupos.append(grupo_atual)
     else:
-        y_barra = y_max_reta - (0.5 * modulo)
+        x_l, x_r, p_esq, p_dir = encontrar_limites_x_rib(dwg, (y_p1 + y_p2) / 2.0, x_reta, cobrimento_237=2.5)
+        grupos.append({
+            'ribs': [(y_p1 + y_p2) / 2.0],
+            'x_left': x_l,
+            'x_right': x_r,
+            'parou_esq': p_esq,
+            'parou_dir': p_dir
+        })
 
-    # ── Encontrar limites X (Nível 201 e Nível 237 rosa com cobrimento 2.5cm) ──
-    x_left, x_right, parou_237_esq, parou_237_dir = encontrar_limites_x_com_nivel_237(
-        dwg, y_barra, x_reta, cobrimento_237=2.5
-    )
-
-    x_ini_ferro = x_left
-    x_fim_ferro = x_right
-
-    # Dobras nas pontas (se parou no Nível 237 é barra reta sem dobra)
-    dobra_esq_efetiva = 0.0 if parou_237_esq else comp_dobra
-    dobra_dir_efetiva = 0.0 if parou_237_dir else comp_dobra
-
-    # ── Dividir em trechos comerciais (≤ 11.80m) com transpasse ──
-    trechos_x = []
-    x_curr = x_ini_ferro
-    idx_t = 0
-
-    while x_curr < x_fim_ferro:
-        x_fim_t = min(x_curr + comp_max_barra, x_fim_ferro)
-        trechos_x.append((x_curr, x_fim_t, idx_t))
-
-        if x_fim_t >= x_fim_ferro:
-            break
-        x_curr = x_fim_t - transpasse_cm
-        idx_t += 1
-
-    # ── Desenhar cada trecho ──
+    # ── Desenhar cada grupo homogêneo ──
     pos_num = 1
 
-    for i_t, (xa_t, xb_t, idx_trecho) in enumerate(trechos_x):
-        comp_trecho = xb_t - xa_t
-        xm_trecho = (xa_t + xb_t) / 2.0
+    for g_idx, grupo in enumerate(grupos):
+        qtd_nervuras_g = len(grupo['ribs'])
 
-        # Alternar Y da barra nas emendas para ficarem paralelas
-        off_y = 0.0
-        if len(trechos_x) > 1:
-            off_y = 1.5 if (idx_trecho % 2 == 1) else -1.5
+        if qtd_nervuras_g > 1:
+            y_min_g = min(grupo['ribs'])
+            y_max_g = max(grupo['ribs'])
+            y_barra = grupo['ribs'][-2] if len(grupo['ribs']) >= 2 else grupo['ribs'][0]
+        else:
+            y_barra = grupo['ribs'][0]
+            y_min_g = y_barra - (modulo / 2.0)
+            y_max_g = y_barra + (modulo / 2.0)
 
-        y_ferro = y_barra + off_y
+        # Se for único grupo, manter exatamente os pontos clicados
+        if len(grupos) == 1:
+            y_min_g = y_p1
+            y_max_g = y_p2
+        else:
+            if g_idx == 0:
+                y_min_g = min(y_min_g, y_p1)
+            if g_idx == len(grupos) - 1:
+                y_max_g = max(y_max_g, y_p2)
 
-        # Identificar pontas
-        eh_ponta_esq = (i_t == 0)
-        eh_ponta_dir = (i_t == len(trechos_x) - 1)
+        x_ini_ferro = grupo['x_left']
+        x_fim_ferro = grupo['x_right']
 
-        # ── SMARTREBAR NATIVO CONECTADO COM QUANTIDADE EXATA ──
-        usou_smart = False
-        try:
-            sr = TQSDwg.SmartRebar(dwg)
-            sr.type = getattr(TQSDwg, "ICPFRT", 1)
-            sr.diameter = float(bitola)
-            sr.mark = int(pos_num)
-            sr.quantity = int(qtd_nervuras)
-            sr.spacing = float(modulo)
-            sr.ribbed = 1
-            sr.showRibbed = 1
-            sr.straightBarMainLength = float(comp_trecho)
-            sr.straightBarLeftLength = float(dobra_esq_efetiva if eh_ponta_esq else 0.0)
-            sr.straightBarRightLength = float(dobra_dir_efetiva if eh_ponta_dir else 0.0)
-            sr.straightBarTextPosition = 2
-            sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
+        # Dobras nas pontas (se parou no Nível 237 é barra reta sem dobra)
+        dobra_esq_efetiva = 0.0 if grupo['parou_esq'] else comp_dobra
+        dobra_dir_efetiva = 0.0 if grupo['parou_dir'] else comp_dobra
 
-            # Associar a faixa de distribuição conectada no 1º trecho
-            if i_t == 0 and qtd_nervuras > 1:
-                comp_faixa = abs(y_max_reta - y_min_reta)
-                esp_faixa = (comp_faixa / float(qtd_nervuras)) if qtd_nervuras > 0 else float(modulo)
-                sr.RebarDistrAdd(
-                    getattr(TQSDwg, "ICPESP", 2),
-                    90.0,
-                    x_reta, y_min_reta,
-                    x_reta, y_max_reta,
-                    x_reta, (y_min_reta + y_max_reta) / 2.0,
-                    0, 0, 0, 0, 0,  # Linha limpa sem texto vertical repetido
-                    getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
-                    getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0),
-                    "", 0, 0, 1, 0, 0,
-                    float(esp_faixa), 1.0
-                )
+        # ── Dividir em trechos comerciais (≤ 11.80m) com transpasse ──
+        trechos_x = []
+        x_curr = x_ini_ferro
+        idx_t = 0
 
-            sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 0, 1, 0, 220, 0, 3)
-            usou_smart = True
-        except Exception:
+        while x_curr < x_fim_ferro:
+            x_fim_t = min(x_curr + comp_max_barra, x_fim_ferro)
+            trechos_x.append((x_curr, x_fim_t, idx_t))
+
+            if x_fim_t >= x_fim_ferro:
+                break
+            x_curr = x_fim_t - transpasse_cm
+            idx_t += 1
+
+        # ── Desenhar cada trecho do grupo ──
+        for i_t, (xa_t, xb_t, idx_trecho) in enumerate(trechos_x):
+            comp_trecho = xb_t - xa_t
+            xm_trecho = (xa_t + xb_t) / 2.0
+
+            off_y = 0.0
+            if len(trechos_x) > 1:
+                off_y = 1.5 if (idx_trecho % 2 == 1) else -1.5
+
+            y_ferro = y_barra + off_y
+
+            eh_ponta_esq = (i_t == 0)
+            eh_ponta_dir = (i_t == len(trechos_x) - 1)
+
+            # ── SMARTREBAR NATIVO CONECTADO COM QUANTIDADE EXATA ──
             usou_smart = False
+            try:
+                sr = TQSDwg.SmartRebar(dwg)
+                sr.type = getattr(TQSDwg, "ICPFRT", 1)
+                sr.diameter = float(bitola)
+                sr.mark = int(pos_num)
+                sr.quantity = int(qtd_nervuras_g)
+                sr.spacing = float(modulo)
+                sr.ribbed = 1
+                sr.showRibbed = 1
+                sr.straightBarMainLength = float(comp_trecho)
+                sr.straightBarLeftLength = float(dobra_esq_efetiva if eh_ponta_esq else 0.0)
+                sr.straightBarRightLength = float(dobra_dir_efetiva if eh_ponta_dir else 0.0)
+                sr.straightBarTextPosition = 2
+                sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
 
-        # ── FALLBACK CAD DIRETO SE NECESSÁRIO ──
-        if not usou_smart:
-            # A) Barra horizontal
-            draw.level = 220
-            draw.color = 3  # Verde (Armadura)
-            draw.style = 0  # Contínuo
-            draw.Line(xa_t, y_ferro, xb_t, y_ferro)
+                # Associar a faixa de distribuição conectada no 1º trecho
+                if i_t == 0 and qtd_nervuras_g > 1:
+                    comp_faixa = abs(y_max_g - y_min_g)
+                    esp_faixa = (comp_faixa / float(qtd_nervuras_g)) if qtd_nervuras_g > 0 else float(modulo)
+                    sr.RebarDistrAdd(
+                        getattr(TQSDwg, "ICPESP", 2),
+                        90.0,
+                        x_reta, y_min_g,
+                        x_reta, y_max_g,
+                        x_reta, (y_min_g + y_max_g) / 2.0,
+                        0, 0, 0, 0, 0,
+                        getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+                        getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0),
+                        "", 0, 0, 1, 0, 0,
+                        float(esp_faixa), 1.0
+                    )
 
-            # Dobras nas extremidades da laje
-            if eh_ponta_esq and dobra_esq_efetiva > 0:
-                draw.Line(xa_t, y_ferro, xa_t, y_ferro - dobra_esq_efetiva)
+                sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 0, 1, 0, 220, 0, 3)
+                usou_smart = True
+            except Exception:
+                usou_smart = False
 
-            if eh_ponta_dir and dobra_dir_efetiva > 0:
-                draw.Line(xb_t, y_ferro, xb_t, y_ferro - dobra_dir_efetiva)
-
-            # C) Reta vertical com setas (linha contínua verde)
-            if i_t == 0 and qtd_nervuras > 1:
+            # ── FALLBACK CAD DIRETO SE NECESSÁRIO ──
+            if not usou_smart:
+                # A) Barra horizontal
                 draw.level = 220
-                draw.color = 3  # Verde
-                draw.style = 0  # Linha Contínua Sólida
-                draw.Line(x_reta, y_min_reta, x_reta, y_max_reta)
+                draw.color = 3  # Verde (Armadura)
+                draw.style = 0  # Contínuo
+                draw.Line(xa_t, y_ferro, xb_t, y_ferro)
 
-                # Setas e traços alargados nas extremidades da reta vertical para visualização perfeita
-                larg_seta = 8.0
-                alt_seta = 12.0
-                # Ponta inferior (exatamente onde o mouse clicou)
-                draw.Line(x_reta - larg_seta, y_min_reta, x_reta + larg_seta, y_min_reta)
-                draw.Line(x_reta, y_min_reta, x_reta - (larg_seta * 0.7), y_min_reta + alt_seta)
-                draw.Line(x_reta, y_min_reta, x_reta + (larg_seta * 0.7), y_min_reta + alt_seta)
+                # Dobras nas extremidades da laje
+                if eh_ponta_esq and dobra_esq_efetiva > 0:
+                    draw.Line(xa_t, y_ferro, xa_t, y_ferro - dobra_esq_efetiva)
 
-                # Ponta superior (exatamente onde o mouse clicou)
-                draw.Line(x_reta - larg_seta, y_max_reta, x_reta + larg_seta, y_max_reta)
-                draw.Line(x_reta, y_max_reta, x_reta - (larg_seta * 0.7), y_max_reta - alt_seta)
-                draw.Line(x_reta, y_max_reta, x_reta + (larg_seta * 0.7), y_max_reta - alt_seta)
+                if eh_ponta_dir and dobra_dir_efetiva > 0:
+                    draw.Line(xb_t, y_ferro, xb_t, y_ferro - dobra_dir_efetiva)
 
-            # D) Texto de chamada do ferro (Amarelo)
+                # C) Reta vertical com setas (linha contínua verde)
+                if i_t == 0 and qtd_nervuras_g > 1:
+                    draw.level = 220
+                    draw.color = 3  # Verde
+                    draw.style = 0  # Linha Contínua Sólida
+                    draw.Line(x_reta, y_min_g, x_reta, y_max_g)
+
+                    larg_seta = 8.0
+                    alt_seta = 12.0
+                    draw.Line(x_reta - larg_seta, y_min_g, x_reta + larg_seta, y_min_g)
+                    draw.Line(x_reta, y_min_g, x_reta - (larg_seta * 0.7), y_min_g + alt_seta)
+                    draw.Line(x_reta, y_min_g, x_reta + (larg_seta * 0.7), y_min_g + alt_seta)
+
+                    draw.Line(x_reta - larg_seta, y_max_g, x_reta + larg_seta, y_max_g)
+                    draw.Line(x_reta, y_max_g, x_reta - (larg_seta * 0.7), y_max_g - alt_seta)
+                    draw.Line(x_reta, y_max_g, x_reta + (larg_seta * 0.7), y_max_g - alt_seta)
+
+                # D) Texto de chamada do ferro (Amarelo)
+                draw.level = 220
+                draw.color = 2  # Amarelo
+                draw.style = 0
+                bitola_str = f"{bitola:g}"
+                comp_total_barra = comp_trecho + (dobra_esq_efetiva if eh_ponta_esq else 0.0) + (dobra_dir_efetiva if eh_ponta_dir else 0.0)
+                comp_int = int(round(comp_total_barra))
+                pos_str = f"P{pos_num}"
+
+                if qtd_nervuras_g > 1:
+                    prefixo = f"{qtd_nervuras_g}x1"
+                else:
+                    prefixo = "1"
+
+                txt_chamada = f"{prefixo} {pos_str} %% {bitola_str} C/NERV C={comp_int}"
+                tam_txt = 8.5
+                larg_txt = len(txt_chamada) * (tam_txt * 0.72)
+                draw.Text(xm_trecho - larg_txt / 2.0, y_ferro - 12.0, tam_txt, 0.0, txt_chamada)
+
+            # E) Texto com o valor da dobra nas extremidades
             draw.level = 220
             draw.color = 2  # Amarelo
             draw.style = 0
-            bitola_str = f"{bitola:g}"
-            comp_total_barra = comp_trecho + (dobra_esq_efetiva if eh_ponta_esq else 0.0) + (dobra_dir_efetiva if eh_ponta_dir else 0.0)
-            comp_int = int(round(comp_total_barra))
-            pos_str = f"P{pos_num}"
+            if eh_ponta_esq and dobra_esq_efetiva > 0:
+                txt_d_esq = f"{int(round(dobra_esq_efetiva))}"
+                draw.Text(xa_t - 7.5, y_ferro - (dobra_esq_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_esq)
 
-            if qtd_nervuras > 1:
-                prefixo = f"{qtd_nervuras}x1"
-            else:
-                prefixo = "1"
+            if eh_ponta_dir and dobra_dir_efetiva > 0:
+                txt_d_dir = f"{int(round(dobra_dir_efetiva))}"
+                draw.Text(xb_t + 2.5, y_ferro - (dobra_dir_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_dir)
 
-            txt_chamada = f"{prefixo} {pos_str} %% {bitola_str} C/NERV C={comp_int}"
-            tam_txt = 8.5
-            larg_txt = len(txt_chamada) * (tam_txt * 0.72)
-            draw.Text(xm_trecho - larg_txt / 2.0, y_ferro - 12.0, tam_txt, 0.0, txt_chamada)
+            # B) Cota de transpasse se for trecho posterior
+            if i_t > 0:
+                x_trans_ini = xa_t
+                x_trans_fim = trechos_x[i_t - 1][1]
+                dist_t = x_trans_fim - x_trans_ini
+                if dist_t > 1.0:
+                    desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_ferro, dist_t)
 
-        # E) Texto com o valor da dobra nas extremidades
-        draw.level = 220
-        draw.color = 2  # Amarelo
-        draw.style = 0
-        if eh_ponta_esq and dobra_esq_efetiva > 0:
-            txt_d_esq = f"{int(round(dobra_esq_efetiva))}"
-            draw.Text(xa_t - 7.5, y_ferro - (dobra_esq_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_esq)
-
-        if eh_ponta_dir and dobra_dir_efetiva > 0:
-            txt_d_dir = f"{int(round(dobra_dir_efetiva))}"
-            draw.Text(xb_t + 2.5, y_ferro - (dobra_dir_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_dir)
-
-        # B) Cota de transpasse se for trecho posterior
-        if i_t > 0:
-            x_trans_ini = xa_t
-            x_trans_fim = trechos_x[i_t - 1][1]
-            dist_t = x_trans_fim - x_trans_ini
-            if dist_t > 1.0:
-                desenhar_cota_transpasse(draw, x_trans_ini, x_trans_fim, y_ferro, dist_t)
-
-        pos_num += 1
+            pos_num += 1
 
 
 # ==============================================================================
