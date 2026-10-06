@@ -347,13 +347,15 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
 
             nivel = getattr(dwg.iterator, "level", 0)
 
-            # Nível 201 (Borda/Viga)
+            # Nível 201 (Borda/Viga que cruza a reta vertical do usuário)
             if nivel == 201:
                 if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                     lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
                     lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
                     if abs(ly1 - ly2) <= 5.0 and abs(lx2 - lx1) >= 5.0:
-                        linhas_201_horiz.append((ly1 + ly2) / 2.0)
+                        # Apenas linhas que cobrem a posição X da reta clicada
+                        if (min(lx1, lx2) - 30.0) <= x_reta <= (max(lx1, lx2) + 30.0):
+                            linhas_201_horiz.append((ly1 + ly2) / 2.0)
                 elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                     try:
                         npts = dwg.iterator.xySize
@@ -362,7 +364,8 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
                             p_a = pts[i]
                             p_b = pts[(i + 1) % len(pts)]
                             if abs(p_a[1] - p_b[1]) <= 5.0 and abs(p_b[0] - p_a[0]) >= 5.0:
-                                linhas_201_horiz.append((p_a[1] + p_b[1]) / 2.0)
+                                if (min(p_a[0], p_b[0]) - 30.0) <= x_reta <= (max(p_a[0], p_b[0]) + 30.0):
+                                    linhas_201_horiz.append((p_a[1] + p_b[1]) / 2.0)
                     except Exception:
                         pass
                 continue
@@ -370,7 +373,7 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
             if nivel >= 220:
                 continue
 
-            # Linhas horizontais de cubeta
+            # Linhas horizontais de cubeta (estritamente na coluna X da reta vertical)
             if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                 lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
                 lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
@@ -380,7 +383,8 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
 
                 if dy <= 3.0 and dx >= 8.0:
                     if (y_min - 20.0) <= ym <= (y_max + 20.0):
-                        y_horiz.append(round(ym, 1))
+                        if (min(lx1, lx2) - 30.0) <= x_reta <= (max(lx1, lx2) + 30.0):
+                            y_horiz.append(round(ym, 1))
 
             elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                 try:
@@ -394,7 +398,8 @@ def detectar_canais_reais_entre_pontos(dwg, y_min, y_max, x_reta, modulo=65.0):
                         ym = (p_a[1] + p_b[1]) / 2.0
                         if dy <= 3.0 and dx >= 8.0:
                             if (y_min - 20.0) <= ym <= (y_max + 20.0):
-                                y_horiz.append(round(ym, 1))
+                                if (min(p_a[0], p_b[0]) - 30.0) <= x_reta <= (max(p_a[0], p_b[0]) + 30.0):
+                                    y_horiz.append(round(ym, 1))
                 except Exception:
                     pass
     except Exception:
