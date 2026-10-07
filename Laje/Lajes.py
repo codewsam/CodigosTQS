@@ -681,15 +681,16 @@ def processar_faixa_horizontal(dwg, x1, y1, x2, y2, dados):
                 sr.straightBarTextPosition = 2
                 sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
 
-                if i_t == 0 and qtd_nervuras_g > 1:
+                if qtd_nervuras_g > 1:
+                    x_distr = x_reta if (i_t == 0 and xa_t <= x_reta <= xb_t) else ((xa_t + xb_t) / 2.0)
                     comp_faixa = abs(y_max_g - y_min_g)
                     esp_faixa = (comp_faixa / float(qtd_nervuras_g)) if qtd_nervuras_g > 0 else float(modulo)
                     sr.RebarDistrAdd(
                         getattr(TQSDwg, "ICPESP", 2),
                         90.0,
-                        x_reta, y_min_g,
-                        x_reta, y_max_g,
-                        x_reta, (y_min_g + y_max_g) / 2.0,
+                        x_distr, y_min_g,
+                        x_distr, y_max_g,
+                        x_distr, (y_min_g + y_max_g) / 2.0,
                         0, 0, 0, 0, 0,
                         getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
                         getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0),
@@ -714,21 +715,22 @@ def processar_faixa_horizontal(dwg, x1, y1, x2, y2, dados):
                 if eh_ponta_dir and dobra_dir_efetiva > 0:
                     draw.Line(xb_t, y_ferro, xb_t, y_ferro - dobra_dir_efetiva)
 
-                if i_t == 0 and qtd_nervuras_g > 1:
+                if qtd_nervuras_g > 1:
+                    x_distr = x_reta if (i_t == 0 and xa_t <= x_reta <= xb_t) else ((xa_t + xb_t) / 2.0)
                     draw.level = 220
                     draw.color = 3  # Verde
                     draw.style = 0
-                    draw.Line(x_reta, y_min_g, x_reta, y_max_g)
+                    draw.Line(x_distr, y_min_g, x_distr, y_max_g)
 
                     larg_seta = 8.0
                     alt_seta = 12.0
-                    draw.Line(x_reta - larg_seta, y_min_g, x_reta + larg_seta, y_min_g)
-                    draw.Line(x_reta, y_min_g, x_reta - (larg_seta * 0.7), y_min_g + alt_seta)
-                    draw.Line(x_reta, y_min_g, x_reta + (larg_seta * 0.7), y_min_g + alt_seta)
+                    draw.Line(x_distr - larg_seta, y_min_g, x_distr + larg_seta, y_min_g)
+                    draw.Line(x_distr, y_min_g, x_distr - (larg_seta * 0.7), y_min_g + alt_seta)
+                    draw.Line(x_distr, y_min_g, x_distr + (larg_seta * 0.7), y_min_g + alt_seta)
 
-                    draw.Line(x_reta - larg_seta, y_max_g, x_reta + larg_seta, y_max_g)
-                    draw.Line(x_reta, y_max_g, x_reta - (larg_seta * 0.7), y_max_g - alt_seta)
-                    draw.Line(x_reta, y_max_g, x_reta + (larg_seta * 0.7), y_max_g - alt_seta)
+                    draw.Line(x_distr - larg_seta, y_max_g, x_distr + larg_seta, y_max_g)
+                    draw.Line(x_distr, y_max_g, x_distr - (larg_seta * 0.7), y_max_g - alt_seta)
+                    draw.Line(x_distr, y_max_g, x_distr + (larg_seta * 0.7), y_max_g - alt_seta)
 
                 draw.level = 220
                 draw.color = 2  # Amarelo
@@ -1194,15 +1196,16 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                 sr.straightBarTextPosition = 2
                 sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
 
-                if i_t == 0 and qtd_nervuras_g > 1:
+                if qtd_nervuras_g > 1:
+                    y_distr = y_reta if (i_t == 0 and ya_t <= y_reta <= yb_t) else ((ya_t + yb_t) / 2.0)
                     comp_faixa = abs(x_max_g - x_min_g)
                     esp_faixa = (comp_faixa / float(qtd_nervuras_g)) if qtd_nervuras_g > 0 else float(modulo)
                     sr.RebarDistrAdd(
                         getattr(TQSDwg, "ICPESP", 2),
                         0.0,
-                        x_min_g, y_reta,
-                        x_max_g, y_reta,
-                        (x_min_g + x_max_g) / 2.0, y_reta,
+                        x_min_g, y_distr,
+                        x_max_g, y_distr,
+                        (x_min_g + x_max_g) / 2.0, y_distr,
                         0, 0, 0, 0, 0,
                         getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
                         getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0),
@@ -1229,21 +1232,22 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                     draw.Line(x_ferro, yb_t, x_ferro + dobra_top_efetiva, yb_t)
 
                 # Reta horizontal com setas
-                if i_t == 0 and qtd_nervuras_g > 1:
+                if qtd_nervuras_g > 1:
+                    y_distr = y_reta if (i_t == 0 and ya_t <= y_reta <= yb_t) else ((ya_t + yb_t) / 2.0)
                     draw.level = 220
                     draw.color = 3  # Verde
                     draw.style = 0
-                    draw.Line(x_min_g, y_reta, x_max_g, y_reta)
+                    draw.Line(x_min_g, y_distr, x_max_g, y_distr)
 
                     larg_seta = 8.0
                     alt_seta = 12.0
-                    draw.Line(x_min_g, y_reta - larg_seta, x_min_g, y_reta + larg_seta)
-                    draw.Line(x_min_g, y_reta, x_min_g + alt_seta, y_reta - (larg_seta * 0.7))
-                    draw.Line(x_min_g, y_reta, x_min_g + alt_seta, y_reta + (larg_seta * 0.7))
+                    draw.Line(x_min_g, y_distr - larg_seta, x_min_g, y_distr + larg_seta)
+                    draw.Line(x_min_g, y_distr, x_min_g + alt_seta, y_distr - (larg_seta * 0.7))
+                    draw.Line(x_min_g, y_distr, x_min_g + alt_seta, y_distr + (larg_seta * 0.7))
 
-                    draw.Line(x_max_g, y_reta - larg_seta, x_max_g, y_reta + larg_seta)
-                    draw.Line(x_max_g, y_reta, x_max_g - alt_seta, y_reta - (larg_seta * 0.7))
-                    draw.Line(x_max_g, y_reta, x_max_g - alt_seta, y_reta + (larg_seta * 0.7))
+                    draw.Line(x_max_g, y_distr - larg_seta, x_max_g, y_distr + larg_seta)
+                    draw.Line(x_max_g, y_distr, x_max_g - alt_seta, y_distr - (larg_seta * 0.7))
+                    draw.Line(x_max_g, y_distr, x_max_g - alt_seta, y_distr + (larg_seta * 0.7))
 
                 draw.level = 220
                 draw.color = 2  # Amarelo
