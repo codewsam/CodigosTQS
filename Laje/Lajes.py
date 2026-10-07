@@ -697,7 +697,7 @@ def processar_faixa_horizontal(dwg, x1, y1, x2, y2, dados):
                         float(esp_faixa), 1.0
                     )
 
-                sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 0, 1, 0, 220, 0, 3)
+                sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 1, 1, 0, 220, 0, 3)
                 usou_smart = True
             except Exception:
                 usou_smart = False
@@ -746,18 +746,21 @@ def processar_faixa_horizontal(dwg, x1, y1, x2, y2, dados):
                 txt_chamada = f"{prefixo} {pos_str} %% {bitola_str} C/NERV C={comp_int}"
                 tam_txt = 8.5
                 larg_txt = len(txt_chamada) * (tam_txt * 0.72)
-                draw.Text(xm_trecho - larg_txt / 2.0, y_ferro - 12.0, tam_txt, 0.0, txt_chamada)
+                draw.Text(xm_trecho - (larg_txt / 2.0), y_ferro + 4.0, tam_txt, 0.0, txt_chamada)
 
-            draw.level = 220
-            draw.color = 2  # Amarelo
-            draw.style = 0
-            if eh_ponta_esq and dobra_esq_efetiva > 0:
-                txt_d_esq = f"{int(round(dobra_esq_efetiva))}"
-                draw.Text(xa_t - 7.5, y_ferro - (dobra_esq_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_esq)
+                # Cota do comprimento do trecho reto sem a dobra (fallback)
+                txt_sem_dobra = f"{int(round(comp_trecho))}"
+                tam_txt_cota = 8.0
+                larg_cota = len(txt_sem_dobra) * (tam_txt_cota * 0.72)
+                draw.Text(xm_trecho - (larg_cota / 2.0), y_ferro - 11.0, tam_txt_cota, 0.0, txt_sem_dobra)
 
-            if eh_ponta_dir and dobra_dir_efetiva > 0:
-                txt_d_dir = f"{int(round(dobra_dir_efetiva))}"
-                draw.Text(xb_t + 2.5, y_ferro - (dobra_dir_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_dir)
+                if eh_ponta_esq and dobra_esq_efetiva > 0:
+                    txt_d_esq = f"{int(round(dobra_esq_efetiva))}"
+                    draw.Text(xa_t - 7.5, y_ferro - (dobra_esq_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_esq)
+
+                if eh_ponta_dir and dobra_dir_efetiva > 0:
+                    txt_d_dir = f"{int(round(dobra_dir_efetiva))}"
+                    draw.Text(xb_t + 2.5, y_ferro - (dobra_dir_efetiva / 2.0) - 2.0, 6.5, 0.0, txt_d_dir)
 
             if i_t > 0:
                 x_trans_ini = xa_t
@@ -1207,7 +1210,7 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                         float(esp_faixa), 1.0
                     )
 
-                sr.RebarLine(x_ferro, ya_t, 90.0, 1.0, 1, 0, 1, 0, 220, 0, 3)
+                sr.RebarLine(x_ferro, ya_t, 90.0, 1.0, 1, 1, 1, 0, 220, 0, 3)
                 usou_smart = True
             except Exception:
                 usou_smart = False
@@ -1260,16 +1263,19 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                 larg_txt = len(txt_chamada) * (tam_txt * 0.72)
                 draw.Text(x_ferro - 12.0, ym_trecho - (larg_txt / 2.0), tam_txt, 90.0, txt_chamada)
 
-            draw.level = 220
-            draw.color = 2  # Amarelo
-            draw.style = 0
-            if eh_ponta_bot and dobra_bot_efetiva > 0:
-                txt_d_bot = f"{int(round(dobra_bot_efetiva))}"
-                draw.Text(x_ferro + (dobra_bot_efetiva / 2.0) - 2.0, ya_t + 2.5, 6.5, 0.0, txt_d_bot)
+                # Cota do comprimento do trecho reto sem a dobra (vertical fallback)
+                txt_sem_dobra = f"{int(round(comp_trecho))}"
+                tam_txt_cota = 8.0
+                larg_cota = len(txt_sem_dobra) * (tam_txt_cota * 0.72)
+                draw.Text(x_ferro + 8.0, ym_trecho - (larg_cota / 2.0), tam_txt_cota, 90.0, txt_sem_dobra)
 
-            if eh_ponta_top and dobra_top_efetiva > 0:
-                txt_d_top = f"{int(round(dobra_top_efetiva))}"
-                draw.Text(x_ferro + (dobra_top_efetiva / 2.0) - 2.0, yb_t + 2.5, 6.5, 0.0, txt_d_top)
+                if eh_ponta_bot and dobra_bot_efetiva > 0:
+                    txt_d_bot = f"{int(round(dobra_bot_efetiva))}"
+                    draw.Text(x_ferro + (dobra_bot_efetiva / 2.0) - 2.0, ya_t + 2.5, 6.5, 0.0, txt_d_bot)
+
+                if eh_ponta_top and dobra_top_efetiva > 0:
+                    txt_d_top = f"{int(round(dobra_top_efetiva))}"
+                    draw.Text(x_ferro + (dobra_top_efetiva / 2.0) - 2.0, yb_t + 2.5, 6.5, 0.0, txt_d_top)
 
             if i_t > 0:
                 y_trans_ini = ya_t
