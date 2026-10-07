@@ -1618,134 +1618,6 @@ def pedir_dados_laje():
     return dados
 
 
-def iniciar_painel_controle():
-    """
-    Cria e inicia uma janelinha flutuante moderna e compacta que permite
-    ao usuário encerrar a armação contínua a qualquer momento clicando em 'Parar'.
-    """
-    caminho_script = os.path.dirname(os.path.abspath(__file__))
-    hta_path = os.path.join(caminho_script, "painel_controle_laje.hta")
-    flag_path = os.path.join(caminho_script, "laje_parar.flag")
-
-    if os.path.exists(flag_path):
-        try:
-            os.remove(flag_path)
-        except:
-            pass
-
-    flag_path_js = flag_path.replace('\\', '\\\\')
-
-    hta_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <meta http-equiv="x-ua-compatible" content="ie=edge" />
-    <title>G3 Plugins - Controle</title>
-    <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="ControleArmacao" BORDER="thin" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" SYSMENU="yes" MINIMIZEBUTTON="yes" MAXIMIZEBUTTON="no" />
-    <style>
-        * {{ box-sizing: border-box; }}
-        body {{
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background: #181528;
-            margin: 0;
-            padding: 12px 14px;
-            color: #ffffff;
-            user-select: none;
-        }}
-        .header {{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }}
-        .title {{
-            font-size: 13px;
-            font-weight: 600;
-            color: #b388ff;
-        }}
-        .status-badge {{
-            background: #2e7d32;
-            color: #ffffff;
-            font-size: 10px;
-            font-weight: bold;
-            padding: 2px 7px;
-            border-radius: 10px;
-        }}
-        .hint {{
-            font-size: 11px;
-            color: #b0bec5;
-            margin-bottom: 10px;
-            line-height: 1.3;
-        }}
-        .btn-stop {{
-            width: 100%;
-            background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
-            color: #ffffff;
-            border: 1px solid #ff5252;
-            padding: 9px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
-        }}
-        .btn-stop:hover {{
-            background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
-        }}
-    </style>
-    <script>
-        window.resizeTo(330, 180);
-        window.moveTo(screen.availWidth - 350, screen.availHeight - 230);
-
-        function pararPlugin() {{
-            try {{
-                var fso = new ActiveXObject("Scripting.FileSystemObject");
-                var flagFile = fso.CreateTextFile("{flag_path_js}", true);
-                flagFile.WriteLine("PARAR");
-                flagFile.Close();
-            }} catch(e) {{}}
-            window.close();
-        }}
-
-        window.onbeforeunload = function() {{
-            pararPlugin();
-        }};
-    </script>
-</head>
-<body>
-    <div class="header">
-        <div class="title">⚡ Armação Contínua</div>
-        <div class="status-badge">● ATIVO</div>
-    </div>
-    <div class="hint">Clique os 2 pontos de cada faixa no EAG. Quando terminar, aperte em Parar:</div>
-    <button class="btn-stop" onclick="pararPlugin()">⏹️ PARAR / ENCERRAR</button>
-</body>
-</html>
-"""
-
-    with open(hta_path, "w", encoding="utf-8-sig") as f:
-        f.write(hta_content)
-
-    proc = subprocess.Popen(["mshta", hta_path])
-    return proc, hta_path, flag_path
-
-
-def encerrar_painel_controle(proc, hta_path, flag_path):
-    """Fecha a janela do painel de controle e remove arquivos temporários."""
-    try:
-        if proc and proc.poll() is None:
-            proc.terminate()
-    except:
-        pass
-
-    for p in (hta_path, flag_path):
-        if p and os.path.exists(p):
-            try:
-                os.remove(p)
-            except:
-                pass
-
-
 # ==============================================================================
 # ENTRY POINT PRINCIPAL NO TQS EAG (MODO CONTÍNUO MULTI-FAIXAS)
 # ==============================================================================
@@ -1753,19 +1625,16 @@ def meucmd(eag, tqsjan):
     """
     Comando acionado pelo menu TQS na aba G3 Plugins.
 
-    Fluxo Contínuo / Múltiplas Faixas:
-    1. Abre janela HTA para parâmetros (bitola, transpasse, módulo, direção) uma única vez.
-    2. Abre janelinha flutuante no canto com botão '⏹️ PARAR / ENCERRAR'.
-    3. Em loop contínuo:
-       - Pede o 1º ponto (ou encerra se clicar em Parar na janelinha).
-       - Pede o 2º ponto (com linha elástica).
-       - Desenha os ferros e linha de distribuição na direção selecionada (Horizontal ou Vertical).
-       - Atualiza a tela (Regen) e já pede a próxima faixa.
-    4. Ao encerrar, fecha a janelinha e finaliza perfeitamente.
+    Fluxo Nativo e Contínuo / Múltiplas Faixas:
+    1. Abre janela de configuração (bitola, transpasse, módulo, direção).
+    2. Entra em loop contínuo:
+       - Pede o 1º ponto da faixa (ou Botão Direito / Esc para encerrar).
+       - Pede o 2º ponto da faixa (com linha elástica).
+       - Desenha os ferros e linhas de distribuição na direção selecionada.
+       - Atualiza a tela (Regen) e já aguarda a próxima faixa.
+    3. Ao clicar com o Botão Direito ou pressionar Esc, encerra limpa e instantaneamente,
+       devolvendo o EAG para o modo de seleção padrão sem travar.
     """
-    proc_ctrl = None
-    hta_ctrl_path = None
-    flag_parar_path = None
     try:
         # 1. Parâmetros via HTA (apenas uma vez para todas as faixas)
         dados = pedir_dados_laje()
@@ -1774,32 +1643,20 @@ def meucmd(eag, tqsjan):
 
         direcao = dados.get("direcao", "horizontal")
 
-        # 2. Iniciar janelinha flutuante de controle
-        proc_ctrl, hta_ctrl_path, flag_parar_path = iniciar_painel_controle()
-
         faixa_idx = 1
         while True:
-            if (flag_parar_path and os.path.exists(flag_parar_path)) or (proc_ctrl and proc_ctrl.poll() is not None):
-                break
-
-            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa ({direcao.upper()}) [ou Parar]:"
+            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa ({direcao.upper()}) [Botão Direito ou Esc para ENCERRAR]:"
             icod1, x1, y1 = eag.locate.GetPoint(tqsjan, prompt1)
-
-            if (flag_parar_path and os.path.exists(flag_parar_path)) or (proc_ctrl and proc_ctrl.poll() is not None):
-                break
             if icod1 != 1:
                 break
 
-            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa ({direcao.upper()}) [ou Parar]:"
+            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa ({direcao.upper()}) [Botão Direito ou Esc para CANCELAR]:"
             icod2, x2, y2 = eag.locate.GetSecondPoint(
                 tqsjan, x1, y1,
                 TQSEag.EAG_RUBLINEAR,
                 TQSEag.EAG_RUBRET_NAOPREEN,
                 prompt2
             )
-
-            if (flag_parar_path and os.path.exists(flag_parar_path)) or (proc_ctrl and proc_ctrl.poll() is not None):
-                break
             if icod2 != 1:
                 break
 
@@ -1810,7 +1667,6 @@ def meucmd(eag, tqsjan):
                 processar_faixa_horizontal(tqsjan.dwg, x1, y1, x2, y2, dados)
 
             tqsjan.Regen()
-
             faixa_idx += 1
 
     except Exception as e:
@@ -1819,4 +1675,7 @@ def meucmd(eag, tqsjan):
         except:
             pass
     finally:
-        encerrar_painel_controle(proc_ctrl, hta_ctrl_path, flag_parar_path)
+        try:
+            tqsjan.Regen()
+        except:
+            pass
