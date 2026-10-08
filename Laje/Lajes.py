@@ -669,7 +669,7 @@ def processar_faixa_horizontal(dwg, x1, y1, x2, y2, dados):
                 sr.quantity = int(qtd_nervuras_g)
                 sr.spacing = float(modulo)
                 sr.ribbed = 1
-                sr.showRibbed = 1
+                sr.showRibbed = 0
                 sr.straightBarMainLength = float(comp_trecho)
                 sr.straightBarLeftLength = float(dobra_esq_efetiva if eh_ponta_esq else 0.0)
                 sr.straightBarRightLength = float(dobra_dir_efetiva if eh_ponta_dir else 0.0)
@@ -693,14 +693,14 @@ def processar_faixa_horizontal(dwg, x1, y1, x2, y2, dados):
                         float(esp_faixa), 1.0
                     )
 
-                sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 1, 1, 0, 220, 0, 3)
+                sr.RebarLine(xa_t, y_ferro, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
                 usou_smart = True
             except Exception:
                 usou_smart = False
 
             if not usou_smart:
                 draw.level = 220
-                draw.color = 3  # Verde
+                draw.color = 6  # Nível 220 magenta
                 draw.style = 0
                 draw.Line(xa_t, y_ferro, xb_t, y_ferro)
 
@@ -1179,7 +1179,7 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                 sr.quantity = int(qtd_nervuras_g)
                 sr.spacing = float(modulo)
                 sr.ribbed = 1
-                sr.showRibbed = 1
+                sr.showRibbed = 0
                 sr.straightBarMainLength = float(comp_trecho)
                 sr.straightBarLeftLength = float(dobra_bot_efetiva if eh_ponta_bot else 0.0)
                 sr.straightBarRightLength = float(dobra_top_efetiva if eh_ponta_top else 0.0)
@@ -1203,14 +1203,14 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                         float(esp_faixa), 1.0
                     )
 
-                sr.RebarLine(x_ferro, ya_t, 90.0, 1.0, 1, 1, 1, 0, 220, 0, 3)
+                sr.RebarLine(x_ferro, ya_t, 90.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
                 usou_smart = True
             except Exception:
                 usou_smart = False
 
             if not usou_smart:
                 draw.level = 220
-                draw.color = 3  # Verde
+                draw.color = 6  # Nível 220 magenta
                 draw.style = 0
                 draw.Line(x_ferro, ya_t, x_ferro, yb_t)
 
