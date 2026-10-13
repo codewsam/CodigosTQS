@@ -343,14 +343,10 @@ def encontrar_limites_y_bordas(dwg, x_min_band, x_max_band, y_ponto, canais_vert
             cands_bot_todos = [y for y, _ in linhas_horiz_x if y < y_ponto]
             cands_top_todos = [y for y, _ in linhas_horiz_x if y > y_ponto]
 
-            if cands_bot_228:
-                limites_bot.append(max(cands_bot_228))
-            elif cands_bot_todos:
+            if cands_bot_todos:
                 limites_bot.append(max(cands_bot_todos))
 
-            if cands_top_228:
-                limites_top.append(min(cands_top_228))
-            elif cands_top_todos:
+            if cands_top_todos:
                 limites_top.append(min(cands_top_todos))
 
     y_bot = max(limites_bot) if limites_bot else None
@@ -482,11 +478,9 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                     'parou_top': p_top
                 }
             else:
-                mesmo_y_bot = (abs(y_b - grupo_atual['y_bot']) <= 3.0)
-                mesmo_y_top = (abs(y_t - grupo_atual['y_top']) <= 3.0)
-                mesmo_p_bot = (p_bot == grupo_atual['parou_bot'])
-                mesmo_p_top = (p_top == grupo_atual['parou_top'])
-                if mesmo_y_bot and mesmo_y_top and mesmo_p_bot and mesmo_p_top:
+                mesmo_y_bot = (abs(y_b - grupo_atual['y_bot']) <= 8.0)
+                mesmo_y_top = (abs(y_t - grupo_atual['y_top']) <= 8.0)
+                if mesmo_y_bot and mesmo_y_top:
                     grupo_atual['ribs'].append(x_rib)
                 else:
                     grupos.append(grupo_atual)
@@ -499,6 +493,26 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                     }
         if grupo_atual:
             grupos.append(grupo_atual)
+
+        # Unificar grupos adjacentes com barras de mesmo tamanho
+        grupos_unificados = []
+        for g in grupos:
+            if not grupos_unificados:
+                grupos_unificados.append(g)
+            else:
+                g_ant = grupos_unificados[-1]
+                comp_g = g['y_top'] - g['y_bot']
+                comp_ant = g_ant['y_top'] - g_ant['y_bot']
+                if abs(comp_g - comp_ant) <= 25.0 and abs(g['y_bot'] - g_ant['y_bot']) <= 30.0 and abs(g['y_top'] - g_ant['y_top']) <= 30.0:
+                    g_ant['ribs'].extend(g['ribs'])
+                    if len(g['ribs']) > len(g_ant['ribs']) - len(g['ribs']):
+                        g_ant['y_bot'] = g['y_bot']
+                        g_ant['y_top'] = g['y_top']
+                        g_ant['parou_bot'] = g['parou_bot']
+                        g_ant['parou_top'] = g['parou_top']
+                else:
+                    grupos_unificados.append(g)
+        grupos = grupos_unificados
     else:
         y_b, y_t, p_bot, p_top = encontrar_limites_y_rib(dwg, (x_p1 + x_p2) / 2.0, y_reta, cobrimento_237=2.5)
         grupos.append({
