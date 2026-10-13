@@ -161,18 +161,47 @@ def coletar_obstaculos_e_vazios(dwg):
 # SEÇÃO 2: DETECÇÃO DE CANAIS E LIMITES VERTICAIS
 # ==============================================================================
 
-def detectar_canais_verticais_entre_pontos(dwg, x_p1, x_p2, y_reta, modulo=65.0):
+def detectar_canais_verticais_entre_pontos(dwg, x_p1, x_p2, y_reta, modulo=65.0, info=None):
     """
     Detecta a posição X exata de cada nervura vertical ao longo da faixa [x_p1, x_p2]:
-    1. Agrupa segmentos verticais de cubetas existentes no desenho.
-    2. Encontra os eixos dos canais (vãos entre faces de cubetas).
-    3. Completa faixas vazias usando o módulo padrão.
+    1. Faces de cubeta: linhas verticais curtas (níveis < 220, exceto 201/228/237).
+    2. Limites: linhas brancas 201/228 e linhas longas (aberturas/maciços) que cruzam a reta.
+    3. Nervura interna: vão de 5 a 28cm entre faces de cubetas consecutivas.
+    4. Vão maior entre cubetas (até 60cm, sem limite no meio): conta APENAS 1 nervura.
+    5. Entre a última cubeta e o limite (linha branca): conta APENAS 1 nervura,
+       nunca criando nervura além da linha branca.
+    Se 'info' (dict) for passado, recebe:
+       info['bordas']     = {x_nervura: x_limite}
+       info['bordas_228'] = {x_nervura: x_linha_branca}  (só limites 201/228)
     """
     x_min_sel = min(x_p1, x_p2)
     x_max_sel = max(x_p1, x_p2)
     largura_total = x_max_sel - x_min_sel
 
-    segmentos_verticais = []
+    faces_cubeta = []
+    limites = []        # (x, eh_linha_branca)
+    comp_max_face = 1.6 * float(modulo)
+
+    def _registrar(nivel, xa, ya, xb, yb):
+        if abs(xa - xb) > 3.0 or abs(yb - ya) < 8.0:
+            return
+        xm = (xa + xb) / 2.0
+        y_lo, y_hi = min(ya, yb), max(ya, yb)
+        if not ((x_min_sel - 80.0) <= xm <= (x_max_sel + 80.0)):
+            return
+        if nivel in (201, 228):
+            if (y_lo - 10.0) <= y_reta <= (y_hi + 10.0):
+                limites.append((xm, True))
+            return
+        if nivel >= 220 or nivel == 237:
+            return
+        if (y_hi - y_lo) > comp_max_face:
+            # Linha longa (borda de abertura / maciço / viga): funciona como limite
+            if (y_lo - 10.0) <= y_reta <= (y_hi + 10.0):
+                limites.append((xm, False))
+            return
+        if (y_lo - 40.0) <= y_reta <= (y_hi + 40.0):
+            faces_cubeta.append(xm)
 
     try:
         dwg.iterator.Begin()
@@ -181,72 +210,83 @@ def detectar_canais_verticais_entre_pontos(dwg, x_p1, x_p2, y_reta, modulo=65.0)
             if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
                 break
             nivel = getattr(dwg.iterator, "level", 0)
-            if nivel >= 220:
-                continue
 
             if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
-                lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
-                lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
-                if abs(lx1 - lx2) <= 3.0 and abs(ly2 - ly1) >= 8.0:
-                    xm = (lx1 + lx2) / 2.0
-                    if (x_min_sel - 20.0) <= xm <= (x_max_sel + 20.0):
-                        if min(ly1, ly2) - 40.0 <= y_reta <= max(ly1, ly2) + 40.0:
-                            segmentos_verticais.append((xm, min(ly1, ly2), max(ly1, ly2)))
+                _registrar(nivel, dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2)
 
             elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                 try:
                     npts = dwg.iterator.xySize
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
                     for i in range(len(pts) - 1):
-                        px1, py1 = pts[i][0], pts[i][1]
-                        px2, py2 = pts[i+1][0], pts[i+1][1]
-                        if abs(px1 - px2) <= 3.0 and abs(py2 - py1) >= 8.0:
-                            xm = (px1 + px2) / 2.0
-                            if (x_min_sel - 20.0) <= xm <= (x_max_sel + 20.0):
-                                if min(py1, py2) - 40.0 <= y_reta <= max(py1, py2) + 40.0:
-                                    segmentos_verticais.append((xm, min(py1, py2), max(py1, py2)))
+                        _registrar(nivel, pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1])
                 except Exception:
                     pass
     except Exception:
         pass
 
-    xs_cluster = []
-    for xm, ymin_s, ymax_s in sorted(segmentos_verticais, key=lambda s: s[0]):
-        if not xs_cluster:
-            xs_cluster.append([xm])
-        else:
-            if abs(xm - (sum(xs_cluster[-1]) / len(xs_cluster[-1]))) <= 4.0:
-                xs_cluster[-1].append(xm)
+    def _clusterizar(valores, tol=4.0):
+        grupos_x = []
+        for v in sorted(valores):
+            if grupos_x and abs(v - (sum(grupos_x[-1]) / len(grupos_x[-1]))) <= tol:
+                grupos_x[-1].append(v)
             else:
-                xs_cluster.append([xm])
+                grupos_x.append([v])
+        return [sum(g) / len(g) for g in grupos_x]
 
-    xs_unicos = [sum(c) / len(c) for c in xs_cluster]
+    xs = _clusterizar(faces_cubeta)
+    # Só faces que pertencem a uma cubeta (existe a face oposta a ~1 cubeta de distância)
+    xs = [x for x in xs if any(0.3 * modulo <= abs(x - o) <= 1.05 * modulo for o in xs if o != x)]
 
-    canais_detectados = []
-    for i in range(len(xs_unicos) - 1):
-        x_a = xs_unicos[i]
-        x_b = xs_unicos[i+1]
+    brancas = set(round(x, 1) for x in _clusterizar([x for x, b in limites if b]))
+    lims = _clusterizar([x for x, _ in limites])
+
+    def _eh_branca(xl):
+        return any(abs(xl - b) <= 4.0 for b in brancas)
+
+    def _lims_entre(xa, xb):
+        return [b for b in lims if xa + 1.0 < b < xb - 1.0]
+
+    mapa_bordas = {}
+    canais = []
+
+    def _add_borda(x_face, x_lim):
+        xc = (x_face + x_lim) / 2.0
+        canais.append(xc)
+        mapa_bordas[xc] = x_lim
+
+    for i in range(len(xs) - 1):
+        x_a, x_b = xs[i], xs[i + 1]
         dist = x_b - x_a
-        if 5.0 <= dist <= 28.0:
-            x_eixo = (x_a + x_b) / 2.0
-            if (x_min_sel - 10.0) <= x_eixo <= (x_max_sel + 10.0):
-                canais_detectados.append(x_eixo)
-
-    canais_filtrados = []
-    for x_c in sorted(canais_detectados):
-        if not canais_filtrados:
-            canais_filtrados.append(x_c)
+        bs = _lims_entre(x_a, x_b)
+        if not bs:
+            if 5.0 <= dist <= 60.0:
+                # Nervura normal ou espaço maior: conta APENAS 1
+                canais.append((x_a + x_b) / 2.0)
         else:
-            if (x_c - canais_filtrados[-1]) > 30.0:
-                canais_filtrados.append(x_c)
+            b_esq, b_dir = min(bs), max(bs)
+            if (b_esq - x_a) <= 60.0:
+                _add_borda(x_a, b_esq)
+            if (x_b - b_dir) <= 60.0:
+                _add_borda(x_b, b_dir)
 
-    qtd_esperada = max(1, int(round(largura_total / modulo)))
+    # Bordas externas do painel (antes da primeira e depois da última cubeta)
+    if xs:
+        x_ini, x_fim = xs[0], xs[-1]
+        bs_dir = [b for b in lims if x_fim + 1.0 < b <= x_fim + 60.0]
+        if bs_dir and x_max_sel >= x_fim + 2.0:
+            _add_borda(x_fim, min(bs_dir))
+        bs_esq = [b for b in lims if x_ini - 60.0 <= b < x_ini - 1.0]
+        if bs_esq and x_min_sel <= x_ini - 2.0:
+            _add_borda(x_ini, max(bs_esq))
+
     canais_verticais = []
-
-    if canais_filtrados:
-        canais_verticais = [x for x in canais_filtrados if (x_min_sel - 10.0) <= x <= (x_max_sel + 10.0)]
-        if len(canais_verticais) == 0:
-            canais_verticais = canais_filtrados
+    for x_c in sorted(canais):
+        if not ((x_min_sel - 10.0) <= x_c <= (x_max_sel + 10.0)):
+            continue
+        if canais_verticais and (x_c - canais_verticais[-1]) <= 30.0:
+            continue
+        canais_verticais.append(x_c)
 
     if not canais_verticais:
         n_espacos = max(1, int(round(largura_total / modulo)))
@@ -254,16 +294,30 @@ def detectar_canais_verticais_entre_pontos(dwg, x_p1, x_p2, y_reta, modulo=65.0)
         for i in range(n_espacos):
             canais_verticais.append(x_min_sel + (i + 0.5) * passo)
 
-    qtd_final = max(len(canais_verticais), qtd_esperada)
-    return canais_verticais, qtd_final
+    if info is not None:
+        info['bordas'] = {x: mapa_bordas[x] for x in canais_verticais if x in mapa_bordas}
+        info['bordas_228'] = {x: b for x, b in info['bordas'].items() if _eh_branca(b)}
+
+    return canais_verticais, len(canais_verticais)
 
 
-def encontrar_limites_y_bordas(dwg, x_min_band, x_max_band, y_ponto, canais_verticais=None):
+def encontrar_limites_y_bordas(dwg, x_min_band, x_max_band, y_ponto, canais_verticais=None, x_borda_corte=None):
     """
     Determina os limites externos Y (borda inferior e superior) da laje
     para a faixa horizontal [x_min_band, x_max_band], priorizando o Nível 228 e Nível 201.
+    x_borda_corte: (x_borda, lado) -> ignora linhas totalmente do outro lado da linha branca
+    (usado só na nervura de borda, para não pegar a viga/laje vizinha).
     """
     linhas_borda_horiz, linhas_borda_vert = coletar_linhas_borda_dwg(dwg)
+
+    if x_borda_corte is not None:
+        x_corte, lado_corte = x_borda_corte
+        if lado_corte == 'dir':
+            x_max_band = min(x_max_band, x_corte - 1.0)
+            linhas_borda_horiz = [l for l in linhas_borda_horiz if min(l[0], l[2]) < x_corte - 1.0]
+        else:
+            x_min_band = max(x_min_band, x_corte + 1.0)
+            linhas_borda_horiz = [l for l in linhas_borda_horiz if max(l[0], l[2]) > x_corte + 1.0]
 
     if canais_verticais and len(canais_verticais) > 0:
         pontos_x = [x for x in canais_verticais if (x_min_band - 5.0) <= x <= (x_max_band + 5.0)]
@@ -305,16 +359,20 @@ def encontrar_limites_y_bordas(dwg, x_min_band, x_max_band, y_ponto, canais_vert
     return y_bot, y_top
 
 
-def encontrar_limites_y_rib(dwg, x_rib, y_ponto, cobrimento_237=2.5):
+def encontrar_limites_y_rib(dwg, x_rib, y_ponto, cobrimento_237=2.5, x_borda=None):
     """
     Determina os limites Y (borda inferior e superior) da armadura para uma nervura vertical na cota x_rib:
     1. Busca os limites no Nível 228 (linha branca de borda) e Nível 201 na vizinhança de x_rib.
     2. Aplica cobrimento de 2.5cm nas dobras das bordas (recuo para dentro da laje).
     3. Se houver elemento no Nível 237 (rosa) ou VAZIO com 'X' cobrindo a cota x_rib (+/- 12cm):
        - Para antes dele com cobrimento de 2.5cm (y_obs_min - 2.5 acima ou y_obs_max + 2.5 abaixo).
+    x_borda: se a nervura é de borda, x da linha branca vizinha (ignora o que está além dela).
     Retorna: (y_bot, y_top, parou_237_bot, parou_237_top)
     """
-    y_bot_borda, y_top_borda = encontrar_limites_y_bordas(dwg, x_rib - 15.0, x_rib + 15.0, y_ponto)
+    corte = None
+    if x_borda is not None:
+        corte = (x_borda, 'dir' if x_borda > x_rib else 'esq')
+    y_bot_borda, y_top_borda = encontrar_limites_y_bordas(dwg, x_rib - 15.0, x_rib + 15.0, y_ponto, x_borda_corte=corte)
 
     cobrimento_val = float(cobrimento_237)
 
@@ -404,13 +462,17 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
     if extensao_horizontal < 10.0:
         return
 
-    canais_verticais, total_nervuras = detectar_canais_verticais_entre_pontos(dwg, x_p1, x_p2, y_reta, modulo)
+    info_canais = {}
+    canais_verticais, total_nervuras = detectar_canais_verticais_entre_pontos(dwg, x_p1, x_p2, y_reta, modulo, info=info_canais)
+    mapa_bordas = info_canais.get('bordas', {})
+    mapa_bordas_228 = info_canais.get('bordas_228', {})
 
     grupos = []
     if canais_verticais:
         grupo_atual = None
         for x_rib in canais_verticais:
-            y_b, y_t, p_bot, p_top = encontrar_limites_y_rib(dwg, x_rib, y_reta, cobrimento_237=2.5)
+            y_b, y_t, p_bot, p_top = encontrar_limites_y_rib(dwg, x_rib, y_reta, cobrimento_237=2.5,
+                                                             x_borda=mapa_bordas_228.get(x_rib))
             if grupo_atual is None:
                 grupo_atual = {
                     'ribs': [x_rib],
@@ -464,6 +526,12 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
         delta_cubeta = 6.5
         x_distr_min = x_min_g - delta_cubeta
         x_distr_max = x_max_g + delta_cubeta
+
+        # Se a nervura extrema do grupo é de borda, a seta encosta na linha branca
+        if x_max_g in mapa_bordas_228 and mapa_bordas_228[x_max_g] > x_max_g:
+            x_distr_max = mapa_bordas_228[x_max_g]
+        if x_min_g in mapa_bordas_228 and mapa_bordas_228[x_min_g] < x_min_g:
+            x_distr_min = mapa_bordas_228[x_min_g]
 
         y_ini_ferro = grupo['y_bot']
         y_fim_ferro = grupo['y_top']
@@ -819,12 +887,12 @@ def pedir_dados_laje_vertical():
                 <div class="campo">
                     <label>Bitola dos Ferros:</label>
                     <select id="bitola" onchange="atualizarTranspasse()">
-                        <option value="6.3">Ø 6.3 mm (1/4")</option>
-                        <option value="8.0">Ø 8.0 mm (5/16")</option>
-                        <option value="10.0">Ø 10.0 mm (3/8")</option>
-                        <option value="12.5">Ø 12.5 mm (1/2")</option>
-                        <option value="16.0" selected>Ø 16.0 mm (5/8")</option>
-                        <option value="20.0">Ø 20.0 mm (3/4")</option>
+                        <option value="6.3">Ø 6.3 mm</option>
+                        <option value="8.0">Ø 8.0 mm</option>
+                        <option value="10.0">Ø 10.0 mm</option>
+                        <option value="12.5">Ø 12.5 mm</option>
+                        <option value="16.0" selected>Ø 16.0 mm</option>
+                        <option value="20.0">Ø 20.0 mm</option>
                     </select>
                 </div>
                 <div class="campo">
