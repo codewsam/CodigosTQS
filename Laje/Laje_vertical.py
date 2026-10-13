@@ -509,6 +509,52 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
             'parou_top': p_top
         })
 
+    apenas_contar = bool(dados.get("apenas_contar", False))
+    if apenas_contar:
+        for g_idx, grupo in enumerate(grupos):
+            qtd_nervuras_g = len(grupo['ribs'])
+            x_min_g = min(grupo['ribs'])
+            x_max_g = max(grupo['ribs'])
+
+            delta_cubeta = 6.5
+            x_distr_min = x_min_g - delta_cubeta
+            x_distr_max = x_max_g + delta_cubeta
+
+            if x_max_g in mapa_bordas_228 and mapa_bordas_228[x_max_g] > x_max_g:
+                x_distr_max = mapa_bordas_228[x_max_g]
+            if x_min_g in mapa_bordas_228 and mapa_bordas_228[x_min_g] < x_min_g:
+                x_distr_min = mapa_bordas_228[x_min_g]
+
+            y_distr = y_reta
+            draw.level = 220
+            draw.color = 3  # Verde
+            draw.style = 0
+            draw.Line(x_distr_min, y_distr, x_distr_max, y_distr)
+
+            larg_seta = 8.0
+            alt_seta = 12.0
+            draw.Line(x_distr_min - larg_seta, y_distr + larg_seta, x_distr_min + larg_seta, y_distr - larg_seta)
+            draw.Line(x_distr_min, y_distr, x_distr_min + alt_seta, y_distr - (larg_seta * 0.7))
+            draw.Line(x_distr_min, y_distr, x_distr_min + alt_seta, y_distr + (larg_seta * 0.7))
+
+            draw.Line(x_distr_max - larg_seta, y_distr + larg_seta, x_distr_max + larg_seta, y_distr - larg_seta)
+            draw.Line(x_distr_max, y_distr, x_distr_max - alt_seta, y_distr - (larg_seta * 0.7))
+            draw.Line(x_distr_max, y_distr, x_distr_max - alt_seta, y_distr + (larg_seta * 0.7))
+
+            for xr in grupo['ribs']:
+                draw.Line(xr, y_distr - 4.0, xr, y_distr + 4.0)
+
+            draw.level = 220
+            draw.color = 2  # Amarelo
+            draw.style = 0
+            txt_contagem = f"{qtd_nervuras_g} NERV."
+            tam_txt = 9.0
+            larg_txt = len(txt_contagem) * (tam_txt * 0.72)
+            xm_distr = (x_distr_min + x_distr_max) / 2.0
+            draw.Text(xm_distr - (larg_txt / 2.0), y_distr + 3.0, tam_txt, 0.0, txt_contagem)
+
+        return total_nervuras
+
     pos_num = 1
 
     for g_idx, grupo in enumerate(grupos):
@@ -851,12 +897,21 @@ def pedir_dados_laje_vertical():
                 }}
             }}
 
+            function toggleModoContar() {{
+                var apenasContar = document.getElementById("apenas_contar").checked;
+                var btn = document.querySelector(".btn-gerar");
+                if (btn) {{
+                    btn.innerHTML = apenasContar ? "Contar Nervuras no EAG" : "Definir Pontos no EAG";
+                }}
+            }}
+
             function confirmar() {{
                 var dados = {{
                     bitola: parseFloat(document.getElementById("bitola").value),
                     transpasse: parseFloat(document.getElementById("transpasse").value),
                     dobra: parseFloat(document.getElementById("dobra").value),
-                    modulo: parseFloat(document.getElementById("modulo").value)
+                    modulo: parseFloat(document.getElementById("modulo").value),
+                    apenas_contar: document.getElementById("apenas_contar").checked
                 }};
 
                 try {{
@@ -903,14 +958,15 @@ def pedir_dados_laje_vertical():
                     <label>Comprimento da Dobra (cm):</label>
                     <input type="text" id="dobra" value="15">
                 </div>
-                <div class="campo">
-                    <label>Módulo da Nervura (cm):</label>
-                    <input type="text" id="modulo" value="65">
+                <input type="hidden" id="modulo" value="65">
+                <div class="campo" style="margin-top:10px; padding-top:8px; border-top:1px dashed #bbdefb;">
+                    <label style="color:#0d47a1; font-weight:600;">Apenas Contar Nervuras:</label>
+                    <input type="checkbox" id="apenas_contar" onchange="toggleModoContar()" style="width:18px; height:18px; cursor:pointer;">
                 </div>
             </div>
 
             <div class="info-box">
-                💡 <b>Instrução:</b> Clique 2 pontos na horizontal para definir a faixa. O ferro vertical e a linha de distribuição horizontal são criados automaticamente.
+                💡 <b>Instrução:</b> Clique 2 pontos na horizontal para definir a faixa. Com <i>Apenas Contar</i> marcado, indica a contagem das nervuras sem desenhar as barras de armadura.
             </div>
         </div>
 
@@ -952,13 +1008,14 @@ def meucmd(eag, tqsjan):
             return
 
         faixa_idx = 1
+        modo_txt = "CONTAGEM" if dados.get("apenas_contar") else "VERTICAL"
         while True:
-            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa (VERTICAL) [Botão Direito ou Esc para ENCERRAR]:"
+            prompt1 = f"Clique o 1º ponto da {faixa_idx}ª faixa ({modo_txt}) [Botão Direito ou Esc para ENCERRAR]:"
             icod1, x1, y1 = eag.locate.GetPoint(tqsjan, prompt1)
             if icod1 != 1:
                 break
 
-            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa (VERTICAL) [Botão Direito ou Esc para CANCELAR]:"
+            prompt2 = f"Clique o 2º ponto da {faixa_idx}ª faixa ({modo_txt}) [Botão Direito ou Esc para CANCELAR]:"
             icod2, x2, y2 = eag.locate.GetSecondPoint(
                 tqsjan, x1, y1,
                 TQSEag.EAG_RUBLINEAR,
