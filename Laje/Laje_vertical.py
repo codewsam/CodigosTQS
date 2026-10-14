@@ -415,25 +415,47 @@ def encontrar_limites_y_rib(dwg, x_rib, y_ponto, cobrimento_237=2.5, x_borda=Non
 # SEÇÃO 3: DESENHO E DETALHAMENTO VERTICAL
 # ==============================================================================
 
-def desenhar_cota_transpasse_vert(draw, y1, y2, x_base, dist_t):
-    """Desenha cota do transpasse vertical com traços inclinados e texto em cm."""
-    tam_t = 6.0
-    x_cota = x_base + 6.0
+def desenhar_cota_transpasse_vert(draw, y1, y2, x_base, dist_t, modulo=65.0):
+    """
+    Desenha a cota de transpasse vertical no padrão verde oficial do TQS/EAG:
+    - Linhas de chamada horizontais conectando os pontos de transpasse à linha de cota.
+    - Linha de cotagem vertical verde deslocada para a cubeta (à esquerda da barra).
+    - Traços inclinados (ticks a 45°) nas interseções da cota.
+    - Valor numérico do transpasse em verde (sem prefixo 'T='), rotacionado a 90° e centralizado.
+    """
+    tam_t = 8.0
     y_min_t = min(y1, y2)
     y_max_t = max(y1, y2)
 
+    # Deslocamento da cota para dentro da cubeta à esquerda
+    offset_cota = float(modulo) * 0.5 if modulo else 25.0
+    offset_cota = min(40.0, max(20.0, offset_cota))
+    x_cota = x_base - offset_cota
+
     draw.level = 220
-    draw.color = 2  # Amarelo
+    draw.color = 3  # Verde
     draw.style = 0
 
-    draw.Line(x_cota, y_min_t, x_cota, y_max_t)
+    # Linhas de chamada horizontais (da barra até um pouco além da linha de cota)
+    sobra_chamada = 3.5
+    draw.Line(x_cota - sobra_chamada, y_min_t, x_base, y_min_t)
+    draw.Line(x_cota - sobra_chamada, y_max_t, x_base, y_max_t)
 
-    tilt = 2.5
-    draw.Line(x_cota - tilt, y_min_t - tilt, x_cota + tilt, y_min_t + tilt)
-    draw.Line(x_cota - tilt, y_max_t - tilt, x_cota + tilt, y_max_t + tilt)
+    # Linha de cotagem vertical (passando ligeiramente além das linhas de chamada)
+    sobra_cota = 3.0
+    draw.Line(x_cota, y_min_t - sobra_cota, x_cota, y_max_t + sobra_cota)
 
-    txt_t = f"T={int(round(dist_t))}"
-    draw.Text(x_cota + 3.0, (y_min_t + y_max_t) / 2.0 - 4.0, tam_t, 90.0, txt_t)
+    # Traços inclinados (ticks 45° padrão TQS de cima-esquerda para baixo-direita)
+    tilt = 3.0
+    draw.Line(x_cota - tilt, y_min_t + tilt, x_cota + tilt, y_min_t - tilt)
+    draw.Line(x_cota - tilt, y_max_t + tilt, x_cota + tilt, y_max_t - tilt)
+
+    # Texto com o valor numérico em verde (sem o prefixo 'T='), centralizado na vertical
+    txt_t = f"{int(round(dist_t))}"
+    larg_txt = len(txt_t) * (tam_t * 0.72)
+    ym = (y_min_t + y_max_t) / 2.0
+    draw.Text(x_cota - 2.5, ym - (larg_txt / 2.0), tam_t, 90.0, txt_t)
+
 
 
 def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
@@ -730,7 +752,7 @@ def processar_faixa_vertical(dwg, x1, y1, x2, y2, dados):
                 y_trans_fim = trechos_y[i_t - 1][1]
                 dist_t = y_trans_fim - y_trans_ini
                 if dist_t > 1.0:
-                    desenhar_cota_transpasse_vert(draw, y_trans_ini, y_trans_fim, x_ferro, dist_t)
+                    desenhar_cota_transpasse_vert(draw, y_trans_ini, y_trans_fim, x_ferro, dist_t, modulo=modulo)
 
             pos_num += 1
 
