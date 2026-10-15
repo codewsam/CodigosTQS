@@ -498,6 +498,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         p1 = (x_distr, yb)
         p2 = (x_distr, yt)
         angulo = 0.0
+        ang_distr = 90.0
     else:
         x_ferro = xl + 0.20 * larg
         y_ferro = yb + COBRIMENTO
@@ -505,6 +506,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         p1 = (xl, y_distr)
         p2 = (xr, y_distr)
         angulo = 90.0
+        ang_distr = 0.0
 
     try:
         sr = TQSDwg.SmartRebar(dwg)
@@ -512,7 +514,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         sr.diameter = bitola
         sr.mark = int(marca)
         sr.quantity = int(qtd)
-        sr.spacing = espac
+        sr.spacing = float(espac)
         sr.ribbed = 0
         sr.showRibbed = 0
         sr.straightBarMainLength = float(comp_reto)
@@ -522,7 +524,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
         sr.RebarDistrAdd(
             getattr(TQSDwg, "ICPESP", 2),
-            0.0,
+            ang_distr,
             p1[0], p1[1],
             p2[0], p2[1],
             (p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0,
@@ -530,8 +532,14 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
             getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
             getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0),
             "", 0, 0, 1, 0, 0,
-            espac, 1.0
+            float(espac), 1.0
         )
+        try:
+            sr.RebarDistrQuantity(0, 0, int(qtd))
+        except Exception:
+            pass
+        sr.quantity = int(qtd)
+        sr.spacing = float(espac)
         sr.RebarLine(x_ferro, y_ferro, angulo, 1.0, 1, 1, 1, 0, 220, -1, -1)
         return qtd, comp_total
     except Exception:
