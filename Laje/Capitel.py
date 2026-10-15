@@ -46,8 +46,8 @@ def pedir_dados_capitel():
                 color: #2b2736;
             }}
             .topbar {{
-                background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 100%);
-                color: #fff;
+                background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+                color: #ffffff;
                 padding: 12px 18px;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.25);
                 display: flex;
@@ -57,33 +57,36 @@ def pedir_dados_capitel():
             .topbar h1 {{
                 font-size: 15px;
                 margin: 0;
-                font-weight: 600;
+                font-weight: 700;
                 letter-spacing: 0.3px;
+                color: #ffffff;
             }}
             .topbar p {{
                 margin: 2px 0 0 0;
                 font-size: 11px;
-                opacity: 0.9;
+                color: #bbdefb;
+                font-weight: 500;
             }}
             .container {{
                 padding: 14px 18px 10px 18px;
             }}
             .card {{
-                background: #fff;
-                border: 1px solid #e1bee7;
+                background: #ffffff;
+                border: 1px solid #bbdefb;
                 border-radius: 6px;
                 padding: 14px;
                 margin-bottom: 12px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                box-shadow: 0 1px 4px rgba(13,71,161,0.08);
             }}
             .card h3 {{
                 font-size: 12px;
                 margin: 0 0 12px 0;
-                color: #4a148c;
+                color: #0d47a1;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
-                border-bottom: 1px solid #f3e5f5;
+                border-bottom: 1px solid #e3f2fd;
                 padding-bottom: 6px;
+                font-weight: 700;
             }}
             .campo {{
                 display: flex;
@@ -98,22 +101,25 @@ def pedir_dados_capitel():
             .campo input[type="text"], .campo select {{
                 width: 140px;
                 padding: 5px 8px;
-                border: 1px solid #ce93d8;
+                border: 1px solid #90caf9;
                 border-radius: 4px;
                 font-size: 12px;
                 text-align: right;
+                background: #ffffff;
+                color: #0d47a1;
+                font-weight: 600;
             }}
             .campo input[type="text"]:focus, .campo select:focus {{
-                border-color: #8e24aa;
+                border-color: #1976d2;
                 outline: none;
-                box-shadow: 0 0 4px rgba(142,36,170,0.3);
+                box-shadow: 0 0 5px rgba(25,118,210,0.35);
             }}
             .info-box {{
-                background: #f3e5f5;
-                border-left: 3px solid #8e24aa;
+                background: #e3f2fd;
+                border-left: 3px solid #1976d2;
                 padding: 8px 12px;
                 font-size: 11px;
-                color: #4a148c;
+                color: #0d47a1;
                 border-radius: 0 4px 4px 0;
                 line-height: 1.4;
             }}
@@ -126,36 +132,39 @@ def pedir_dados_capitel():
             button {{
                 padding: 8px 18px;
                 cursor: pointer;
-                border: 1px solid #ce93d8;
+                border: 1px solid #bbdefb;
                 border-radius: 5px;
-                background: #fbf5fc;
+                background: #fff;
                 font-size: 12px;
-                font-weight: 500;
-                color: #6a1b9a;
+                font-weight: 600;
+                color: #0d47a1;
             }}
-            button:hover {{ background: #f3e5f5; }}
+            button:hover {{ background: #e3f2fd; }}
             .btn-gerar {{
-                background: linear-gradient(135deg, #8e24aa 0%, #6a1b9a 100%);
+                background: linear-gradient(135deg, #1976d2 0%, #0d47a1 100%);
                 color: #ffffff;
                 border: none;
-                font-weight: 600;
-                box-shadow: 0 2px 4px rgba(106,27,154,0.3);
+                font-weight: 700;
+                box-shadow: 0 2px 4px rgba(13,71,161,0.35);
             }}
             .btn-gerar:hover {{
-                background: linear-gradient(135deg, #7b1fa2 0%, #4a148c 100%);
+                background: linear-gradient(135deg, #1565c0 0%, #0a3880 100%);
+                color: #ffffff;
             }}
         </style>
         <script language="javascript">
             window.onload = function() {{
-                window.resizeTo(450, 490);
-                window.moveTo((screen.width - 450) / 2, (screen.height - 490) / 2);
+                window.resizeTo(450, 520);
+                window.moveTo((screen.width - 450) / 2, (screen.height - 520) / 2);
             }};
 
             function confirmar() {{
                 var espacamentoVal = parseFloat(document.getElementById("espacamento").value.replace(',', '.')) || 15.0;
+                var dobraVal = parseFloat(document.getElementById("dobra").value.replace(',', '.')) || 20.0;
                 var dados = {{
                     bitola: parseFloat(document.getElementById("bitola").value),
                     espacamento: espacamentoVal,
+                    dobra: dobraVal,
                     direcao: document.getElementById("direcao").value,
                     adicionar_mais_um: document.getElementById("adicionar_mais_um").checked
                 }};
@@ -175,10 +184,10 @@ def pedir_dados_capitel():
     </head>
     <body>
         <div class="topbar">
-            <div style="font-size:20px;">🏛️</div>
+            <div style="font-size:20px;"></div>
             <div>
                 <h1>Armação de Capitel</h1>
-                <p>G3 Plugins - Detalhamento Automático TQS</p>
+                <p>G3 Plugins - Ediglânthio Samuel Araújo Brandão - TQS</p>
             </div>
         </div>
 
@@ -207,8 +216,12 @@ def pedir_dados_capitel():
                     <label>Espaçamento (cm):</label>
                     <input type="text" id="espacamento" value="15">
                 </div>
-                <div class="campo" style="margin-top:10px; padding-top:8px; border-top:1px dashed #e1bee7;">
-                    <label style="color:#4a148c; font-weight:600;">Adicionar +1 barra:</label>
+                <div class="campo">
+                    <label>Tamanho da Dobra (cm):</label>
+                    <input type="text" id="dobra" value="20">
+                </div>
+                <div class="campo" style="margin-top:10px; padding-top:8px; border-top:1px dashed #90caf9;">
+                    <label style="color:#0d47a1; font-weight:600;">Adicionar +1 barra:</label>
                     <input type="checkbox" id="adicionar_mais_um" checked style="width:18px; height:18px; cursor:pointer;">
                 </div>
             </div>
@@ -465,6 +478,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
     draw = dwg.draw
     bitola = float(dados.get("bitola", 10.0))
     espac = float(dados.get("espacamento", 15.0))
+    comp_dobra = float(dados.get("dobra", COMP_DOBRA))
     mais_um = bool(dados.get("adicionar_mais_um", True))
     horizontal = (dados.get("direcao", "horizontal") == "horizontal")
 
@@ -486,7 +500,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         qtd += 1
     qtd = max(qtd, 1)
 
-    comp_total = int(round(comp_reto + 2.0 * COMP_DOBRA))
+    comp_total = int(round(comp_reto + 2.0 * comp_dobra))
 
     # Posições de referência
     if horizontal:
@@ -509,6 +523,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         ang_distr = 0.0
 
     try:
+        draw.level = 220
         sr = TQSDwg.SmartRebar(dwg)
         sr.type = getattr(TQSDwg, "ICPFRT", 1)
         sr.diameter = bitola
@@ -518,8 +533,8 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         sr.ribbed = 0
         sr.showRibbed = 0
         sr.straightBarMainLength = float(comp_reto)
-        sr.straightBarLeftLength = COMP_DOBRA
-        sr.straightBarRightLength = COMP_DOBRA
+        sr.straightBarLeftLength = comp_dobra
+        sr.straightBarRightLength = comp_dobra
         sr.straightBarTextPosition = 2
         sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
         sr.RebarDistrAdd(
@@ -556,8 +571,8 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         # Linha magenta do ferro (com dobras voltadas para cima)
         draw.color = 6
         draw.Line(xa, y_ferro, xb, y_ferro)
-        draw.Line(xa, y_ferro, xa, y_ferro + COMP_DOBRA)
-        draw.Line(xb, y_ferro, xb, y_ferro + COMP_DOBRA)
+        draw.Line(xa, y_ferro, xa, y_ferro + comp_dobra)
+        draw.Line(xb, y_ferro, xb, y_ferro + comp_dobra)
 
         # Linha verde de distribuição conectada
         draw.color = 3
@@ -581,15 +596,15 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         txt_comp_reto = f"{int(round(comp_reto))}"
         draw.Text((xa + xb) / 2.0 - 10.0, y_ferro - 12.0, 8.0, 0.0, txt_comp_reto)
         # Dobras nas laterais
-        draw.Text(xa - 18.0, y_ferro + 2.0, 7.5, 0.0, f"{int(COMP_DOBRA)}")
-        draw.Text(xb + 5.0, y_ferro + 2.0, 7.5, 0.0, f"{int(COMP_DOBRA)}")
+        draw.Text(xa - 18.0, y_ferro + 2.0, 7.5, 0.0, f"{int(comp_dobra)}")
+        draw.Text(xb + 5.0, y_ferro + 2.0, 7.5, 0.0, f"{int(comp_dobra)}")
     else:
         ya, yb2 = y_ferro, y_ferro + comp_reto
         # Linha magenta do ferro (com dobras voltadas para a direita)
         draw.color = 6
         draw.Line(x_ferro, ya, x_ferro, yb2)
-        draw.Line(x_ferro, ya, x_ferro + COMP_DOBRA, ya)
-        draw.Line(x_ferro, yb2, x_ferro + COMP_DOBRA, yb2)
+        draw.Line(x_ferro, ya, x_ferro + comp_dobra, ya)
+        draw.Line(x_ferro, yb2, x_ferro + comp_dobra, yb2)
 
         # Linha verde de distribuição conectada
         draw.color = 3
@@ -605,8 +620,8 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         draw.Text(x_ferro - 12.0, ya + 12.0, 8.5, 90.0, txt)
         txt_comp_reto = f"{int(round(comp_reto))}"
         draw.Text(x_ferro + 8.0, (ya + yb2) / 2.0 - 10.0, 8.0, 90.0, txt_comp_reto)
-        draw.Text(x_ferro + 2.0, ya - 14.0, 7.5, 0.0, f"{int(COMP_DOBRA)}")
-        draw.Text(x_ferro + 2.0, yb2 + 4.0, 7.5, 0.0, f"{int(COMP_DOBRA)}")
+        draw.Text(x_ferro + 2.0, ya - 14.0, 7.5, 0.0, f"{int(comp_dobra)}")
+        draw.Text(x_ferro + 2.0, yb2 + 4.0, 7.5, 0.0, f"{int(comp_dobra)}")
 
     return qtd, comp_total
 
@@ -700,5 +715,3 @@ def meucmd(eag, tqsjan):
             tqsjan.Regen()
         except:
             pass
-
-
