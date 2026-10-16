@@ -561,12 +561,60 @@ def _ajustar_ancoragem_viga(coord_interna, sentido, pos_transv, bordas_paralelas
     return max(candidatas) if sentido > 0 else min(candidatas)
 
 
+def _lado_aponta_para_cubetas(coord_borda, sentido, d_lo, d_hi, horizontal, faces_v, faces_h, vazios):
+    """
+    Verifica se a extremidade do maciço (sentido -1 = esq/inf, +1 = dir/sup)
+    faz fronteira com o interior da laje nervurada (cubetas) em vez de apontar para o vazio
+    (borda externa da laje, shaft com 'X' ou furo Nível 237).
+    """
+    alcance_cubeta = 95.0
+    margem_d = 10.0
+
+    # Se houver um vazio ('X' ou '237') colado nessa borda, ela aponta para o vazio (deve ter dobra)
+    for vx1, vy1, vx2, vy2, _ in vazios:
+        vd_min, vd_max = (vy1, vy2) if horizontal else (vx1, vx2)
+        vb_min, vb_max = (vx1, vx2) if horizontal else (vy1, vy2)
+        if vd_max >= d_lo + 5.0 and vd_min <= d_hi - 5.0:
+            if sentido < 0 and (coord_borda - 40.0) <= vb_max <= (coord_borda + 10.0):
+                return False
+            if sentido > 0 and (coord_borda - 10.0) <= vb_min <= (coord_borda + 40.0):
+                return False
+
+    # Verifica se existem cubetas logo adiante nessa direção
+    if horizontal:
+        for fx, ya, yb in faces_v:
+            if yb >= (d_lo - margem_d) and ya <= (d_hi + margem_d):
+                dist = (fx - coord_borda) * sentido
+                if -5.0 <= dist <= alcance_cubeta:
+                    return True
+        for fy, xa, xb in faces_h:
+            if (d_lo - margem_d) <= fy <= (d_hi + margem_d):
+                c_ref = xb if sentido < 0 else xa
+                dist = (c_ref - coord_borda) * sentido
+                if -5.0 <= dist <= alcance_cubeta:
+                    return True
+    else:
+        for fy, xa, xb in faces_h:
+            if xb >= (d_lo - margem_d) and xa <= (d_hi + margem_d):
+                dist = (fy - coord_borda) * sentido
+                if -5.0 <= dist <= alcance_cubeta:
+                    return True
+        for fx, ya, yb in faces_v:
+            if (d_lo - margem_d) <= fx <= (d_hi + margem_d):
+                c_ref = yb if sentido < 0 else ya
+                dist = (c_ref - coord_borda) * sentido
+                if -5.0 <= dist <= alcance_cubeta:
+                    return True
+
+    return False
+
+
 def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v, bordas_h, vazios, ajustar_viga=False):
     """
     Subdivide uma região (capitel ou maciço) ao longo do eixo de distribuição:
     - Se a borda lateral tiver recorte/degrau ("meio torto"), separa em sequências distintas.
     - Se houver furo no Nível 237 ou vazio com 'X', recorta e cria sequências distintas.
-    Retorna lista de tuplas (xl, yb, xr, yt).
+    Retorna lista de tuplas (xl, yb, xr, yt, tem_dobra_esq, tem_dobra_dir).
     """
     xl_0, yb_0, xr_0, yt_0 = regiao_base
     horizontal = (direcao == "horizontal")
@@ -713,10 +761,18 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
         d_lo = f['d_min']
         d_hi = f['d_max']
         if (b_hi - b_lo) >= 20.0 and (d_hi - d_lo) >= 18.0:
-            if horizontal:
-                resultado.append((b_lo, d_lo, b_hi, d_hi))
+            if ajustar_viga:
+                # Em maciços, não coloca dobra no lado que aponta para as cubetas (interior da laje)
+                tem_dobra_esq = not _lado_aponta_para_cubetas(b_lo, -1, d_lo, d_hi, horizontal, faces_v, faces_h, vazios)
+                tem_dobra_dir = not _lado_aponta_para_cubetas(b_hi, +1, d_lo, d_hi, horizontal, faces_v, faces_h, vazios)
             else:
-                resultado.append((d_lo, b_lo, d_hi, b_hi))
+                tem_dobra_esq = True
+                tem_dobra_dir = True
+
+            if horizontal:
+                resultado.append((b_lo, d_lo, b_hi, d_hi, tem_dobra_esq, tem_dobra_dir))
+            else:
+                resultado.append((d_lo, b_lo, d_hi, b_hi, tem_dobra_esq, tem_dobra_dir))
 
     return resultado
 
@@ -829,10 +885,10 @@ def detectar_macicos_na_janela(janela, direcao, faces_v, faces_h, bordas_v, bord
 
 def desenhar_ferro_capitel(dwg, capitel, dados, marca):
     """
-    Coloca o ferro do capitel com a linha de distribuição conectada:
-    - horizontal: ferro na direção X com dobras para cima, distribuição vertical atravessando o capitel.
-    - vertical:   ferro na direção Y com dobras para a direita, distribuição horizontal atravessando o capitel.
-    Quantidade = distância do capitel / espaçamento (+1 se marcado).
+    Coloca o ferro do capitel/maciço com a linha de distribuição conectada:
+    - horizontal: ferro na direção X com dobras para cima, distribuição vertical atravessando a faixa.
+    - vertical:   ferro na direção Y com dobras para a direita, distribuição horizontal atravessando a faixa.
+    Quantidade = distância da faixa / espaçamento (+1 se marcado).
     """
     draw = dwg.draw
     bitola = float(dados.get("bitola", 10.0))
@@ -841,7 +897,13 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
     mais_um = bool(dados.get("adicionar_mais_um", True))
     horizontal = (dados.get("direcao", "horizontal") == "horizontal")
 
-    xl, yb, xr, yt = capitel
+    xl, yb, xr, yt = capitel[:4]
+    tem_dobra_esq = capitel[4] if len(capitel) > 4 else True
+    tem_dobra_dir = capitel[5] if len(capitel) > 5 else True
+
+    dobra_esq = comp_dobra if tem_dobra_esq else 0.0
+    dobra_dir = comp_dobra if tem_dobra_dir else 0.0
+
     larg, alt = xr - xl, yt - yb
 
     if horizontal:
@@ -859,7 +921,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         qtd += 1
     qtd = max(qtd, 1)
 
-    comp_total = int(round(comp_reto + 2.0 * comp_dobra))
+    comp_total = int(round(comp_reto + dobra_esq + dobra_dir))
 
     # Posições de referência
     if horizontal:
@@ -893,8 +955,8 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         sr.ribbed = 0
         sr.showRibbed = 0
         sr.straightBarMainLength = float(comp_reto)
-        sr.straightBarLeftLength = comp_dobra
-        sr.straightBarRightLength = comp_dobra
+        sr.straightBarLeftLength = float(dobra_esq)
+        sr.straightBarRightLength = float(dobra_dir)
         sr.straightBarTextPosition = 2
         sr.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
         sr.RebarDistrAdd(
@@ -917,18 +979,19 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         sr.spacing = float(espac)
 
         # Define coordenadas dos textos de dobra no lado oposto ao texto principal para não sobrepor
+        pos_dobras = []
         if horizontal:
-            pos_dobras = [
-                ("IPOFER_DEFTXTDES", x_ferro - 25.0, y_ferro - 15.0, 0.0),
-                ("IPOFER_DEFTXTTHR", x_ferro + comp_reto * 0.5 - 15.0, y_ferro - 15.0, 0.0),
-                ("IPOFER_DEFTXTDED", x_ferro + comp_reto + 5.0, y_ferro - 15.0, 0.0),
-            ]
+            if dobra_esq > 0:
+                pos_dobras.append(("IPOFER_DEFTXTDES", x_ferro - 25.0, y_ferro - 15.0, 0.0))
+            pos_dobras.append(("IPOFER_DEFTXTTHR", x_ferro + comp_reto * 0.5 - 15.0, y_ferro - 15.0, 0.0))
+            if dobra_dir > 0:
+                pos_dobras.append(("IPOFER_DEFTXTDED", x_ferro + comp_reto + 5.0, y_ferro - 15.0, 0.0))
         else:
-            pos_dobras = [
-                ("IPOFER_DEFTXTDES", x_ferro + 15.0, y_ferro - 25.0, 90.0),
-                ("IPOFER_DEFTXTTHR", x_ferro + 15.0, y_ferro + comp_reto * 0.5 - 15.0, 90.0),
-                ("IPOFER_DEFTXTDED", x_ferro + 15.0, y_ferro + comp_reto + 5.0, 90.0),
-            ]
+            if dobra_esq > 0:
+                pos_dobras.append(("IPOFER_DEFTXTDES", x_ferro + 15.0, y_ferro - 25.0, 90.0))
+            pos_dobras.append(("IPOFER_DEFTXTTHR", x_ferro + 15.0, y_ferro + comp_reto * 0.5 - 15.0, 90.0))
+            if dobra_dir > 0:
+                pos_dobras.append(("IPOFER_DEFTXTDED", x_ferro + 15.0, y_ferro + comp_reto + 5.0, 90.0))
 
         def _aplicar_pos_dobras():
             try:
@@ -958,11 +1021,13 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
 
     if horizontal:
         xa, xb = x_ferro, x_ferro + comp_reto
-        # Linha magenta do ferro (com dobras voltadas para cima)
+        # Linha magenta do ferro (com dobras voltadas para cima apenas nos lados ativos)
         draw.color = 6
         draw.Line(xa, y_ferro, xb, y_ferro)
-        draw.Line(xa, y_ferro, xa, y_ferro + comp_dobra)
-        draw.Line(xb, y_ferro, xb, y_ferro + comp_dobra)
+        if dobra_esq > 0:
+            draw.Line(xa, y_ferro, xa, y_ferro + dobra_esq)
+        if dobra_dir > 0:
+            draw.Line(xb, y_ferro, xb, y_ferro + dobra_dir)
 
         # Linha verde de distribuição conectada
         draw.color = 3
@@ -986,15 +1051,19 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         txt_comp_reto = f"{int(round(comp_reto))}"
         draw.Text((xa + xb) / 2.0 - 10.0, y_ferro - 12.0, 8.0, 0.0, txt_comp_reto)
         # Dobras nas laterais (abaixo da linha do ferro para não sobrepor o texto principal)
-        draw.Text(xa - 22.0, y_ferro - 12.0, 7.5, 0.0, f"{int(comp_dobra)}")
-        draw.Text(xb + 5.0, y_ferro - 12.0, 7.5, 0.0, f"{int(comp_dobra)}")
+        if dobra_esq > 0:
+            draw.Text(xa - 22.0, y_ferro - 12.0, 7.5, 0.0, f"{int(dobra_esq)}")
+        if dobra_dir > 0:
+            draw.Text(xb + 5.0, y_ferro - 12.0, 7.5, 0.0, f"{int(dobra_dir)}")
     else:
         ya, yb2 = y_ferro, y_ferro + comp_reto
-        # Linha magenta do ferro (com dobras voltadas para a direita)
+        # Linha magenta do ferro (com dobras voltadas para a direita apenas nos lados ativos)
         draw.color = 6
         draw.Line(x_ferro, ya, x_ferro, yb2)
-        draw.Line(x_ferro, ya, x_ferro + comp_dobra, ya)
-        draw.Line(x_ferro, yb2, x_ferro + comp_dobra, yb2)
+        if dobra_esq > 0:
+            draw.Line(x_ferro, ya, x_ferro + dobra_esq, ya)
+        if dobra_dir > 0:
+            draw.Line(x_ferro, yb2, x_ferro + dobra_dir, yb2)
 
         # Linha verde de distribuição conectada
         draw.color = 3
@@ -1010,8 +1079,10 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         draw.Text(x_ferro - 12.0, ya + 12.0, 8.5, 90.0, txt)
         txt_comp_reto = f"{int(round(comp_reto))}"
         draw.Text(x_ferro + 12.0, (ya + yb2) / 2.0 - 10.0, 8.0, 90.0, txt_comp_reto)
-        draw.Text(x_ferro + 12.0, ya - 22.0, 7.5, 90.0, f"{int(comp_dobra)}")
-        draw.Text(x_ferro + 12.0, yb2 + 5.0, 7.5, 90.0, f"{int(comp_dobra)}")
+        if dobra_esq > 0:
+            draw.Text(x_ferro + 12.0, ya - 22.0, 7.5, 90.0, f"{int(dobra_esq)}")
+        if dobra_dir > 0:
+            draw.Text(x_ferro + 12.0, yb2 + 5.0, 7.5, 90.0, f"{int(dobra_dir)}")
 
     return qtd, comp_total
 
@@ -1085,7 +1156,7 @@ def meucmd(eag, tqsjan):
                     sub_faixas = subdividir_regiao_em_faixas(
                         cap, direcao, faces_v, faces_h, bordas_v, bordas_h, vazios, ajustar_viga=False
                     )
-                    for sf in (sub_faixas or [cap]):
+                    for sf in (sub_faixas or [(xl, yb, xr, yt, True, True)]):
                         faixas_para_armar.append(sf)
 
             # 2. Identifica regiões maciças (com degraus/recortes ou furos Nível 237 / 'X')
@@ -1100,7 +1171,9 @@ def meucmd(eag, tqsjan):
             total_janela = 0
             for cap in faixas_para_armar:
                 larg, alt = cap[2] - cap[0], cap[3] - cap[1]
-                chave = (int(round(larg)), int(round(alt)))
+                d_esq = cap[4] if len(cap) > 4 else True
+                d_dir = cap[5] if len(cap) > 5 else True
+                chave = (int(round(larg)), int(round(alt)), bool(d_esq), bool(d_dir))
                 if chave not in marcas_globais:
                     marcas_globais[chave] = len(marcas_globais) + 1
                 qtd, _ = desenhar_ferro_capitel(dwg, cap, dados, marcas_globais[chave])
