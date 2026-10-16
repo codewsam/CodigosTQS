@@ -882,6 +882,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         ang_distr = 0.0
 
     try:
+        import ctypes
         draw.level = 220
         sr = TQSDwg.SmartRebar(dwg)
         sr.type = getattr(TQSDwg, "ICPFRT", 1)
@@ -914,7 +915,37 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
             pass
         sr.quantity = int(qtd)
         sr.spacing = float(espac)
+
+        # Define coordenadas dos textos de dobra no lado oposto ao texto principal para não sobrepor
+        if horizontal:
+            pos_dobras = [
+                ("IPOFER_DEFTXTDES", x_ferro - 25.0, y_ferro - 15.0, 0.0),
+                ("IPOFER_DEFTXTTHR", x_ferro + comp_reto * 0.5 - 15.0, y_ferro - 15.0, 0.0),
+                ("IPOFER_DEFTXTDED", x_ferro + comp_reto + 5.0, y_ferro - 15.0, 0.0),
+            ]
+        else:
+            pos_dobras = [
+                ("IPOFER_DEFTXTDES", x_ferro + 15.0, y_ferro - 25.0, 90.0),
+                ("IPOFER_DEFTXTTHR", x_ferro + 15.0, y_ferro + comp_reto * 0.5 - 15.0, 90.0),
+                ("IPOFER_DEFTXTDED", x_ferro + 15.0, y_ferro + comp_reto + 5.0, 90.0),
+            ]
+
+        def _aplicar_pos_dobras():
+            try:
+                parfer = ctypes.c_void_p(sr.m_ferobjv)
+                for fn_name, tx, ty, tang in pos_dobras:
+                    fn = getattr(dwg.m_ipofer, fn_name, None)
+                    if fn is not None:
+                        cx = ctypes.c_double(tx)
+                        cy = ctypes.c_double(ty)
+                        ca = ctypes.c_double(tang)
+                        fn(ctypes.byref(parfer), ctypes.byref(cx), ctypes.byref(cy), ctypes.byref(ca))
+            except Exception:
+                pass
+
+        _aplicar_pos_dobras()
         sr.RebarLine(x_ferro, y_ferro, angulo, 1.0, 1, 1, 1, 0, 220, -1, -1)
+        _aplicar_pos_dobras()
         return qtd, comp_total
     except Exception:
         pass
@@ -954,9 +985,9 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         # Comprimento reto centralizado abaixo do ferro
         txt_comp_reto = f"{int(round(comp_reto))}"
         draw.Text((xa + xb) / 2.0 - 10.0, y_ferro - 12.0, 8.0, 0.0, txt_comp_reto)
-        # Dobras nas laterais
-        draw.Text(xa - 18.0, y_ferro + 2.0, 7.5, 0.0, f"{int(comp_dobra)}")
-        draw.Text(xb + 5.0, y_ferro + 2.0, 7.5, 0.0, f"{int(comp_dobra)}")
+        # Dobras nas laterais (abaixo da linha do ferro para não sobrepor o texto principal)
+        draw.Text(xa - 22.0, y_ferro - 12.0, 7.5, 0.0, f"{int(comp_dobra)}")
+        draw.Text(xb + 5.0, y_ferro - 12.0, 7.5, 0.0, f"{int(comp_dobra)}")
     else:
         ya, yb2 = y_ferro, y_ferro + comp_reto
         # Linha magenta do ferro (com dobras voltadas para a direita)
@@ -978,9 +1009,9 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         draw.color = 2
         draw.Text(x_ferro - 12.0, ya + 12.0, 8.5, 90.0, txt)
         txt_comp_reto = f"{int(round(comp_reto))}"
-        draw.Text(x_ferro + 8.0, (ya + yb2) / 2.0 - 10.0, 8.0, 90.0, txt_comp_reto)
-        draw.Text(x_ferro + 2.0, ya - 14.0, 7.5, 0.0, f"{int(comp_dobra)}")
-        draw.Text(x_ferro + 2.0, yb2 + 4.0, 7.5, 0.0, f"{int(comp_dobra)}")
+        draw.Text(x_ferro + 12.0, (ya + yb2) / 2.0 - 10.0, 8.0, 90.0, txt_comp_reto)
+        draw.Text(x_ferro + 12.0, ya - 22.0, 7.5, 90.0, f"{int(comp_dobra)}")
+        draw.Text(x_ferro + 12.0, yb2 + 5.0, 7.5, 90.0, f"{int(comp_dobra)}")
 
     return qtd, comp_total
 
