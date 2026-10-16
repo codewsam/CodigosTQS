@@ -535,30 +535,39 @@ def _ponto_em_malha_cubetas(x, y, faces_v, faces_h):
     return (fv_esq and fv_dir) and (fh_inf and fh_sup)
 
 
-def _ajustar_ancoragem_viga(coord_interna, sentido, pos_transv, bordas_paralelas, faces_cubeta, vazios):
+def _ajustar_ancoragem_viga(coord_interna, sentido, d_lo, d_hi, bordas_paralelas, faces_cubeta):
     """
     Se a borda encontrada na direção do ferro for a face interna de uma viga/parede dupla
     (outra linha paralela de borda entre 8cm e 30cm adiante, sem cubeta próxima),
-    estende o limite até a face externa da viga (como no padrão TQS de maciços).
+    estende o limite até a face externa da viga correspondente à faixa [d_lo, d_hi].
     sentido: -1 (esquerda/baixo) ou +1 (direita/cima).
     """
+    d_mid = 0.5 * (d_lo + d_hi)
+    comp_faixa = max(d_hi - d_lo, 1.0)
+    min_ov = min(10.0, 0.25 * comp_faixa)
     candidatas = []
-    for c_borda, t_lo, t_hi, _ in bordas_paralelas:
-        if not (t_lo - 10.0 <= pos_transv <= t_hi + 10.0):
+
+    for c_borda, t_lo, t_hi, nivel in bordas_paralelas:
+        ov = min(t_hi, d_hi) - max(t_lo, d_lo)
+        if ov < min_ov and not (t_lo - 2.0 <= d_mid <= t_hi + 2.0):
             continue
         dist = (c_borda - coord_interna) * sentido
         if 8.0 <= dist <= 30.0:
             c_min = min(coord_interna, c_borda)
             c_max = max(coord_interna, c_borda)
             # Não avança se for transição para região de cubetas (laje nervurada)
-            tem_cubeta = any(c_min - 25.0 <= fc <= c_max + 25.0 and a - 15.0 <= pos_transv <= b + 15.0
+            tem_cubeta = any(c_min - 25.0 <= fc <= c_max + 25.0 and a - 15.0 <= d_mid <= b + 15.0
                              for fc, a, b in faces_cubeta)
             if not tem_cubeta:
-                candidatas.append(c_borda)
+                eh_viga = (nivel != 227)
+                candidatas.append((eh_viga, ov, -dist, c_borda))
 
     if not candidatas:
         return coord_interna
-    return max(candidatas) if sentido > 0 else min(candidatas)
+
+    # Prioriza linhas de viga/borda (nivel != 227) com maior sobreposição na faixa e menor distância
+    candidatas.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return candidatas[0][3]
 
 
 def _lado_aponta_para_cubetas(coord_borda, sentido, d_lo, d_hi, horizontal, faces_v, faces_h, vazios):
@@ -612,7 +621,8 @@ def _lado_aponta_para_cubetas(coord_borda, sentido, d_lo, d_hi, horizontal, face
 def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v, bordas_h, vazios, ajustar_viga=False):
     """
     Subdivide uma região (capitel ou maciço) ao longo do eixo de distribuição:
-    - Se a borda lateral tiver recorte/degrau ("meio torto"), separa em sequências distintas.
+    - Se a borda lateral tiver recorte/degrau ("meio torto"), separa em sequências distintas
+      exatamente na linha onde o degrau/curva começa.
     - Se houver furo no Nível 237 ou vazio com 'X', recorta e cria sequências distintas.
     Retorna lista de tuplas (xl, yb, xr, yt, tem_dobra_esq, tem_dobra_dir).
     """
@@ -637,15 +647,43 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
     if (d_max - d_min) < 15.0 or (b_max_base - b_min_base) < 15.0:
         return []
 
-    n_fatias = max(int(math.ceil((d_max - d_min) / passo)), 1)
-    passo_real = (d_max - d_min) / float(n_fatias)
-    fatias = []
+    # Coleta coordenadas exatas de transição (degraus de bordas/pilares e limites de vazios)
+    pts_criticos = [d_min, d_max]
+    for _, a, b, _ in bordas_bar:
+        if d_min + 0.5 < a < d_max - 0.5:
+            pts_criticos.append(a)
+        if d_min + 0.5 < b < d_max - 0.5:
+            pts_criticos.append(b)
+    for vx1, vy1, vx2, vy2, _ in vazios:
+        vd1, vd2 = (vy1, vy2) if horizontal else (vx1, vx2)
+        if d_min + 0.5 < vd1 < d_max - 0.5:
+            pts_criticos.append(vd1)
+        if d_min + 0.5 < vd2 < d_max - 0.5:
+            pts_criticos.append(vd2)
 
-    for i in range(n_fatias):
-        d_ini = d_min + i * passo_real
-        d_fim = d_ini + passo_real
+    pts_criticos.sort()
+    marcos_unicos = [pts_criticos[0]]
+    for p in pts_criticos[1:]:
+        if p - marcos_unicos[-1] > 0.2:
+            marcos_unicos.append(p)
+    if abs(marcos_unicos[-1] - d_max) > 1e-4:
+        marcos_unicos[-1] = d_max
+
+    # Subdivide cada trecho entre marcos em fatias de até 'passo' cm preservando os marcos exatos
+    marcos_d = [marcos_unicos[0]]
+    for i in range(len(marcos_unicos) - 1):
+        pa, pb = marcos_unicos[i], marcos_unicos[i + 1]
+        n_sub = max(int(math.ceil((pb - pa) / passo)), 1)
+        for s in range(1, n_sub + 1):
+            marcos_d.append(pa + s * (pb - pa) / float(n_sub))
+
+    fatias = []
+    b_centro = 0.5 * (b_min_base + b_max_base)
+
+    for i in range(len(marcos_d) - 1):
+        d_ini = marcos_d[i]
+        d_fim = marcos_d[i + 1]
         d_mid = 0.5 * (d_ini + d_fim)
-        b_centro = 0.5 * (b_min_base + b_max_base)
 
         # 1. Determina os limites internos da barra nesta fatia d_mid
         b_esq_int = b_min_base
@@ -654,24 +692,36 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
         if ajustar_viga:
             cands_esq = [
                 c for c, a, b, _ in bordas_bar
-                if a - 2.0 <= d_mid <= b + 2.0 and (b_min_base - 5.0) <= c <= (b_centro - 10.0)
+                if a - 0.1 <= d_mid <= b + 0.1 and (b_min_base - 5.0) <= c <= (b_centro - 10.0)
             ]
+            if not cands_esq:
+                cands_esq = [
+                    c for c, a, b, _ in bordas_bar
+                    if a - 2.0 <= d_mid <= b + 2.0 and (b_min_base - 5.0) <= c <= (b_centro - 10.0)
+                ]
+
             cands_dir = [
                 c for c, a, b, _ in bordas_bar
-                if a - 2.0 <= d_mid <= b + 2.0 and (b_centro + 10.0) <= c <= (b_max_base + 5.0)
+                if a - 0.1 <= d_mid <= b + 0.1 and (b_centro + 10.0) <= c <= (b_max_base + 5.0)
             ]
+            if not cands_dir:
+                cands_dir = [
+                    c for c, a, b, _ in bordas_bar
+                    if a - 2.0 <= d_mid <= b + 2.0 and (b_centro + 10.0) <= c <= (b_max_base + 5.0)
+                ]
+
             if cands_esq:
                 b_esq_int = max(cands_esq)
             if cands_dir:
                 b_dir_int = min(cands_dir)
 
-        # 2. Subtrai vazios (Nível 237 e 'X') do intervalo interno antes de ancorar nas vigas
+        # 2. Subtrai vazios (Nível 237 e 'X') do intervalo interno
         # Cada item: (ia, ib, parou_vazio_esq, parou_vazio_dir)
         intervalos_brutos = [(b_esq_int, b_dir_int, False, False)]
         for vx1, vy1, vx2, vy2, _ in vazios:
             v_d_min, v_d_max = (vy1, vy2) if horizontal else (vx1, vx2)
             v_b_min, v_b_max = (vx1, vx2) if horizontal else (vy1, vy2)
-            if v_d_min - 0.5 <= d_mid <= v_d_max + 0.5:
+            if v_d_min - 0.1 <= d_mid <= v_d_max + 0.1:
                 novos = []
                 for ia, ib, p_esq, p_dir in intervalos_brutos:
                     if v_b_max <= ia + 2.0 or v_b_min >= ib - 2.0:
@@ -683,42 +733,9 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
                             novos.append((v_b_max, ib, True, p_dir))
                 intervalos_brutos = novos
 
-        # 3. Aplica ajuste de ancoragem em viga apenas nas extremidades que não pararam em furo 237/'X'
-        intervalos = []
-        for ia, ib, p_esq, p_dir in intervalos_brutos:
-            fa = ia if (not ajustar_viga or p_esq) else _ajustar_ancoragem_viga(ia, -1, d_mid, bordas_bar, faces_bar, vazios)
-            fb = ib if (not ajustar_viga or p_dir) else _ajustar_ancoragem_viga(ib, +1, d_mid, bordas_bar, faces_bar, vazios)
-            intervalos.append((fa, fb))
+        fatias.append((d_ini, d_fim, intervalos_brutos))
 
-        fatias.append((d_ini, d_fim, intervalos))
-
-    # Suaviza pequenas transições de pilar (<= 28cm) entre duas vigas desalinhadas
-    if len(fatias) >= 3:
-        max_pilar_fatias = int(round(28.0 / passo_real))
-        i = 0
-        while i < len(fatias):
-            j = i
-            while j < len(fatias) and fatias[j][2] == fatias[i][2]:
-                j += 1
-            comp_bloco = j - i
-            if 0 < comp_bloco <= max_pilar_fatias:
-                ant = fatias[i - 1][2] if i > 0 else None
-                prox = fatias[j][2] if j < len(fatias) else None
-                if ant and prox:
-                    meio = i + comp_bloco // 2
-                    for k in range(i, meio):
-                        fatias[k] = (fatias[k][0], fatias[k][1], list(ant))
-                    for k in range(meio, j):
-                        fatias[k] = (fatias[k][0], fatias[k][1], list(prox))
-                elif ant:
-                    for k in range(i, j):
-                        fatias[k] = (fatias[k][0], fatias[k][1], list(ant))
-                elif prox:
-                    for k in range(i, j):
-                        fatias[k] = (fatias[k][0], fatias[k][1], list(prox))
-            i = j
-
-    # Agrupa fatias consecutivas com os mesmos limites (b_esq, b_dir) em faixas retangulares
+    # 3. Agrupa fatias consecutivas com o mesmo contorno interno (ia, ib) em faixas retangulares
     ativas = []
     finalizadas = []
 
@@ -727,8 +744,12 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
         novas_ativas = []
         for f in ativas:
             match_idx = None
-            for idx, (ia, ib) in enumerate(intervalos):
-                if idx not in usados and abs(ia - f['b_min']) <= tol_agrup and abs(ib - f['b_max']) <= tol_agrup:
+            for idx, (ia, ib, p_esq, p_dir) in enumerate(intervalos):
+                if (idx not in usados and
+                        abs(ia - f['b_min']) <= tol_agrup and
+                        abs(ib - f['b_max']) <= tol_agrup and
+                        p_esq == f['p_esq'] and
+                        p_dir == f['p_dir']):
                     match_idx = idx
                     break
             if match_idx is not None:
@@ -740,13 +761,15 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
             else:
                 finalizadas.append(f)
 
-        for idx, (ia, ib) in enumerate(intervalos):
+        for idx, (ia, ib, p_esq, p_dir) in enumerate(intervalos):
             if idx not in usados:
                 novas_ativas.append({
                     'b_min': ia,
                     'b_max': ib,
                     'd_min': d_ini,
                     'd_max': d_fim,
+                    'p_esq': p_esq,
+                    'p_dir': p_dir,
                     'amostras_a': [ia],
                     'amostras_b': [ib]
                 })
@@ -754,25 +777,32 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
 
     finalizadas.extend(ativas)
 
+    # 4. Para cada faixa agrupada pelo contorno interno, aplica ancoragem na viga correspondente
     resultado = []
     for f in finalizadas:
-        b_lo = sum(f['amostras_a']) / len(f['amostras_a'])
-        b_hi = sum(f['amostras_b']) / len(f['amostras_b'])
+        b_lo_int = sum(f['amostras_a']) / len(f['amostras_a'])
+        b_hi_int = sum(f['amostras_b']) / len(f['amostras_b'])
         d_lo = f['d_min']
         d_hi = f['d_max']
-        if (b_hi - b_lo) >= 20.0 and (d_hi - d_lo) >= 18.0:
+
+        if (b_hi_int - b_lo_int) >= 15.0 and (d_hi - d_lo) >= 18.0:
             if ajustar_viga:
+                b_lo = b_lo_int if f['p_esq'] else _ajustar_ancoragem_viga(b_lo_int, -1, d_lo, d_hi, bordas_bar, faces_bar)
+                b_hi = b_hi_int if f['p_dir'] else _ajustar_ancoragem_viga(b_hi_int, +1, d_lo, d_hi, bordas_bar, faces_bar)
                 # Em maciços, não coloca dobra no lado que aponta para as cubetas (interior da laje)
                 tem_dobra_esq = not _lado_aponta_para_cubetas(b_lo, -1, d_lo, d_hi, horizontal, faces_v, faces_h, vazios)
                 tem_dobra_dir = not _lado_aponta_para_cubetas(b_hi, +1, d_lo, d_hi, horizontal, faces_v, faces_h, vazios)
             else:
+                b_lo = b_lo_int
+                b_hi = b_hi_int
                 tem_dobra_esq = True
                 tem_dobra_dir = True
 
-            if horizontal:
-                resultado.append((b_lo, d_lo, b_hi, d_hi, tem_dobra_esq, tem_dobra_dir))
-            else:
-                resultado.append((d_lo, b_lo, d_hi, b_hi, tem_dobra_esq, tem_dobra_dir))
+            if (b_hi - b_lo) >= 20.0:
+                if horizontal:
+                    resultado.append((b_lo, d_lo, b_hi, d_hi, tem_dobra_esq, tem_dobra_dir))
+                else:
+                    resultado.append((d_lo, b_lo, d_hi, b_hi, tem_dobra_esq, tem_dobra_dir))
 
     return resultado
 
