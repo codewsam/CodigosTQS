@@ -154,19 +154,23 @@ def pedir_dados_capitel():
         </style>
         <script language="javascript">
             window.onload = function() {{
-                window.resizeTo(450, 520);
-                window.moveTo((screen.width - 450) / 2, (screen.height - 520) / 2);
+                window.resizeTo(460, 650);
+                window.moveTo((screen.width - 460) / 2, (screen.height - 650) / 2);
             }};
 
             function confirmar() {{
                 var espacamentoVal = parseFloat(document.getElementById("espacamento").value.replace(',', '.')) || 15.0;
+                var espacamentoPilarVal = parseFloat(document.getElementById("espacamento_pilar").value.replace(',', '.')) || espacamentoVal;
                 var dobraVal = parseFloat(document.getElementById("dobra").value.replace(',', '.')) || 20.0;
                 var dados = {{
                     bitola: parseFloat(document.getElementById("bitola").value),
                     espacamento: espacamentoVal,
                     dobra: dobraVal,
                     direcao: document.getElementById("direcao").value,
-                    adicionar_mais_um: document.getElementById("adicionar_mais_um").checked
+                    adicionar_mais_um: document.getElementById("adicionar_mais_um").checked,
+                    bitola_pilar: parseFloat(document.getElementById("bitola_pilar").value),
+                    espacamento_pilar: espacamentoPilarVal,
+                    adicionar_mais_um_pilar: document.getElementById("adicionar_mais_um_pilar").checked
                 }};
 
                 try {{
@@ -193,7 +197,7 @@ def pedir_dados_capitel():
 
         <div class="container">
             <div class="card">
-                <h3>Parâmetros da Armadura</h3>
+                <h3>Parâmetros da Armadura (Externa / Geral)</h3>
                 <div class="campo">
                     <label>Direção do Ferro:</label>
                     <select id="direcao">
@@ -220,14 +224,37 @@ def pedir_dados_capitel():
                     <label>Tamanho da Dobra (cm):</label>
                     <input type="text" id="dobra" value="20">
                 </div>
-                <div class="campo" style="margin-top:10px; padding-top:8px; border-top:1px dashed #90caf9;">
+                <div class="campo" style="margin-top:8px; padding-top:8px; border-top:1px dashed #90caf9; margin-bottom:0;">
                     <label style="color:#0d47a1; font-weight:600;">Adicionar +1 barra:</label>
                     <input type="checkbox" id="adicionar_mais_um" checked style="width:18px; height:18px; cursor:pointer;">
                 </div>
             </div>
 
+            <div class="card">
+                <h3>Ferro Dentro do Pilar (Vermelho)</h3>
+                <div class="campo">
+                    <label>Bitola no Pilar:</label>
+                    <select id="bitola_pilar">
+                        <option value="6.3">Ø 6.3 mm</option>
+                        <option value="8.0">Ø 8.0 mm</option>
+                        <option value="10.0">Ø 10.0 mm</option>
+                        <option value="12.5">Ø 12.5 mm</option>
+                        <option value="16.0" selected>Ø 16.0 mm</option>
+                        <option value="20.0">Ø 20.0 mm</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Espaçamento no Pilar (cm):</label>
+                    <input type="text" id="espacamento_pilar" value="15">
+                </div>
+                <div class="campo" style="margin-top:8px; padding-top:8px; border-top:1px dashed #90caf9; margin-bottom:0;">
+                    <label style="color:#0d47a1; font-weight:600;">Adicionar +1 barra no Pilar:</label>
+                    <input type="checkbox" id="adicionar_mais_um_pilar" checked style="width:18px; height:18px; cursor:pointer;">
+                </div>
+            </div>
+
             <div class="info-box">
-                💡 <b>Instrução:</b> Após confirmar, arraste uma janela (retângulo por 2 pontos) cobrindo a laje ou os capitéis desejados. O plugin identifica os pilares e as cubetas ao redor para armar os capitéis com a quantidade e bitola selecionadas.
+                💡 <b>Instrução:</b> Após confirmar, arraste uma janela (retângulo por 2 pontos) cobrindo a laje ou os capitéis desejados.
             </div>
         </div>
 
@@ -538,8 +565,8 @@ def _ponto_em_malha_cubetas(x, y, faces_v, faces_h):
 def _ajustar_ancoragem_viga(coord_interna, sentido, d_lo, d_hi, bordas_paralelas, faces_cubeta):
     """
     Se a borda encontrada na direção do ferro for a face interna de uma viga/parede dupla
-    (outra linha paralela de borda entre 8cm e 30cm adiante, sem cubeta próxima),
-    estende o limite até a face externa da viga correspondente à faixa [d_lo, d_hi].
+    ou linha de transição (outra linha paralela entre 8cm e 30cm adiante, sem atravessar cubeta),
+    estende o limite até a linha externa correspondente à faixa [d_lo, d_hi].
     sentido: -1 (esquerda/baixo) ou +1 (direita/cima).
     """
     d_mid = 0.5 * (d_lo + d_hi)
@@ -555,10 +582,10 @@ def _ajustar_ancoragem_viga(coord_interna, sentido, d_lo, d_hi, bordas_paralelas
         if 8.0 <= dist <= 30.0:
             c_min = min(coord_interna, c_borda)
             c_max = max(coord_interna, c_borda)
-            # Não avança se for transição para região de cubetas (laje nervurada)
-            tem_cubeta = any(c_min - 25.0 <= fc <= c_max + 25.0 and a - 15.0 <= d_mid <= b + 15.0
-                             for fc, a, b in faces_cubeta)
-            if not tem_cubeta:
+            # Não avança apenas se já houver cubeta dentro do próprio intervalo [c_min, c_max]
+            tem_cubeta_entre = any(c_min - 1.0 <= fc <= c_max + 1.0 and a - 10.0 <= d_mid <= b + 10.0
+                                   for fc, a, b in faces_cubeta)
+            if not tem_cubeta_entre:
                 eh_viga = (nivel != 227)
                 candidatas.append((eh_viga, ov, -dist, c_borda))
 
@@ -792,6 +819,12 @@ def subdividir_regiao_em_faixas(regiao_base, direcao, faces_v, faces_h, bordas_v
                 # Em maciços, não coloca dobra no lado que aponta para as cubetas (interior da laje)
                 tem_dobra_esq = not _lado_aponta_para_cubetas(b_lo, -1, d_lo, d_hi, horizontal, faces_v, faces_h, vazios)
                 tem_dobra_dir = not _lado_aponta_para_cubetas(b_hi, +1, d_lo, d_hi, horizontal, faces_v, faces_h, vazios)
+
+                # Se o lado sem dobra (voltado para as cubetas) ainda parou na linha interna, avança 20cm até a linha tracejada
+                if not tem_dobra_esq and abs(b_lo - b_lo_int) < 1.0:
+                    b_lo = b_lo_int - 20.0
+                if not tem_dobra_dir and abs(b_hi - b_hi_int) < 1.0:
+                    b_hi = b_hi_int + 20.0
             else:
                 b_lo = b_lo_int
                 b_hi = b_hi_int
@@ -913,6 +946,81 @@ def detectar_macicos_na_janela(janela, direcao, faces_v, faces_h, bordas_v, bord
     return faixas_finais
 
 
+def _dividir_faixa_por_pilar(faixa, pilares, direcao):
+    """
+    Verifica se dentro da faixa existe um pilar vermelho com orientação perpendicular ao ferro:
+    - Direção horizontal: quebra se o pilar estiver "em pé" (altura > largura).
+    - Direção vertical:   quebra se o pilar estiver "deitado" (largura > altura).
+    Quando houver, divide a distribuição em até 3 partes:
+    1) Antes do pilar ('antes_pilar')
+    2) Dentro do pilar vermelho ('no_pilar', usando bitola_pilar)
+    3) Depois do pilar ('depois_pilar')
+    """
+    xl, yb, xr, yt = faixa[:4]
+    tem_dobra_esq = faixa[4] if len(faixa) > 4 else True
+    tem_dobra_dir = faixa[5] if len(faixa) > 5 else True
+    horizontal = (direcao == "horizontal")
+
+    pilares_validos = []
+    for px1, py1, px2, py2 in pilares:
+        larg_p = px2 - px1
+        alt_p = py2 - py1
+        pcx = 0.5 * (px1 + px2)
+        pcy = 0.5 * (py1 + py2)
+
+        # O centro do pilar deve estar dentro da faixa e o ferro deve atravessar o pilar
+        if not (xl + 5.0 <= pcx <= xr - 5.0 and yb + 5.0 <= pcy <= yt - 5.0):
+            continue
+
+        if horizontal:
+            # Ferro horizontal: só quebra se o pilar estiver "em pé" (vertical) e dentro do vão X
+            if alt_p > larg_p + 1.0 and px1 > xl + 5.0 and px2 < xr - 5.0:
+                pilares_validos.append((px1, py1, px2, py2))
+        else:
+            # Ferro vertical: só quebra se o pilar estiver "deitado" (horizontal) e dentro do vão Y
+            if larg_p > alt_p + 1.0 and py1 > yb + 5.0 and py2 < yt - 5.0:
+                pilares_validos.append((px1, py1, px2, py2))
+
+    if not pilares_validos:
+        return [(xl, yb, xr, yt, tem_dobra_esq, tem_dobra_dir, "normal", None)]
+
+    # Ordena pelo eixo de distribuição (Y para horizontal, X para vertical)
+    if horizontal:
+        pilares_validos.sort(key=lambda p: p[1])
+        d_atual = yb
+        subfaixas = []
+        for idx, pil in enumerate(pilares_validos):
+            px1, py1, px2, py2 = pil
+            p_ini = max(yb, py1)
+            p_fim = min(yt, py2)
+            if p_ini - d_atual >= 8.0:
+                tipo_ant = "antes_pilar" if idx == 0 else "depois_pilar"
+                subfaixas.append((xl, d_atual, xr, p_ini, tem_dobra_esq, tem_dobra_dir, tipo_ant, pil))
+            if p_fim - p_ini >= 8.0:
+                subfaixas.append((xl, p_ini, xr, p_fim, tem_dobra_esq, tem_dobra_dir, "no_pilar", pil))
+            d_atual = max(d_atual, p_fim)
+        if yt - d_atual >= 8.0:
+            subfaixas.append((xl, d_atual, xr, yt, tem_dobra_esq, tem_dobra_dir, "depois_pilar", pilares_validos[-1]))
+        return subfaixas
+    else:
+        pilares_validos.sort(key=lambda p: p[0])
+        d_atual = xl
+        subfaixas = []
+        for idx, pil in enumerate(pilares_validos):
+            px1, py1, px2, py2 = pil
+            p_ini = max(xl, px1)
+            p_fim = min(xr, px2)
+            if p_ini - d_atual >= 8.0:
+                tipo_ant = "antes_pilar" if idx == 0 else "depois_pilar"
+                subfaixas.append((d_atual, yb, p_ini, yt, tem_dobra_esq, tem_dobra_dir, tipo_ant, pil))
+            if p_fim - p_ini >= 8.0:
+                subfaixas.append((p_ini, yb, p_fim, yt, tem_dobra_esq, tem_dobra_dir, "no_pilar", pil))
+            d_atual = max(d_atual, p_fim)
+        if xr - d_atual >= 8.0:
+            subfaixas.append((d_atual, yb, xr, yt, tem_dobra_esq, tem_dobra_dir, "depois_pilar", pilares_validos[-1]))
+        return subfaixas
+
+
 def desenhar_ferro_capitel(dwg, capitel, dados, marca):
     """
     Coloca o ferro do capitel/maciço com a linha de distribuição conectada:
@@ -921,15 +1029,23 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
     Quantidade = distância da faixa / espaçamento (+1 se marcado).
     """
     draw = dwg.draw
-    bitola = float(dados.get("bitola", 10.0))
-    espac = float(dados.get("espacamento", 15.0))
-    comp_dobra = float(dados.get("dobra", COMP_DOBRA))
-    mais_um = bool(dados.get("adicionar_mais_um", True))
-    horizontal = (dados.get("direcao", "horizontal") == "horizontal")
-
     xl, yb, xr, yt = capitel[:4]
     tem_dobra_esq = capitel[4] if len(capitel) > 4 else True
     tem_dobra_dir = capitel[5] if len(capitel) > 5 else True
+    tipo_faixa = capitel[6] if len(capitel) > 6 else "normal"
+    pil_box = capitel[7] if len(capitel) > 7 else None
+
+    if tipo_faixa == "no_pilar":
+        bitola = float(dados.get("bitola_pilar", dados.get("bitola", 16.0)))
+        espac = float(dados.get("espacamento_pilar", dados.get("espacamento", 15.0)))
+        mais_um = bool(dados.get("adicionar_mais_um_pilar", dados.get("adicionar_mais_um", True)))
+    else:
+        bitola = float(dados.get("bitola", 10.0))
+        espac = float(dados.get("espacamento", 15.0))
+        mais_um = bool(dados.get("adicionar_mais_um", True))
+
+    comp_dobra = float(dados.get("dobra", COMP_DOBRA))
+    horizontal = (dados.get("direcao", "horizontal") == "horizontal")
 
     dobra_esq = comp_dobra if tem_dobra_esq else 0.0
     dobra_dir = comp_dobra if tem_dobra_dir else 0.0
@@ -943,7 +1059,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         comp_reto = alt - 2.0 * COBRIMENTO
         dist_distr = larg
 
-    if comp_reto < 10.0 or dist_distr < 10.0:
+    if comp_reto < 8.0 or dist_distr < 8.0:
         return 0, 0
 
     qtd = int(math.ceil(dist_distr / espac - 1e-6)) if espac > 0 else 1
@@ -953,21 +1069,53 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
 
     comp_total = int(round(comp_reto + dobra_esq + dobra_dir))
 
-    # Posições de referência
+    # Posições de referência do ferro e da linha de distribuição
     if horizontal:
         x_ferro = xl + COBRIMENTO
-        # O ferro fica no terço superior do capitel (acima do pilar)
-        y_ferro = yt - 0.20 * alt
-        # A linha de distribuição vertical cruza o ferro e cobre todo o capitel
-        x_distr = xl + 0.35 * larg
+        if tipo_faixa == "antes_pilar":
+            y_ferro = yb + 0.25 * alt
+        elif tipo_faixa == "no_pilar":
+            y_ferro = yb + 0.50 * alt
+        else:
+            y_ferro = yt - 0.20 * alt
+
+        if pil_box is not None:
+            px1, py1, px2, py2 = pil_box
+            if tipo_faixa == "no_pilar":
+                # Linha de distribuição do pilar ao lado oposto (ex: direita do pilar)
+                x_distr = min(xr - 20.0, px2 + 25.0) if (xr - px2) >= 30.0 else max(xl + 20.0, px1 - 25.0)
+            else:
+                # Linhas externas do lado esquerdo do pilar
+                x_distr = max(xl + 20.0, px1 - 25.0) if (px1 - xl) >= 30.0 else xl + 0.35 * larg
+        else:
+            x_distr = xl + 0.35 * larg
+
         p1 = (x_distr, yb)
         p2 = (x_distr, yt)
         angulo = 0.0
         ang_distr = 90.0
     else:
-        x_ferro = xl + 0.20 * larg
         y_ferro = yb + COBRIMENTO
-        y_distr = yb + 0.35 * alt
+        if tipo_faixa == "antes_pilar":
+            x_ferro = xl + 0.25 * larg
+        elif tipo_faixa == "no_pilar":
+            x_ferro = xl + 0.50 * larg
+        elif tipo_faixa == "depois_pilar":
+            x_ferro = xr - 0.25 * larg
+        else:
+            x_ferro = xl + 0.20 * larg
+
+        if pil_box is not None:
+            px1, py1, px2, py2 = pil_box
+            if tipo_faixa == "no_pilar":
+                # Linha de distribuição do pilar abaixo do pilar vermelho
+                y_distr = max(yb + 20.0, py1 - 25.0) if (py1 - yb) >= 30.0 else min(yt - 20.0, py2 + 25.0)
+            else:
+                # Linhas externas acima do pilar vermelho
+                y_distr = min(yt - 20.0, py2 + 25.0) if (yt - py2) >= 30.0 else yt - 0.30 * alt
+        else:
+            y_distr = yb + 0.35 * alt
+
         p1 = (xl, y_distr)
         p2 = (xr, y_distr)
         angulo = 90.0
@@ -1171,7 +1319,7 @@ def meucmd(eag, tqsjan):
             ]
 
             capiteis_base = []
-            faixas_para_armar = []
+            faixas_brutas = []
 
             for pil in pilares_janela:
                 xl, yb, xr, yt, eh_cap_cubeta = limites_capitel(pil, faces_v, faces_h)
@@ -1187,13 +1335,18 @@ def meucmd(eag, tqsjan):
                         cap, direcao, faces_v, faces_h, bordas_v, bordas_h, vazios, ajustar_viga=False
                     )
                     for sf in (sub_faixas or [(xl, yb, xr, yt, True, True)]):
-                        faixas_para_armar.append(sf)
+                        faixas_brutas.append(sf)
 
             # 2. Identifica regiões maciças (com degraus/recortes ou furos Nível 237 / 'X')
             faixas_macicos = detectar_macicos_na_janela(
                 janela, direcao, faces_v, faces_h, bordas_v, bordas_h, vazios, capiteis_base
             )
-            faixas_para_armar.extend(faixas_macicos)
+            faixas_brutas.extend(faixas_macicos)
+
+            # 3. Quebra as faixas nos pilares internos perpendiculares ao ferro (antes, no pilar, depois)
+            faixas_para_armar = []
+            for fb in faixas_brutas:
+                faixas_para_armar.extend(_dividir_faixa_por_pilar(fb, pilares, direcao))
 
             if not faixas_para_armar:
                 continue
@@ -1203,7 +1356,10 @@ def meucmd(eag, tqsjan):
                 larg, alt = cap[2] - cap[0], cap[3] - cap[1]
                 d_esq = cap[4] if len(cap) > 4 else True
                 d_dir = cap[5] if len(cap) > 5 else True
-                chave = (int(round(larg)), int(round(alt)), bool(d_esq), bool(d_dir))
+                tipo_f = cap[6] if len(cap) > 6 else "normal"
+                bitola_f = float(dados.get("bitola_pilar", dados.get("bitola", 16.0))) if tipo_f == "no_pilar" else float(dados.get("bitola", 10.0))
+                comp_barra_f = int(round(larg if direcao == "horizontal" else alt))
+                chave = (comp_barra_f, bitola_f, bool(d_esq), bool(d_dir))
                 if chave not in marcas_globais:
                     marcas_globais[chave] = len(marcas_globais) + 1
                 qtd, _ = desenhar_ferro_capitel(dwg, cap, dados, marcas_globais[chave])
