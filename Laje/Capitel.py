@@ -948,12 +948,11 @@ def detectar_macicos_na_janela(janela, direcao, faces_v, faces_h, bordas_v, bord
 
 def _dividir_faixa_por_pilar(faixa, pilares, direcao):
     """
-    Verifica se dentro da faixa existe um pilar vermelho com orientação perpendicular ao ferro:
-    - Direção horizontal: quebra se o pilar estiver "em pé" (altura > largura).
-    - Direção vertical:   quebra se o pilar estiver "deitado" (largura > altura).
+    Verifica se dentro da faixa existe um pilar vermelho atravessado pelo ferro
+    (independente de o pilar estar "em pé" ou "deitado", mesmo ficando pequena a linha).
     Quando houver, divide a distribuição em até 3 partes:
     1) Antes do pilar ('antes_pilar')
-    2) Dentro do pilar vermelho ('no_pilar', usando bitola_pilar)
+    2) Dentro do pilar vermelho ('no_pilar', usando parâmetros do pilar)
     3) Depois do pilar ('depois_pilar')
     """
     xl, yb, xr, yt = faixa[:4]
@@ -963,8 +962,6 @@ def _dividir_faixa_por_pilar(faixa, pilares, direcao):
 
     pilares_validos = []
     for px1, py1, px2, py2 in pilares:
-        larg_p = px2 - px1
-        alt_p = py2 - py1
         pcx = 0.5 * (px1 + px2)
         pcy = 0.5 * (py1 + py2)
 
@@ -973,12 +970,10 @@ def _dividir_faixa_por_pilar(faixa, pilares, direcao):
             continue
 
         if horizontal:
-            # Ferro horizontal: só quebra se o pilar estiver "em pé" (vertical) e dentro do vão X
-            if alt_p > larg_p + 1.0 and px1 > xl + 5.0 and px2 < xr - 5.0:
+            if px1 > xl + 5.0 and px2 < xr - 5.0:
                 pilares_validos.append((px1, py1, px2, py2))
         else:
-            # Ferro vertical: só quebra se o pilar estiver "deitado" (horizontal) e dentro do vão Y
-            if larg_p > alt_p + 1.0 and py1 > yb + 5.0 and py2 < yt - 5.0:
+            if py1 > yb + 5.0 and py2 < yt - 5.0:
                 pilares_validos.append((px1, py1, px2, py2))
 
     if not pilares_validos:
@@ -993,13 +988,13 @@ def _dividir_faixa_por_pilar(faixa, pilares, direcao):
             px1, py1, px2, py2 = pil
             p_ini = max(yb, py1)
             p_fim = min(yt, py2)
-            if p_ini - d_atual >= 8.0:
+            if p_ini - d_atual >= 5.0:
                 tipo_ant = "antes_pilar" if idx == 0 else "depois_pilar"
                 subfaixas.append((xl, d_atual, xr, p_ini, tem_dobra_esq, tem_dobra_dir, tipo_ant, pil))
-            if p_fim - p_ini >= 8.0:
+            if p_fim - p_ini >= 5.0:
                 subfaixas.append((xl, p_ini, xr, p_fim, tem_dobra_esq, tem_dobra_dir, "no_pilar", pil))
             d_atual = max(d_atual, p_fim)
-        if yt - d_atual >= 8.0:
+        if yt - d_atual >= 5.0:
             subfaixas.append((xl, d_atual, xr, yt, tem_dobra_esq, tem_dobra_dir, "depois_pilar", pilares_validos[-1]))
         return subfaixas
     else:
@@ -1010,13 +1005,13 @@ def _dividir_faixa_por_pilar(faixa, pilares, direcao):
             px1, py1, px2, py2 = pil
             p_ini = max(xl, px1)
             p_fim = min(xr, px2)
-            if p_ini - d_atual >= 8.0:
+            if p_ini - d_atual >= 5.0:
                 tipo_ant = "antes_pilar" if idx == 0 else "depois_pilar"
                 subfaixas.append((d_atual, yb, p_ini, yt, tem_dobra_esq, tem_dobra_dir, tipo_ant, pil))
-            if p_fim - p_ini >= 8.0:
+            if p_fim - p_ini >= 5.0:
                 subfaixas.append((p_ini, yb, p_fim, yt, tem_dobra_esq, tem_dobra_dir, "no_pilar", pil))
             d_atual = max(d_atual, p_fim)
-        if xr - d_atual >= 8.0:
+        if xr - d_atual >= 5.0:
             subfaixas.append((d_atual, yb, xr, yt, tem_dobra_esq, tem_dobra_dir, "depois_pilar", pilares_validos[-1]))
         return subfaixas
 
@@ -1059,7 +1054,7 @@ def desenhar_ferro_capitel(dwg, capitel, dados, marca):
         comp_reto = alt - 2.0 * COBRIMENTO
         dist_distr = larg
 
-    if comp_reto < 8.0 or dist_distr < 8.0:
+    if comp_reto < 5.0 or dist_distr < 5.0:
         return 0, 0
 
     qtd = int(math.ceil(dist_distr / espac - 1e-6)) if espac > 0 else 1
