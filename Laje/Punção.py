@@ -118,6 +118,18 @@ def clip_linha_na_janela(x1, y1, x2, y2, xmin, xmax, ymin, ymax):
     return None
 
 
+def eh_linha_de_borda(x1, y1, x2, y2, xmin, xmax, ymin, ymax, tol=1.5):
+    """
+    Retorna True se a linha coincide com qualquer uma das 4 bordas da janela de corte.
+    Isso elimina artefatos de corte de cubetas externas que encostam no perímetro.
+    """
+    na_esq = abs(x1 - xmin) < tol and abs(x2 - xmin) < tol
+    na_dir = abs(x1 - xmax) < tol and abs(x2 - xmax) < tol
+    no_inf = abs(y1 - ymin) < tol and abs(y2 - ymin) < tol
+    no_sup = abs(y1 - ymax) < tol and abs(y2 - ymax) < tol
+    return na_esq or na_dir or no_inf or no_sup
+
+
 # ==============================================================================
 # CAPTURA DA JANELA (O TAMANHO DA JANELA DEFINE A ÁREA DO QUADRADO EM VOLTA)
 # ==============================================================================
@@ -181,6 +193,10 @@ def capturar_janela_com_area(eag, tqsjan):
             cor = getattr(dwg.iterator, "color", -1)
             estilo = getattr(dwg.iterator, "style", -1)
 
+            # Ignora linhas de cubetas (nível 208) da laje nervurada
+            if nivel == 208:
+                continue
+
             # 1. LINHAS (pilar e ferro de dentro)
             if itipo == TIPO_LINE:
                 try:
@@ -193,6 +209,8 @@ def capturar_janela_com_area(eag, tqsjan):
                     clipped = clip_linha_na_janela(lx1, ly1, lx2, ly2, xmin_j, xmax_j, ymin_j, ymax_j)
                     if clipped:
                         cx1, cy1, cx2, cy2 = clipped
+                        if eh_linha_de_borda(cx1, cy1, cx2, cy2, xmin_j, xmax_j, ymin_j, ymax_j):
+                            continue
                         if math.hypot(cx2 - cx1, cy2 - cy1) > 0.3:
                             linhas.append({
                                 "dx1": cx1 - xc, "dy1": cy1 - yc,
@@ -213,6 +231,8 @@ def capturar_janela_com_area(eag, tqsjan):
                             clipped = clip_linha_na_janela(p1[0], p1[1], p2[0], p2[1], xmin_j, xmax_j, ymin_j, ymax_j)
                             if clipped:
                                 cx1, cy1, cx2, cy2 = clipped
+                                if eh_linha_de_borda(cx1, cy1, cx2, cy2, xmin_j, xmax_j, ymin_j, ymax_j):
+                                    continue
                                 if math.hypot(cx2 - cx1, cy2 - cy1) > 0.3:
                                     linhas.append({
                                         "dx1": cx1 - xc, "dy1": cy1 - yc,
@@ -587,7 +607,7 @@ def mostrar_tela_confirmacao(pilar):
 def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
     """
     Desenha exatamente:
-    1. O quadrado da área em volta (com o tamanho exato da janela aberta, cor 14 e rótulo HD=...);
+    1. O quadrado da área em volta (100% alaranjado Nível 207, contínuo, com rótulo HD=...);
     2. O pilar e o ferro de dentro na sua posição relativa exata;
     3. Os textos internos e o título PUNÇÃO - ...
     """
@@ -604,10 +624,62 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
     box_y1 = y_alvo - alt_area / 2.0
     box_y2 = y_alvo + alt_area / 2.0
 
-    # 1. AQUELE QUADRADO EM VOLTA (Área do pilar/capitel com cor 14 e HD=26)
-    draw.level = 228
-    draw.color = 14  # Laranja/Marrom
-    draw.style = 0
+    hw = larg_area / 2.0
+    hh = alt_area / 2.0
+    tol = 2.0
+
+    # 1. PILAR E FERRO DE DENTRO (LINHAS CAPTURADAS INTERNAS)
+    for l in pilar.get("linhas", []):
+        try:
+            # Nunca desenha linhas de cubeta (208) nem linhas residuais da borda da janela
+            if l.get("nivel") == 208:
+                continue
+            dx1, dy1 = l["dx1"], l["dy1"]
+            dx2, dy2 = l["dx2"], l["dy2"]
+            if (abs(abs(dx1) - hw) < tol and abs(abs(dx2) - hw) < tol) or \
+               (abs(abs(dy1) - hh) < tol and abs(abs(dy2) - hh) < tol):
+                continue
+
+            draw.level = l["nivel"]
+            draw.color = l["cor"]
+            draw.style = l["estilo"]
+            draw.Line(x_alvo + dx1, y_alvo + dy1, x_alvo + dx2, y_alvo + dy2)
+        except Exception:
+            pass
+
+    # 2. ARCOS
+    for a in pilar.get("arcos", []):
+        try:
+            draw.level = a["nivel"]
+            draw.color = a["cor"]
+            draw.style = a["estilo"]
+            draw.Arc(x_alvo + a["dxc"], y_alvo + a["dyc"], a["raio"], a["aini"], a["afim"])
+        except Exception:
+            pass
+
+    # 3. CÍRCULOS
+    for c in pilar.get("circulos", []):
+        try:
+            draw.level = c["nivel"]
+            draw.color = c["cor"]
+            draw.style = c["estilo"]
+            draw.Circle(x_alvo + c["dxc"], y_alvo + c["dyc"], c["raio"])
+        except Exception:
+            pass
+
+    # 4. TEXTOS CAPTURADOS
+    for t in pilar.get("textos", []):
+        try:
+            draw.level = t["nivel"]
+            draw.color = t["cor"]
+            draw.Text(x_alvo + t["dx"], y_alvo + t["dy"], t["h"], t["ang"], t["txt"])
+        except Exception:
+            pass
+
+    # 5. O RETÂNGULO DA ÁREA (Nível 207, Cor: Por nível, Estilo: Por nível)
+    draw.level = 207
+    draw.color = -1  # Por nível
+    draw.style = -1  # -1: Por nível
     draw.Line(box_x1, box_y1, box_x2, box_y1)
     draw.Line(box_x2, box_y1, box_x2, box_y2)
     draw.Line(box_x2, box_y2, box_x1, box_y2)
@@ -623,45 +695,6 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
     draw.level = 245
     draw.color = 4  # Ciano
     draw.Text(box_x1 + 10.0, box_y2 - 18.0, 14.0, 0.0, f"PUNÇÃO - {nome_p}")
-
-    # 2. PILAR E FERRO DE DENTRO (LINHAS CAPTURADAS)
-    for l in pilar.get("linhas", []):
-        try:
-            draw.level = l["nivel"]
-            draw.color = l["cor"]
-            draw.style = l["estilo"]
-            draw.Line(x_alvo + l["dx1"], y_alvo + l["dy1"], x_alvo + l["dx2"], y_alvo + l["dy2"])
-        except Exception:
-            pass
-
-    # 3. ARCOS
-    for a in pilar.get("arcos", []):
-        try:
-            draw.level = a["nivel"]
-            draw.color = a["cor"]
-            draw.style = a["estilo"]
-            draw.Arc(x_alvo + a["dxc"], y_alvo + a["dyc"], a["raio"], a["aini"], a["afim"])
-        except Exception:
-            pass
-
-    # 4. CÍRCULOS
-    for c in pilar.get("circulos", []):
-        try:
-            draw.level = c["nivel"]
-            draw.color = c["cor"]
-            draw.style = c["estilo"]
-            draw.Circle(x_alvo + c["dxc"], y_alvo + c["dyc"], c["raio"])
-        except Exception:
-            pass
-
-    # 5. TEXTOS CAPTURADOS
-    for t in pilar.get("textos", []):
-        try:
-            draw.level = t["nivel"]
-            draw.color = t["cor"]
-            draw.Text(x_alvo + t["dx"], y_alvo + t["dy"], t["h"], t["ang"], t["txt"])
-        except Exception:
-            pass
 
 
 # ==============================================================================
