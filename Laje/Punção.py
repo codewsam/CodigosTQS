@@ -393,6 +393,7 @@ def mostrar_tela_confirmacao(pilar):
     cota_y_ini = 10.0
     cota_y_linha_ini = 7.55
     cota_x_linha_ini = 10.0
+    cota_inclinado_ini = 10.0
 
     espaco_maior_sug = round((comp_maior - 2.0 * cota_x_ini) / (num_maior_sug - 1), 2) if num_maior_sug > 1 else 0.0
     espaco_menor_sug = round((comp_menor - 2.0 * cota_y_linha_ini) / (num_menor_sug - 1), 2) if num_menor_sug > 1 else 0.0
@@ -696,6 +697,14 @@ def mostrar_tela_confirmacao(pilar):
             }}
         }}
 
+        function toggleInclinado() {{
+            var chk = document.getElementById("tem_inclinado").checked;
+            var box = document.getElementById("wrap_cota_inclinado");
+            if (box) {{
+                box.style.display = chk ? "flex" : "none";
+            }}
+        }}
+
         function responder(acao) {{
             var dados = {{
                 acao: acao,
@@ -710,6 +719,7 @@ def mostrar_tela_confirmacao(pilar):
                 num_menor: parseInt(document.getElementById("num_menor").value) || {num_menor_sug},
                 espaco_menor: parseFloat(document.getElementById("espaco_menor").value.replace(',', '.')) || {espaco_menor_sug},
                 tem_inclinado: document.getElementById("tem_inclinado").checked,
+                cota_inclinado: parseFloat(document.getElementById("cota_inclinado").value.replace(',', '.')) || {cota_inclinado_ini},
                 num_pinos: parseInt(document.getElementById("num_pinos").value) || 3,
                 esp_pinos: parseFloat(document.getElementById("esp_pinos").value.replace(',', '.')) || 15.0,
                 desenhar_cotas: document.getElementById("desenhar_cotas").checked
@@ -800,8 +810,12 @@ def mostrar_tela_confirmacao(pilar):
                     <input type="text" id="espaco_menor" value="{espaco_menor_sug}" onchange="calcQtdMenor()" />
                 </div>
                 <div class="campo-check">
-                    <input type="checkbox" id="tem_inclinado" checked />
+                    <input type="checkbox" id="tem_inclinado" checked onclick="toggleInclinado()" onchange="toggleInclinado()" />
                     <label for="tem_inclinado"><b>Gerar ferros inclinados</b> (diagonal nas 4 quinas)</label>
+                </div>
+                <div class="campo" id="wrap_cota_inclinado" style="margin-top:4px; padding:4px 8px; background:#e0f2f1; border-radius:4px; border:1px solid #80cbc4;">
+                    <label for="cota_inclinado" style="color:#004d40;">Cota do ferro inclinado (cm):</label>
+                    <input type="text" id="cota_inclinado" value="{cota_inclinado_ini}" />
                 </div>
             </div>
 
@@ -879,6 +893,7 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     cota_y = float(config.get("cota_y", 10.0))
     cota_y_linha = float(config.get("cota_y_linha", 7.55))
     cota_x_linha = float(config.get("cota_x_linha", 10.0))
+    cota_inclinado = float(config.get("cota_inclinado", 10.0))
     num_maior = int(config.get("num_maior", 10))
     num_menor = int(config.get("num_menor", 2))
     tem_inclinado = bool(config.get("tem_inclinado", True))
@@ -1041,15 +1056,15 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
         # 2. Cota vertical no canto inferior direito (distância da face inferior ao 1º pino)
         y_pino_inf = py_min - dist_inf
-        x_cota_v = px_max + 4.2
-        _linha_cota(px_max + 1.2, py_min, x_cota_v + 2.5, py_min)
-        _linha_cota(px_max - min(cota_x * 0.6, 3.5), y_pino_inf, x_cota_v + 2.5, y_pino_inf)
-        _linha_cota(x_cota_v, py_min + 2.5, x_cota_v, y_pino_inf - 2.5)
-        _tick_cota(x_cota_v, py_min)
-        _tick_cota(x_cota_v, y_pino_inf)
+        x_cota_v = px_max + 8.5
         txt_inf = _fmt_num(dist_inf)
         larg_inf = len(txt_inf) * 3.5
-        _texto_cota(x_cota_v - 1.5, y_pino_inf - larg_inf - 2.5, txt_inf, h=4.8, ang=90.0)
+        _linha_cota(px_max + 2.0, py_min, x_cota_v + 3.5, py_min)
+        _linha_cota(px_max + 3.5, y_pino_inf, x_cota_v + 3.5, y_pino_inf)
+        _linha_cota(x_cota_v, py_min + 2.5, x_cota_v, y_pino_inf - larg_inf - 3.5)
+        _tick_cota(x_cota_v, py_min)
+        _tick_cota(x_cota_v, y_pino_inf)
+        _texto_cota(x_cota_v - 1.8, y_pino_inf - larg_inf - 2.5, txt_inf, h=4.8, ang=90.0)
 
     # ==========================================================================
     # CASO 1: PILAR HORIZONTAL (Face maior no topo e base)
@@ -1186,7 +1201,7 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     # 3. FERROS INCLINADOS NAS 4 QUINAS (DIAGONAL A 45°)
     # ==========================================================================
     if tem_inclinado:
-        d0 = cota_y if cota_y > 0 else 10.0
+        d0 = cota_inclinado if cota_inclinado > 0 else 10.0
         d_fim = d0 + (num_pinos - 1) * esp_pinos
         quinas = [
             (px_min, py_max, -1.0, 1.0),   # Quina Sup-Esq
@@ -1210,9 +1225,13 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                 dk = d0 + k * esp_pinos
                 _pino(qx + sx * dk * cos45, qy + sy * dk * sin45)
 
-            # Cota inclinada na quina superior direita (deslocada da barra para não sobrepor)
+            # Cota inclinada na quina superior direita (igual à imagem de referência)
             if desenhar_cotas and sx == 1.0 and sy == 1.0:
-                offset_d = 6.0
+                offset_d = 7.5
+                txt_d0 = _fmt_num(d0)
+                larg_d0 = len(txt_d0) * 3.6
+                ext_esq = larg_d0 + 3.5
+
                 # Vetor ao longo da diagonal u=(cos45, sin45), vetor perpendicular para baixo-direita v=(cos45, -sin45)
                 c1_x = qx + offset_d * cos45
                 c1_y = qy - offset_d * sin45
@@ -1220,21 +1239,20 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                 c2_y = ly1 - offset_d * sin45
 
                 # Linhas de chamada perpendiculares à diagonal (a -45°)
-                _linha_cota(qx + 1.5 * cos45, qy - 1.5 * sin45, qx + (offset_d + 2.2) * cos45, qy - (offset_d + 2.2) * sin45)
-                _linha_cota(lx1 + 1.5 * cos45, ly1 - 1.5 * sin45, lx1 + (offset_d + 2.2) * cos45, ly1 - (offset_d + 2.2) * sin45)
+                _linha_cota(qx + 1.5 * cos45, qy - 1.5 * sin45, qx + (offset_d + 3.2) * cos45, qy - (offset_d + 3.2) * sin45)
+                _linha_cota(lx1 + 1.8 * cos45, ly1 - 1.8 * sin45, lx1 + (offset_d + 3.2) * cos45, ly1 - (offset_d + 3.2) * sin45)
 
-                # Linha de cota paralela à diagonal (a +45°)
-                _linha_cota(c1_x - 2.0 * cos45, c1_y - 2.0 * sin45, c2_x + 2.0 * cos45, c2_y + 2.0 * sin45)
+                # Linha de cota paralela à diagonal (a +45°) com prolongamento inferior-esquerdo para o texto
+                _linha_cota(c1_x - ext_esq * cos45, c1_y - ext_esq * sin45, c2_x + 2.5 * cos45, c2_y + 2.5 * sin45)
 
-                # Ticks nas extremidades da cota diagonal
-                _linha_cota(c1_x - 1.5, c1_y, c1_x + 1.5, c1_y)
-                _linha_cota(c2_x - 1.5, c2_y, c2_x + 1.5, c2_y)
+                # Ticks verticais nas interseções da cota diagonal (padrão TQS para cota a 45°)
+                _linha_cota(c1_x, c1_y - 2.0, c1_x, c1_y + 2.0)
+                _linha_cota(c2_x, c2_y - 2.0, c2_x, c2_y + 2.0)
 
-                txt_d0 = _fmt_num(d0)
-                xm_d = (c1_x + c2_x) / 2.0
-                ym_d = (c1_y + c2_y) / 2.0
-                # Posiciona o texto centralizado sobre a linha de cota diagonal (deslocado na direção -v)
-                _texto_cota(xm_d - 2.5 * cos45 - 1.8 * cos45, ym_d - 2.5 * sin45 + 1.8 * sin45, txt_d0, h=4.5, ang=45.0)
+                # Texto posicionado sobre o prolongamento inferior-esquerdo da linha de cota a 45°
+                tx_d = c1_x - (larg_d0 + 2.2) * cos45 - 1.5 * cos45
+                ty_d = c1_y - (larg_d0 + 2.2) * sin45 + 1.5 * sin45
+                _texto_cota(tx_d, ty_d, txt_d0, h=4.8, ang=45.0)
 
 
 # ==============================================================================
