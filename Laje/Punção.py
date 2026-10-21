@@ -785,7 +785,7 @@ def mostrar_tela_confirmacao(pilar):
                     <span class="valor">{int(larg_area)} x {int(alt_area)} cm</span>
                 </div>
                 <div class="campo" style="margin-top:6px;">
-                    <label>Espessura HD (cm):</label>
+                    <label>Espessura HC (cm):</label>
                     <input type="text" id="hd" value="{hd_p}" />
                 </div>
             </div>
@@ -819,15 +819,15 @@ def mostrar_tela_confirmacao(pilar):
                 </div>
             </div>
 
-            <!-- 3. PINOS / CONECTORES (STUDS) E COTAS -->
+            <!-- 3. ESTRIBOS E COTAS -->
             <div class="card">
-                <h3>Pinos / Conectores & Cotagem</h3>
+                <h3>Estribos & Cotagem</h3>
                 <div class="campo">
-                    <label>Pinos por ferro/trilho:</label>
-                    <input type="number" id="num_pinos" value="3" min="1" max="10" />
+                    <label>Quantidade de estribos:</label>
+                    <input type="number" id="num_pinos" value="3" min="1" max="15" />
                 </div>
                 <div class="campo">
-                    <label>Espaçamento entre pinos (cm):</label>
+                    <label>Espaçamento / largura do estribo (cm):</label>
                     <input type="text" id="esp_pinos" value="15.0" />
                 </div>
                 <div class="campo-check">
@@ -910,6 +910,10 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     py_max = y_alvo + c_ymax
 
     raio_pino = 1.15
+    # Distância entre os centros das 2 bolinhas de cada dupla intermediária (conexão entre estribos adjacentes)
+    passo_dupla = 2.25
+    n_estribos = max(1, num_pinos)
+    comp_trilho = n_estribos * esp_pinos + (n_estribos - 1) * passo_dupla
 
     NIV_FERRO = 220
     COR_TRILHO = 4    # Ciano
@@ -932,6 +936,24 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         draw.color = COR_PINO
         draw.style = 0
         draw.Circle(xc_p, yc_p, raio_pino)
+
+    def _desenhar_trilho_estribos(x_base, y_base, ux, uy, d_ini):
+        """
+        Desenha um trilho (ferro) e as bolinhas dos N estribos ao longo da direção (ux, uy):
+        - Cada estribo k (0 .. N-1) possui 1 bolinha no início e 1 bolinha no fim;
+        - Resultado: 1 bolinha em cada ponta do ferro e (N - 1) duplas no meio.
+        """
+        x_ini = x_base + ux * d_ini
+        y_ini = y_base + uy * d_ini
+        x_fim = x_base + ux * (d_ini + comp_trilho)
+        y_fim = y_base + uy * (d_ini + comp_trilho)
+        _linha_ferro(x_ini, y_ini, x_fim, y_fim)
+
+        for k in range(n_estribos):
+            d_k_ini = d_ini + k * (esp_pinos + passo_dupla)
+            d_k_fim = d_k_ini + esp_pinos
+            _pino(x_base + ux * d_k_ini, y_base + uy * d_k_ini)
+            _pino(x_base + ux * d_k_fim, y_base + uy * d_k_fim)
 
     def _linha_cota(x1, y1, x2, y2):
         draw.level = NIV_COTA
@@ -1079,21 +1101,9 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             pos_maior = [px_min + cota_x + i * s_maior for i in range(num_maior)]
 
         for px_f in pos_maior:
-            # Trilho Superior (do 1º pino em py_max + cota_y até o último pino)
-            y_ini_sup = py_max + cota_y
-            y_fim_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(px_f, y_ini_sup, px_f, y_fim_sup)
-            for k in range(num_pinos):
-                _pino(px_f, py_max + cota_y + k * esp_pinos)
-
-            # Trilho Inferior (do 1º pino em py_min - cota_y até o último pino)
-            y_ini_inf = py_min - cota_y
-            y_fim_inf = py_min - cota_y - (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(px_f, y_ini_inf, px_f, y_fim_inf)
-            for k in range(num_pinos):
-                _pino(px_f, py_min - cota_y - k * esp_pinos)
+            # Trilho Superior e Inferior (1 bolinha em cada ponta + N-1 duplas no meio)
+            _desenhar_trilho_estribos(px_f, py_max, 0.0, 1.0, cota_y)
+            _desenhar_trilho_estribos(px_f, py_min, 0.0, -1.0, cota_y)
 
         # 2. TRILHOS DA FACE MENOR (Esquerda e Direita) - iniciando exatamente na cota_x_linha
         if num_menor == 1:
@@ -1103,31 +1113,19 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             pos_menor = [py_min + cota_y_linha + j * s_menor for j in range(num_menor)]
 
         for py_f in pos_menor:
-            # Trilho Esquerdo (do 1º pino em px_min - cota_x_linha até o último pino)
-            x_ini_esq = px_min - cota_x_linha
-            x_fim_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(x_ini_esq, py_f, x_fim_esq, py_f)
-            for k in range(num_pinos):
-                _pino(px_min - cota_x_linha - k * esp_pinos, py_f)
-
-            # Trilho Direito (do 1º pino em px_max + cota_x_linha até o último pino)
-            x_ini_dir = px_max + cota_x_linha
-            x_fim_dir = px_max + cota_x_linha + (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(x_ini_dir, py_f, x_fim_dir, py_f)
-            for k in range(num_pinos):
-                _pino(px_max + cota_x_linha + k * esp_pinos, py_f)
+            # Trilho Esquerdo e Direito (1 bolinha em cada ponta + N-1 duplas no meio)
+            _desenhar_trilho_estribos(px_min, py_f, -1.0, 0.0, cota_x_linha)
+            _desenhar_trilho_estribos(px_max, py_f, 1.0, 0.0, cota_x_linha)
 
         # 3. COTAS (Se ativadas)
         if desenhar_cotas:
             # Cota Superior com Patamares Escalonados (Dogleg)
-            y_cota_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos + 9.0
+            y_cota_sup = py_max + cota_y + comp_trilho + 9.0
             pts_cota_x = [px_min] + list(pos_maior) + [px_max]
             _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 3.5)
 
             # Cota Lateral Esquerda (Alinhada sem sobreposição)
-            x_cota_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos - 9.0
+            x_cota_esq = px_min - cota_x_linha - comp_trilho - 9.0
             pts_cota_y = [py_min] + list(pos_menor) + [py_max]
             _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 3.5)
 
@@ -1146,21 +1144,8 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             pos_maior = [py_min + cota_x + i * s_maior for i in range(num_maior)]
 
         for py_f in pos_maior:
-            # Trilho Esquerdo
-            x_ini_esq = px_min - cota_y
-            x_fim_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(x_ini_esq, py_f, x_fim_esq, py_f)
-            for k in range(num_pinos):
-                _pino(px_min - cota_y - k * esp_pinos, py_f)
-
-            # Trilho Direito
-            x_ini_dir = px_max + cota_y
-            x_fim_dir = px_max + cota_y + (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(x_ini_dir, py_f, x_fim_dir, py_f)
-            for k in range(num_pinos):
-                _pino(px_max + cota_y + k * esp_pinos, py_f)
+            _desenhar_trilho_estribos(px_min, py_f, -1.0, 0.0, cota_y)
+            _desenhar_trilho_estribos(px_max, py_f, 1.0, 0.0, cota_y)
 
         # 2. TRILHOS DA FACE MENOR (Superior e Inferior) - iniciando exatamente na cota_x_linha
         if num_menor == 1:
@@ -1170,29 +1155,16 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             pos_menor = [px_min + cota_y_linha + j * s_menor for j in range(num_menor)]
 
         for px_f in pos_menor:
-            # Trilho Superior
-            y_ini_sup = py_max + cota_x_linha
-            y_fim_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(px_f, y_ini_sup, px_f, y_fim_sup)
-            for k in range(num_pinos):
-                _pino(px_f, py_max + cota_x_linha + k * esp_pinos)
-
-            # Trilho Inferior
-            y_ini_inf = py_min - cota_x_linha
-            y_fim_inf = py_min - cota_x_linha - (num_pinos - 1) * esp_pinos
-            if num_pinos > 1:
-                _linha_ferro(px_f, y_ini_inf, px_f, y_fim_inf)
-            for k in range(num_pinos):
-                _pino(px_f, py_min - cota_x_linha - k * esp_pinos)
+            _desenhar_trilho_estribos(px_f, py_max, 0.0, 1.0, cota_x_linha)
+            _desenhar_trilho_estribos(px_f, py_min, 0.0, -1.0, cota_x_linha)
 
         # 3. COTAS
         if desenhar_cotas:
-            x_cota_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos - 9.0
+            x_cota_esq = px_min - cota_y - comp_trilho - 9.0
             pts_cota_y = [py_min] + list(pos_maior) + [py_max]
             _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 3.5)
 
-            y_cota_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos + 9.0
+            y_cota_sup = py_max + cota_x_linha + comp_trilho + 9.0
             pts_cota_x = [px_min] + list(pos_menor) + [px_max]
             _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 3.5)
 
@@ -1203,7 +1175,6 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     # ==========================================================================
     if tem_inclinado:
         d0 = cota_inclinado if cota_inclinado > 0 else 10.0
-        d_fim = d0 + (num_pinos - 1) * esp_pinos
         quinas = [
             (px_min, py_max, -1.0, 1.0),   # Quina Sup-Esq
             (px_max, py_max, 1.0, 1.0),    # Quina Sup-Dir
@@ -1214,17 +1185,10 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         sin45 = 0.70710678
 
         for qx, qy, sx, sy in quinas:
-            # O ferro inclinado começa exatamente no 1º pino (distância d0 da quina) e termina no último pino
+            # Desenha o ferro inclinado com 1 bolinha em cada ponta e N-1 duplas no meio
+            _desenhar_trilho_estribos(qx, qy, sx * cos45, sy * sin45, d0)
             lx1 = qx + sx * d0 * cos45
             ly1 = qy + sy * d0 * sin45
-            lx2 = qx + sx * d_fim * cos45
-            ly2 = qy + sy * d_fim * sin45
-            if num_pinos > 1:
-                _linha_ferro(lx1, ly1, lx2, ly2)
-
-            for k in range(num_pinos):
-                dk = d0 + k * esp_pinos
-                _pino(qx + sx * dk * cos45, qy + sy * dk * sin45)
 
             # Cota inclinada na quina superior direita (igual à imagem de referência)
             if desenhar_cotas and sx == 1.0 and sy == 1.0:
@@ -1500,7 +1464,7 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
 
     larg_area = float(pilar.get("larg_area", 180.0))
     alt_area = float(pilar.get("alt_area", 140.0))
-    nome_p = config.get("nome_pilar", pilar.get("nome", "P10 - P13"))
+    nome_p = config.get("nome_pilar", pilar.get("nome", "P10 = P13"))
     hd = float(config.get("hd", pilar.get("hd", 26.0)))
 
     # Coordenadas do quadrado delimitador (exatamente o tamanho da janela que o usuário abriu)
