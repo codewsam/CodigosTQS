@@ -385,7 +385,7 @@ def mostrar_tela_confirmacao(pilar):
     comp_maior = col_dx if orientacao == 'H' else col_dy
     comp_menor = col_dy if orientacao == 'H' else col_dx
 
-    # Sugestão de quantidade de ferros baseada nas dimensões reais do pilar
+    # Sugestão de quantidade e espaçamento inicial
     num_maior_sug = max(4, int(round((comp_maior - 13.5) / 18.5)) + 1)
     num_menor_sug = max(2, int(round((comp_menor - 15.1) / 15.0)) + 1)
 
@@ -393,6 +393,9 @@ def mostrar_tela_confirmacao(pilar):
     cota_y_ini = 10.0
     cota_y_linha_ini = 7.55
     cota_x_linha_ini = 10.0
+
+    espaco_maior_sug = round((comp_maior - 2.0 * cota_x_ini) / (num_maior_sug - 1), 2) if num_maior_sug > 1 else 0.0
+    espaco_menor_sug = round((comp_menor - 2.0 * cota_y_linha_ini) / (num_menor_sug - 1), 2) if num_menor_sug > 1 else 0.0
 
     hta_content = f"""<!DOCTYPE html>
 <html>
@@ -641,9 +644,57 @@ def mostrar_tela_confirmacao(pilar):
     </style>
     <script language="javascript">
         window.onload = function() {{
-            window.resizeTo(1020, 750);
-            window.moveTo((screen.width - 1020) / 2, (screen.height - 750) / 2);
+            window.resizeTo(1020, 810);
+            window.moveTo((screen.width - 1020) / 2, (screen.height - 810) / 2);
         }};
+
+        function calcEspacoMaior() {{
+            var L = {comp_maior};
+            var cx = parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || 6.75;
+            var n = parseInt(document.getElementById("num_maior").value) || 1;
+            if (n > 1) {{
+                var s = (L - 2.0 * cx) / (n - 1.0);
+                document.getElementById("espaco_maior").value = s.toFixed(2);
+            }}
+        }}
+
+        function calcQtdMaior() {{
+            var L = {comp_maior};
+            var cx = parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || 6.75;
+            var s = parseFloat(document.getElementById("espaco_maior").value.replace(',', '.')) || 18.5;
+            if (s > 0) {{
+                var n = Math.round((L - 2.0 * cx) / s) + 1;
+                if (n < 1) n = 1;
+                document.getElementById("num_maior").value = n;
+                if (n > 1) {{
+                    document.getElementById("espaco_maior").value = ((L - 2.0 * cx) / (n - 1.0)).toFixed(2);
+                }}
+            }}
+        }}
+
+        function calcEspacoMenor() {{
+            var W = {comp_menor};
+            var cy = parseFloat(document.getElementById("cota_y_linha").value.replace(',', '.')) || 7.55;
+            var n = parseInt(document.getElementById("num_menor").value) || 1;
+            if (n > 1) {{
+                var s = (W - 2.0 * cy) / (n - 1.0);
+                document.getElementById("espaco_menor").value = s.toFixed(2);
+            }}
+        }}
+
+        function calcQtdMenor() {{
+            var W = {comp_menor};
+            var cy = parseFloat(document.getElementById("cota_y_linha").value.replace(',', '.')) || 7.55;
+            var s = parseFloat(document.getElementById("espaco_menor").value.replace(',', '.')) || 15.0;
+            if (s > 0) {{
+                var n = Math.round((W - 2.0 * cy) / s) + 1;
+                if (n < 1) n = 1;
+                document.getElementById("num_menor").value = n;
+                if (n > 1) {{
+                    document.getElementById("espaco_menor").value = ((W - 2.0 * cy) / (n - 1.0)).toFixed(2);
+                }}
+            }}
+        }}
 
         function responder(acao) {{
             var dados = {{
@@ -655,7 +706,9 @@ def mostrar_tela_confirmacao(pilar):
                 cota_y_linha: parseFloat(document.getElementById("cota_y_linha").value.replace(',', '.')) || {cota_y_linha_ini},
                 cota_x_linha: parseFloat(document.getElementById("cota_x_linha").value.replace(',', '.')) || {cota_x_linha_ini},
                 num_maior: parseInt(document.getElementById("num_maior").value) || {num_maior_sug},
+                espaco_maior: parseFloat(document.getElementById("espaco_maior").value.replace(',', '.')) || {espaco_maior_sug},
                 num_menor: parseInt(document.getElementById("num_menor").value) || {num_menor_sug},
+                espaco_menor: parseFloat(document.getElementById("espaco_menor").value.replace(',', '.')) || {espaco_menor_sug},
                 tem_inclinado: document.getElementById("tem_inclinado").checked,
                 num_pinos: parseInt(document.getElementById("num_pinos").value) || 3,
                 esp_pinos: parseFloat(document.getElementById("esp_pinos").value.replace(',', '.')) || 15.0,
@@ -692,20 +745,15 @@ def mostrar_tela_confirmacao(pilar):
                 <div class="diag-container">
                     <img src="diagrama_cotas.png" class="diag-img" alt="Diagrama de Cotas da Punção" />
                     <!-- Box 1: x (Face Maior - da quina ao 1º ferro) -->
-                    <input type="text" id="cota_x" class="cota-box box-x" value="{cota_x_ini}" title="Distância da quina até o 1º ferro da face maior (x)" />
+                    <input type="text" id="cota_x" class="cota-box box-x" value="{cota_x_ini}" title="Distância da quina até o 1º ferro da face maior (x)" onchange="calcEspacoMaior()" />
                     <!-- Box 2: y (Face Maior - da face do pilar ao 1º pino) -->
                     <input type="text" id="cota_y" class="cota-box box-y" value="{cota_y_ini}" title="Distância da face até o 1º pino/conector da face maior (y)" />
                     <!-- Box 3: y' (Face Menor - da quina ao 1º ferro) -->
-                    <input type="text" id="cota_y_linha" class="cota-box box-y-linha" value="{cota_y_linha_ini}" title="Distância da quina até o 1º ferro da face menor (y')" />
+                    <input type="text" id="cota_y_linha" class="cota-box box-y-linha" value="{cota_y_linha_ini}" title="Distância da quina até o 1º ferro da face menor (y')" onchange="calcEspacoMenor()" />
                     <!-- Box 4: x' (Face Menor - da face do pilar ao 1º pino) -->
                     <input type="text" id="cota_x_linha" class="cota-box box-x-linha" value="{cota_x_linha_ini}" title="Distância da face até o 1º pino/conector da face menor (x')" />
                 </div>
-                <div class="diag-legenda">
-                    <div class="leg-item"><span class="badge-red">x</span> Quina ao 1º ferro (Face Maior)</div>
-                    <div class="leg-item"><span class="badge-red">y</span> Face ao 1º pino (Face Maior)</div>
-                    <div class="leg-item"><span class="badge-red">y'</span> Quina ao 1º ferro (Face Menor)</div>
-                    <div class="leg-item"><span class="badge-red">x'</span> Face ao 1º pino (Face Menor)</div>
-                </div>
+                
             </div>
         </div>
 
@@ -732,16 +780,24 @@ def mostrar_tela_confirmacao(pilar):
                 </div>
             </div>
 
-            <!-- 2. QUANTIDADE DE FERROS (TRILHOS) -->
+            <!-- 2. QUANTIDADE E ESPAÇO ENTRE OS FERROS (TRILHOS) -->
             <div class="card">
                 <h3>Disposição dos Ferros (Trilhos)</h3>
                 <div class="campo">
                     <label>Ferros na Face Maior ({int(comp_maior)} cm):</label>
-                    <input type="number" id="num_maior" value="{num_maior_sug}" min="1" max="30" />
+                    <input type="number" id="num_maior" value="{num_maior_sug}" min="1" max="30" onchange="calcEspacoMaior()" />
                 </div>
                 <div class="campo">
+                    <label>Espaço entre ferros Maior (cm):</label>
+                    <input type="text" id="espaco_maior" value="{espaco_maior_sug}" onchange="calcQtdMaior()" />
+                </div>
+                <div class="campo" style="margin-top:6px;">
                     <label>Ferros na Face Menor ({int(comp_menor)} cm):</label>
-                    <input type="number" id="num_menor" value="{num_menor_sug}" min="1" max="20" />
+                    <input type="number" id="num_menor" value="{num_menor_sug}" min="1" max="20" onchange="calcEspacoMenor()" />
+                </div>
+                <div class="campo">
+                    <label>Espaço entre ferros Menor (cm):</label>
+                    <input type="text" id="espaco_menor" value="{espaco_menor_sug}" onchange="calcQtdMenor()" />
                 </div>
                 <div class="campo-check">
                     <input type="checkbox" id="tem_inclinado" checked />
@@ -811,11 +867,10 @@ def mostrar_tela_confirmacao(pilar):
 def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     """
     Desenha os trilhos, conectores/estribos e cotas da Armadura de Punção em volta do pilar.
-    - Face maior: num_maior ferros perpendiculares
-    - Face menor: num_menor ferros perpendiculares
-    - 4 quinas: ferros inclinados a 45° (se tem_inclinado)
-    - Cotas verdes com valores de espaçamento e distância da face
-    - Anotação e esquema do estribo
+    - Face maior: num_maior ferros perpendiculares com cotas escalonadas em patamar (dogleg)
+    - Face menor: num_menor ferros perpendiculares com cotas alinhadas e sem sobreposição
+    - 4 quinas: ferros inclinados a 45° com cotas
+    - Detalhe esquemático dos estribos (15x21 cm) e texto 28x3 P1 ø 8 C=87
     """
     draw = dwg.draw
 
@@ -871,10 +926,71 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         draw.style = 0
         draw.Line(x - 1.2, y - 1.2, x + 1.2, y + 1.2)
 
-    def _texto_cota(x, y, txt, ang=0.0):
+    def _texto_cota(x, y, txt, h=5.2, ang=0.0):
         draw.level = NIV_COTA
         draw.color = COR_COTA
-        draw.Text(x, y, 7.5, ang, str(txt))
+        draw.Text(x, y, h, ang, str(txt))
+
+    def _cota_horizontal_staggered(y_cota, pts_x, witness_y_start):
+        """
+        Desenha linha de cota horizontal com chamada em patamar escalonado
+        para que números próximos nunca colidam, idêntico ao padrão TQS.
+        """
+        _linha_cota(pts_x[0], y_cota, pts_x[-1], y_cota)
+
+        for px_c in pts_x:
+            _linha_cota(px_c, witness_y_start, px_c, y_cota + 2.0)
+            _tick_cota(px_c, y_cota)
+
+        n_interv = len(pts_x) - 1
+        for i in range(n_interv):
+            x1_c, x2_c = pts_x[i], pts_x[i + 1]
+            dist_c = round(x2_c - x1_c, 2)
+            txt_v = f"{int(dist_c) if dist_c.is_integer() else dist_c}"
+            xm_c = (x1_c + x2_c) / 2.0
+
+            # Extremos (primeiro e último intervalo): cotas diretas sobre a linha
+            if i == 0 or i == n_interv - 1:
+                _texto_cota(xm_c - 4.5, y_cota + 2.0, txt_v, h=5.2)
+            else:
+                # Intervalos intermediários: escalonados (par embaixo, ímpar com patamar elevado)
+                if (i % 2) == 0:
+                    _texto_cota(xm_c - 4.5, y_cota + 2.0, txt_v, h=5.2)
+                else:
+                    # Chamada em patamar (dogleg leader a 60° com prateleira)
+                    x_knee = xm_c + 2.8
+                    y_knee = y_cota + 8.5
+                    x_shelf_end = x_knee + 13.0
+                    _linha_cota(xm_c, y_cota, x_knee, y_knee)
+                    _linha_cota(x_knee, y_knee, x_shelf_end, y_knee)
+                    _texto_cota(x_knee + 1.0, y_knee + 1.2, txt_v, h=5.2)
+
+    def _cota_vertical_alinhada(x_cota, pts_y, witness_x_start):
+        """
+        Desenha linha de cota vertical com textos a 90° e deslocamento nos extremos
+        para eliminar qualquer sobreposição.
+        """
+        _linha_cota(x_cota, pts_y[0], x_cota, pts_y[-1])
+
+        for py_c in pts_y:
+            _linha_cota(witness_x_start, py_c, x_cota - 2.0, py_c)
+            _tick_cota(x_cota, py_c)
+
+        n_interv = len(pts_y) - 1
+        for j in range(n_interv):
+            y1_c, y2_c = pts_y[j], pts_y[j + 1]
+            dist_cy = round(y2_c - y1_c, 2)
+            txt_vy = f"{int(dist_cy) if dist_cy.is_integer() else dist_cy}"
+            ym_c = (y1_c + y2_c) / 2.0
+
+            # Se o intervalo for o primeiro (inferior) ou último (superior) e pequeno,
+            # posiciona o texto para fora do intervalo para não colidir
+            if j == 0 and n_interv > 1:
+                _texto_cota(x_cota - 3.5, y1_c - 11.0, txt_vy, h=5.0, ang=90.0)
+            elif j == n_interv - 1 and n_interv > 1:
+                _texto_cota(x_cota - 3.5, y2_c + 2.0, txt_vy, h=5.0, ang=90.0)
+            else:
+                _texto_cota(x_cota - 3.5, ym_c - 3.0, txt_vy, h=5.0, ang=90.0)
 
     # ==========================================================================
     # CASO 1: PILAR HORIZONTAL (Face maior no topo e base)
@@ -926,20 +1042,10 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
         # 3. COTAS (Se ativadas)
         if desenhar_cotas:
-            # Cota Superior
+            # Cota Superior com Patamares Escalonados (Dogleg)
             y_cota_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos + 13.0
-            _linha_cota(px_min, y_cota_sup, px_max, y_cota_sup)
-
             pts_cota_x = [px_min] + list(pos_maior) + [px_max]
-            for px_c in pts_cota_x:
-                _linha_cota(px_c, py_max + 1.0, px_c, y_cota_sup + 2.0)
-                _tick_cota(px_c, y_cota_sup)
-
-            for i in range(len(pts_cota_x) - 1):
-                x1_c, x2_c = pts_cota_x[i], pts_cota_x[i + 1]
-                dist_c = round(x2_c - x1_c, 2)
-                txt_v = f"{int(dist_c) if dist_c.is_integer() else dist_c}"
-                _texto_cota((x1_c + x2_c) / 2.0 - 4.0, y_cota_sup + 3.0, txt_v)
+            _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 1.0)
 
             # Distância ao 1º pino na face maior (cota_y)
             if pos_maior:
@@ -950,33 +1056,24 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                 _tick_cota(x_ref, py_max)
                 _tick_cota(x_ref, py_max + cota_y)
                 txt_cy = f"{int(cota_y) if cota_y.is_integer() else cota_y}"
-                _texto_cota(x_ref - 7.0, py_max + cota_y / 2.0 - 3.0, txt_cy, ang=90.0)
+                _texto_cota(x_ref - 7.0, py_max + cota_y / 2.0 - 2.5, txt_cy, h=5.2, ang=90.0)
 
-            # Cota Lateral Esquerda
+            # Cota Lateral Esquerda (Alinhada sem sobreposição)
             x_cota_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos - 13.0
-            _linha_cota(x_cota_esq, py_min, x_cota_esq, py_max)
-
             pts_cota_y = [py_min] + list(pos_menor) + [py_max]
-            for py_c in pts_cota_y:
-                _linha_cota(px_min - 1.0, py_c, x_cota_esq - 2.0, py_c)
-                _tick_cota(x_cota_esq, py_c)
+            _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 1.0)
 
-            for j in range(len(pts_cota_y) - 1):
-                y1_c, y2_c = pts_cota_y[j], pts_cota_y[j + 1]
-                dist_cy = round(y2_c - y1_c, 2)
-                txt_vy = f"{int(dist_cy) if dist_cy.is_integer() else dist_cy}"
-                _texto_cota(x_cota_esq - 4.0, (y1_c + y2_c) / 2.0 - 3.0, txt_vy, ang=90.0)
-
-            # Distância ao 1º pino na face menor (cota_x_linha)
-            if pos_menor:
-                y_ref = pos_menor[-1] + 6.0
-                _linha_cota(px_min - cota_x_linha, y_ref, px_min, y_ref)
-                _linha_cota(px_min, y_ref - 2.0, px_min, y_ref + 2.0)
-                _linha_cota(px_min - cota_x_linha, pos_menor[-1], px_min - cota_x_linha, y_ref + 2.0)
-                _tick_cota(px_min, y_ref)
-                _tick_cota(px_min - cota_x_linha, y_ref)
-                txt_cxl = f"{int(cota_x_linha) if cota_x_linha.is_integer() else cota_x_linha}"
-                _texto_cota(px_min - cota_x_linha / 2.0 - 4.0, y_ref + 3.0, txt_cxl)
+            # Distância horizontal da quina ao 1º pino da diagonal (cota 10 cm horizontal)
+            if tem_inclinado:
+                d0_diag = 10.0
+                x_pino_diag = px_min - d0_diag * 0.70710678
+                y_cota_diag_h = py_max + d0_diag * 0.70710678
+                _linha_cota(x_pino_diag, py_max, x_pino_diag, y_cota_diag_h + 3.0)
+                _linha_cota(px_min, py_max, px_min, y_cota_diag_h + 3.0)
+                _linha_cota(x_pino_diag, y_cota_diag_h, px_min, y_cota_diag_h)
+                _tick_cota(x_pino_diag, y_cota_diag_h)
+                _tick_cota(px_min, y_cota_diag_h)
+                _texto_cota((x_pino_diag + px_min) / 2.0 - 3.0, y_cota_diag_h + 1.5, f"{int(d0_diag)}", h=5.0)
 
     # ==========================================================================
     # CASO 2: PILAR VERTICAL (Face maior na lateral esquerda/direita)
@@ -1028,35 +1125,13 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
         # 3. COTAS
         if desenhar_cotas:
-            # Cota lateral esquerda (ao longo da face maior vertical)
             x_cota_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos - 13.0
-            _linha_cota(x_cota_esq, py_min, x_cota_esq, py_max)
-
             pts_cota_y = [py_min] + list(pos_maior) + [py_max]
-            for py_c in pts_cota_y:
-                _linha_cota(px_min - 1.0, py_c, x_cota_esq - 2.0, py_c)
-                _tick_cota(x_cota_esq, py_c)
+            _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 1.0)
 
-            for j in range(len(pts_cota_y) - 1):
-                y1_c, y2_c = pts_cota_y[j], pts_cota_y[j + 1]
-                dist_cy = round(y2_c - y1_c, 2)
-                txt_vy = f"{int(dist_cy) if dist_cy.is_integer() else dist_cy}"
-                _texto_cota(x_cota_esq - 4.0, (y1_c + y2_c) / 2.0 - 3.0, txt_vy, ang=90.0)
-
-            # Cota superior (ao longo da face menor horizontal)
             y_cota_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos + 13.0
-            _linha_cota(px_min, y_cota_sup, px_max, y_cota_sup)
-
             pts_cota_x = [px_min] + list(pos_menor) + [px_max]
-            for px_c in pts_cota_x:
-                _linha_cota(px_c, py_max + 1.0, px_c, y_cota_sup + 2.0)
-                _tick_cota(px_c, y_cota_sup)
-
-            for i in range(len(pts_cota_x) - 1):
-                x1_c, x2_c = pts_cota_x[i], pts_cota_x[i + 1]
-                dist_c = round(x2_c - x1_c, 2)
-                txt_v = f"{int(dist_c) if dist_c.is_integer() else dist_c}"
-                _texto_cota((x1_c + x2_c) / 2.0 - 4.0, y_cota_sup + 3.0, txt_v)
+            _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 1.0)
 
     # ==========================================================================
     # 3. FERROS INCLINADOS NAS 4 QUINAS (DIAGONAL A 45°)
@@ -1084,40 +1159,246 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                 dk = d0 + k * esp_pinos
                 _pino(qx + sx * dk * cos45, qy + sy * dk * sin45)
 
-            # Cota na diagonal
+            # Cota na diagonal (no canto inferior direito)
             if desenhar_cotas and sx == 1.0 and sy == -1.0:
-                c_mx = qx + sx * (d0 / 2.0) * cos45
-                c_my = qy + sy * (d0 / 2.0) * sin45
-                _texto_cota(c_mx + 2.0, c_my - 4.0, f"{int(d0)}", ang=45.0)
+                # Linha de cota perpendicular à diagonal
+                c_x1 = qx
+                c_y1 = qy
+                c_x2 = qx + d0 * cos45
+                c_y2 = qy - d0 * sin45
+                _linha_cota(c_x1, c_y1, c_x2, c_y2)
+                # Ticks nas extremidades a 135°
+                _linha_cota(c_x1 - 1.2, c_y1 + 1.2, c_x1 + 1.2, c_y1 - 1.2)
+                _linha_cota(c_x2 - 1.2, c_y2 + 1.2, c_x2 + 1.2, c_y2 - 1.2)
+                _texto_cota((c_x1 + c_x2) / 2.0 - 5.0, (c_y1 + c_y2) / 2.0 + 2.0, f"{int(d0)}", h=5.0, ang=45.0)
+
+
+# ==============================================================================
+# DESENHO DO CORTE A-A E SÍMBOLOS DE CORTE NA PLANTA (OPCIONAL/FUTURO)
+# ==============================================================================
+
+def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
+    """
+    Desenha o CORTE A-A completo e os símbolos de corte na planta:
+    1. Símbolos A ▲ nas laterais da planta da laje (Nível 241, Cor 2 Amarelo);
+    2. Perfil de concreto da laje e do pilar com linhas de quebra (Nível 241, Cor 3 Verde);
+    3. Armadura longitudinal contínua superior e inferior com ganchos (Nível 220, Cor 4 Ciano);
+    4. Armadura transversal em pontos (Nível 220, Cor 1 Vermelho);
+    5. Estribos de punção em corte (Nível 220, Amarelo e Roxo);
+    6. Chamadas 'ARMADURA NEGATIVA' e 'ARMADURA POSITIVA' (Nível 241, Cor 3 Verde);
+    7. Cota vertical da espessura da laje HD (Nível 241, Cor 3 Verde);
+    8. Título 'CORTE A-A' (Nível 245, Cor 2 Amarelo).
+    """
+    draw = dwg.draw
+
+    hd = float(config.get("hd", pilar.get("hd", 26.0)))
+    num_pinos = int(config.get("num_pinos", 3))
+    esp_pinos = float(config.get("esp_pinos", 15.0))
+    larg_area = float(pilar.get("larg_area", 248.0))
+    alt_area = float(pilar.get("alt_area", 200.0))
+
+    c_xmin, c_xmax, c_ymin, c_ymax, col_dx, col_dy, orientacao = obter_geometria_pilar(pilar)
+
+    px_min = x_alvo + c_xmin
+    px_max = x_alvo + c_xmax
+    py_min = y_alvo + c_ymin
+    py_max = y_alvo + c_ymax
+
+    box_x1 = x_alvo - larg_area / 2.0
+    box_x2 = x_alvo + larg_area / 2.0
+    box_y1 = y_alvo - alt_area / 2.0
+
+    if orientacao == 'H':
+        d_face_corte = float(config.get("cota_x_linha", 10.0))
+    else:
+        d_face_corte = float(config.get("cota_y", 10.0))
 
     # ==========================================================================
-    # 4. ANOTAÇÃO QUANTITATIVA E ESQUEMA DO ESTRIBO
+    # 1. SÍMBOLOS DE CORTE A-A NA PLANTA (Laterais da laje)
     # ==========================================================================
-    n_tot = 2 * num_maior + 2 * num_menor + (4 if tem_inclinado else 0)
-    c_tot = int(round(cota_y + (num_pinos - 1) * esp_pinos + 12.0))
+    py_corte_planta = (py_min + py_max) / 2.0
 
-    base_x = px_min - 20.0
-    base_y = py_min - 45.0
-
-    # Texto: ex "28x3 P1 %%C 8 C=87"
-    draw.level = NIV_FERRO
+    draw.level = 241
     draw.color = 2  # Amarelo
-    txt_quant = f"{n_tot}x{num_pinos} P1 %%C 8 C={c_tot}"
-    draw.Text(base_x - 10.0, base_y - 12.0, 9.0, 0.0, txt_quant)
+    draw.style = 0
 
-    # Esquema visual do estribo (dois retângulos sobrepostos)
-    draw.level = NIV_FERRO
-    draw.color = 6  # Magenta
-    draw.Line(base_x, base_y, base_x + 8.0, base_y)
-    draw.Line(base_x + 8.0, base_y, base_x + 8.0, base_y + 15.0)
-    draw.Line(base_x + 8.0, base_y + 15.0, base_x, base_y + 15.0)
-    draw.Line(base_x, base_y + 15.0, base_x, base_y)
+    # Símbolo Esquerdo
+    x_mark_esq = box_x1 - 16.0
+    draw.Line(x_mark_esq, py_corte_planta, box_x1, py_corte_planta)
+    draw.Line(x_mark_esq - 3.5, py_corte_planta - 1.5, x_mark_esq + 3.5, py_corte_planta - 1.5)
+    draw.Line(x_mark_esq - 3.5, py_corte_planta - 1.5, x_mark_esq, py_corte_planta + 5.0)
+    draw.Line(x_mark_esq + 3.5, py_corte_planta - 1.5, x_mark_esq, py_corte_planta + 5.0)
+    draw.Line(x_mark_esq - 2.0, py_corte_planta, x_mark_esq + 2.0, py_corte_planta)
+    draw.Line(x_mark_esq - 1.0, py_corte_planta + 2.0, x_mark_esq + 1.0, py_corte_planta + 2.0)
+    draw.Text(x_mark_esq - 11.0, py_corte_planta - 2.5, 8.0, 0.0, "A")
 
+    # Símbolo Direito
+    x_mark_dir = box_x2 + 16.0
+    draw.Line(box_x2, py_corte_planta, x_mark_dir, py_corte_planta)
+    draw.Line(x_mark_dir - 3.5, py_corte_planta - 1.5, x_mark_dir + 3.5, py_corte_planta - 1.5)
+    draw.Line(x_mark_dir - 3.5, py_corte_planta - 1.5, x_mark_dir, py_corte_planta + 5.0)
+    draw.Line(x_mark_dir + 3.5, py_corte_planta - 1.5, x_mark_dir, py_corte_planta + 5.0)
+    draw.Line(x_mark_dir - 2.0, py_corte_planta, x_mark_dir + 2.0, py_corte_planta)
+    draw.Line(x_mark_dir - 1.0, py_corte_planta + 2.0, x_mark_dir + 1.0, py_corte_planta + 2.0)
+    draw.Text(x_mark_dir + 5.0, py_corte_planta - 2.5, 8.0, 0.0, "A")
+
+    # ==========================================================================
+    # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE A-A
+    # ==========================================================================
+    y_corte_topo = box_y1 - 65.0
+    y_corte_base = y_corte_topo - hd
+
+    x_corte_esq = box_x1 - 10.0
+    x_corte_dir = box_x2 + 10.0
+
+    y_col_sup = y_corte_topo + 22.0
+    y_col_inf = y_corte_base - 22.0
+
+    def _linha_quebra_h(x1, x2, y, h_zig=3.5, w_zig=6.0):
+        xm = (x1 + x2) / 2.0
+        draw.Line(x1, y, xm - w_zig, y)
+        draw.Line(xm - w_zig, y, xm - w_zig / 3.0, y + h_zig)
+        draw.Line(xm - w_zig / 3.0, y + h_zig, xm + w_zig / 3.0, y - h_zig)
+        draw.Line(xm + w_zig / 3.0, y - h_zig, xm + w_zig, y)
+        draw.Line(xm + w_zig, y, x2, y)
+
+    # Contorno de Concreto (Nível 241, Cor 3 Verde)
+    draw.level = 241
+    draw.color = 3  # Verde
+    draw.style = 0
+
+    # Laje Superior
+    draw.Line(x_corte_esq, y_corte_topo, px_min, y_corte_topo)
+    draw.Line(px_max, y_corte_topo, x_corte_dir, y_corte_topo)
+
+    # Laje Inferior
+    draw.Line(x_corte_esq, y_corte_base, px_min, y_corte_base)
+    draw.Line(px_max, y_corte_base, x_corte_dir, y_corte_base)
+
+    # Fechamentos laterais da laje
+    draw.Line(x_corte_esq, y_corte_base, x_corte_esq, y_corte_topo)
+    draw.Line(x_corte_dir, y_corte_base, x_corte_dir, y_corte_topo)
+
+    # Projeção do Pilar Superior
+    draw.Line(px_min, y_corte_topo, px_min, y_col_sup)
+    draw.Line(px_max, y_corte_topo, px_max, y_col_sup)
+    _linha_quebra_h(px_min, px_max, y_col_sup)
+
+    # Projeção do Pilar Inferior
+    draw.Line(px_min, y_corte_base, px_min, y_col_inf)
+    draw.Line(px_max, y_corte_base, px_max, y_col_inf)
+    _linha_quebra_h(px_min, px_max, y_col_inf)
+
+    # ==========================================================================
+    # 3. ARMADURA LONGITUDINAL CONTÍNUA (Superior e Inferior com ganchos)
+    # ==========================================================================
+    draw.level = 220
+    draw.color = 4  # Ciano
+    draw.style = 0
+
+    cob = 2.5
+    y_bar_top = y_corte_topo - cob
+    y_bar_bot = y_corte_base + cob
+
+    # Barra Superior
+    draw.Line(x_corte_esq + cob, y_bar_top, x_corte_dir - cob, y_bar_top)
+    draw.Line(x_corte_esq + cob, y_bar_top, x_corte_esq + cob, y_bar_top - 10.0)
+    draw.Line(x_corte_dir - cob, y_bar_top, x_corte_dir - cob, y_bar_top - 10.0)
+
+    # Barra Inferior
+    draw.Line(x_corte_esq + cob, y_bar_bot, x_corte_dir - cob, y_bar_bot)
+    draw.Line(x_corte_esq + cob, y_bar_bot, x_corte_esq + cob, y_bar_bot + 10.0)
+    draw.Line(x_corte_dir - cob, y_bar_bot, x_corte_dir - cob, y_bar_bot + 10.0)
+
+    # ==========================================================================
+    # 4. ARMADURA TRANSVERSAL EM PONTOS (Pontos Vermelhos ao longo do corte)
+    # ==========================================================================
+    draw.level = 220
+    draw.color = 1  # Vermelho
+    draw.style = 0
+
+    span_x = (x_corte_dir - cob) - (x_corte_esq + cob) - 16.0
+    if span_x > 30.0:
+        n_dots = int(span_x / 16.0) + 1
+        dx_dot = span_x / (n_dots - 1)
+        for i in range(n_dots):
+            xd = (x_corte_esq + cob + 8.0) + i * dx_dot
+            draw.Circle(xd, y_bar_top - 2.5, 1.2)
+            draw.Circle(xd, y_bar_bot + 2.5, 1.2)
+
+    # ==========================================================================
+    # 5. ESTRIBOS DE PUNÇÃO NO CORTE (Amarelos e Roxos)
+    # ==========================================================================
+    w_estribo = 15.0
+
+    # Lado Esquerdo do pilar (Amarelos)
+    draw.level = 220
     draw.color = 2  # Amarelo
-    draw.Line(base_x + 4.0, base_y - 3.0, base_x + 12.0, base_y - 3.0)
-    draw.Line(base_x + 12.0, base_y - 3.0, base_x + 12.0, base_y + 12.0)
-    draw.Line(base_x + 12.0, base_y + 12.0, base_x + 4.0, base_y + 12.0)
-    draw.Line(base_x + 4.0, base_y + 12.0, base_x + 4.0, base_y - 3.0)
+    for k in range(num_pinos):
+        xc_st = px_min - d_face_corte - k * esp_pinos
+        x1_st = xc_st - w_estribo / 2.0
+        x2_st = xc_st + w_estribo / 2.0
+        draw.Line(x1_st, y_bar_bot, x2_st, y_bar_bot)
+        draw.Line(x2_st, y_bar_bot, x2_st, y_bar_top)
+        draw.Line(x2_st, y_bar_top, x1_st, y_bar_top)
+        draw.Line(x1_st, y_bar_top, x1_st, y_bar_bot)
+
+    # Lado Direito do pilar (1º Roxo, demais Amarelos)
+    for k in range(num_pinos):
+        xc_st = px_max + d_face_corte + k * esp_pinos
+        x1_st = xc_st - w_estribo / 2.0
+        x2_st = xc_st + w_estribo / 2.0
+        draw.color = 6 if k == 0 else 2  # Magenta no primeiro, amarelo nos demais
+        draw.Line(x1_st, y_bar_bot, x2_st, y_bar_bot)
+        draw.Line(x2_st, y_bar_bot, x2_st, y_bar_top)
+        draw.Line(x2_st, y_bar_top, x1_st, y_bar_top)
+        draw.Line(x1_st, y_bar_top, x1_st, y_bar_bot)
+
+    # ==========================================================================
+    # 6. CHAMADAS DE TEXTO: ARMADURA NEGATIVA & ARMADURA POSITIVA
+    # ==========================================================================
+    draw.level = 241
+    draw.color = 3  # Verde
+    draw.style = 0
+
+    # Chamada Superior: ARMADURA NEGATIVA
+    x_pt_sup = x_corte_esq + 22.0
+    y_pt_sup = y_bar_top
+    x_knee_sup = x_corte_esq - 6.0
+    y_knee_sup = y_corte_topo + 9.0
+    x_shelf_sup = x_corte_esq + 58.0
+    draw.Line(x_pt_sup, y_pt_sup, x_knee_sup, y_knee_sup)
+    draw.Line(x_knee_sup, y_knee_sup, x_shelf_sup, y_knee_sup)
+    draw.Text(x_knee_sup + 2.0, y_knee_sup + 1.2, 5.0, 0.0, "ARMADURA NEGATIVA")
+
+    # Chamada Inferior: ARMADURA POSITIVA
+    x_pt_inf = x_corte_esq + 22.0
+    y_pt_inf = y_bar_bot
+    x_knee_inf = x_corte_esq - 6.0
+    y_knee_inf = y_corte_base - 9.0
+    x_shelf_inf = x_corte_esq + 58.0
+    draw.Line(x_pt_inf, y_pt_inf, x_knee_inf, y_knee_inf)
+    draw.Line(x_knee_inf, y_knee_inf, x_shelf_inf, y_knee_inf)
+    draw.Text(x_knee_inf + 2.0, y_knee_inf - 5.5, 5.0, 0.0, "ARMADURA POSITIVA")
+
+    # ==========================================================================
+    # 7. COTA VERTICAL DA ESPESSURA HD DA LAJE
+    # ==========================================================================
+    x_cota_hd = x_corte_dir + 10.0
+    draw.Line(x_corte_dir, y_corte_base, x_cota_hd + 2.0, y_corte_base)
+    draw.Line(x_corte_dir, y_corte_topo, x_cota_hd + 2.0, y_corte_topo)
+    draw.Line(x_cota_hd, y_corte_base, x_cota_hd, y_corte_topo)
+    draw.Line(x_cota_hd - 1.2, y_corte_base - 1.2, x_cota_hd + 1.2, y_corte_base + 1.2)
+    draw.Line(x_cota_hd - 1.2, y_corte_topo - 1.2, x_cota_hd + 1.2, y_corte_topo + 1.2)
+    txt_hd = f"{int(hd) if hd.is_integer() else hd}"
+    draw.Text(x_cota_hd - 3.5, (y_corte_base + y_corte_topo) / 2.0 - 2.5, 5.0, 90.0, txt_hd)
+
+    # ==========================================================================
+    # 8. TÍTULO CORTE A-A
+    # ==========================================================================
+    draw.level = 245
+    draw.color = 2  # Amarelo
+    draw.Text(x_alvo - 24.0, y_corte_base - 22.0, 8.5, 0.0, "CORTE  A-A")
 
 
 # ==============================================================================
@@ -1225,6 +1506,7 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
             TQSUtil.ShowException(e)
         except Exception:
             pass
+
 
 
 # ==============================================================================
