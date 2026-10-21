@@ -1226,15 +1226,14 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
 def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
     """
-    Desenha o CORTE A-A completo e os símbolos de corte na planta:
-    1. Símbolos A ▲ nas laterais da planta da laje (Nível 241, Cor 2 Amarelo);
+    Desenha o corte esquemático na parte inferior e os símbolos de corte A na planta:
+    1. Símbolos A ▲ nas laterais do quadrado da planta (Nível 241, Cor 2 Amarelo);
     2. Perfil de concreto da laje e do pilar com linhas de quebra (Nível 241, Cor 3 Verde);
-    3. Armadura longitudinal contínua superior e inferior com ganchos (Nível 220, Cor 4 Ciano);
-    4. Armadura transversal em pontos (Nível 220, Cor 1 Vermelho);
-    5. Estribos de punção em corte (Nível 220, Amarelo e Roxo);
-    6. Chamadas 'ARMADURA NEGATIVA' e 'ARMADURA POSITIVA' (Nível 241, Cor 3 Verde);
-    7. Cota vertical da espessura da laje HD (Nível 241, Cor 3 Verde);
-    8. Título 'CORTE A-A' (Nível 245, Cor 2 Amarelo).
+    3. Barras longitudinais contínuas superior e inferior (Nível 220, Cor 4 Ciano);
+    4. Bolinhas vermelhas da armadura transversal (Nível 220, Cor 1 Vermelho);
+    5. Estribos de punção em corte alinhados com os estribos da planta, com ganchos a 45°
+       (Nível 220, Amarelos na esquerda; 1º Roxo e demais Amarelos na direita);
+    6. Cota vertical da espessura da laje HD na lateral direita (Nível 241, Cor 3 Verde).
     """
     draw = dwg.draw
 
@@ -1260,6 +1259,11 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
     else:
         d_face_corte = float(config.get("cota_y", 10.0))
 
+    n_estribos = max(1, num_pinos)
+    passo_dupla = 2.25
+    raio_dot = 1.15
+    comp_trilho = n_estribos * esp_pinos + (n_estribos - 1) * passo_dupla
+
     # ==========================================================================
     # 1. SÍMBOLOS DE CORTE A-A NA PLANTA (Laterais da laje)
     # ==========================================================================
@@ -1271,37 +1275,36 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
 
     # Símbolo Esquerdo
     x_mark_esq = box_x1 - 16.0
-    draw.Line(x_mark_esq, py_corte_planta, box_x1, py_corte_planta)
-    draw.Line(x_mark_esq - 3.5, py_corte_planta - 1.5, x_mark_esq + 3.5, py_corte_planta - 1.5)
+    draw.Line(x_mark_esq - 12.0, py_corte_planta - 1.5, x_mark_esq + 6.0, py_corte_planta - 1.5)
     draw.Line(x_mark_esq - 3.5, py_corte_planta - 1.5, x_mark_esq, py_corte_planta + 5.0)
     draw.Line(x_mark_esq + 3.5, py_corte_planta - 1.5, x_mark_esq, py_corte_planta + 5.0)
-    draw.Line(x_mark_esq - 2.0, py_corte_planta, x_mark_esq + 2.0, py_corte_planta)
-    draw.Line(x_mark_esq - 1.0, py_corte_planta + 2.0, x_mark_esq + 1.0, py_corte_planta + 2.0)
-    draw.Text(x_mark_esq - 11.0, py_corte_planta - 2.5, 8.0, 0.0, "A")
+    draw.Line(x_mark_esq - 2.2, py_corte_planta + 0.5, x_mark_esq + 2.2, py_corte_planta + 0.5)
+    draw.Line(x_mark_esq - 1.2, py_corte_planta + 2.5, x_mark_esq + 1.2, py_corte_planta + 2.5)
+    draw.Text(x_mark_esq + 4.5, py_corte_planta - 1.0, 7.5, 0.0, "A")
 
     # Símbolo Direito
     x_mark_dir = box_x2 + 16.0
-    draw.Line(box_x2, py_corte_planta, x_mark_dir, py_corte_planta)
-    draw.Line(x_mark_dir - 3.5, py_corte_planta - 1.5, x_mark_dir + 3.5, py_corte_planta - 1.5)
+    draw.Line(x_mark_dir - 12.0, py_corte_planta - 1.5, x_mark_dir + 6.0, py_corte_planta - 1.5)
     draw.Line(x_mark_dir - 3.5, py_corte_planta - 1.5, x_mark_dir, py_corte_planta + 5.0)
     draw.Line(x_mark_dir + 3.5, py_corte_planta - 1.5, x_mark_dir, py_corte_planta + 5.0)
-    draw.Line(x_mark_dir - 2.0, py_corte_planta, x_mark_dir + 2.0, py_corte_planta)
-    draw.Line(x_mark_dir - 1.0, py_corte_planta + 2.0, x_mark_dir + 1.0, py_corte_planta + 2.0)
-    draw.Text(x_mark_dir + 5.0, py_corte_planta - 2.5, 8.0, 0.0, "A")
+    draw.Line(x_mark_dir - 2.2, py_corte_planta + 0.5, x_mark_dir + 2.2, py_corte_planta + 0.5)
+    draw.Line(x_mark_dir - 1.2, py_corte_planta + 2.5, x_mark_dir + 1.2, py_corte_planta + 2.5)
+    draw.Text(x_mark_dir - 11.0, py_corte_planta - 1.0, 7.5, 0.0, "A")
 
     # ==========================================================================
-    # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE A-A
+    # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE (PARTE DE BAIXO)
     # ==========================================================================
-    y_corte_topo = box_y1 - 65.0
+    y_corte_topo = box_y1 - 45.0
     y_corte_base = y_corte_topo - hd
 
-    x_corte_esq = box_x1 - 10.0
-    x_corte_dir = box_x2 + 10.0
+    # Largura da laje no corte acompanha os estribos laterais + folga
+    x_corte_esq = px_min - d_face_corte - comp_trilho - 24.0
+    x_corte_dir = px_max + d_face_corte + comp_trilho + 24.0
 
-    y_col_sup = y_corte_topo + 22.0
-    y_col_inf = y_corte_base - 22.0
+    y_col_sup = y_corte_topo + 18.0
+    y_col_inf = y_corte_base - 18.0
 
-    def _linha_quebra_h(x1, x2, y, h_zig=3.5, w_zig=6.0):
+    def _linha_quebra_h(x1, x2, y, h_zig=6.5, w_zig=2.5):
         xm = (x1 + x2) / 2.0
         draw.Line(x1, y, xm - w_zig, y)
         draw.Line(xm - w_zig, y, xm - w_zig / 3.0, y + h_zig)
@@ -1337,115 +1340,146 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
     _linha_quebra_h(px_min, px_max, y_col_inf)
 
     # ==========================================================================
-    # 3. ARMADURA LONGITUDINAL CONTÍNUA (Superior e Inferior com ganchos)
+    # 3. BARRAS LONGITUDINAIS CONTÍNUAS SUPERIOR E INFERIOR (Ciano)
     # ==========================================================================
     draw.level = 220
     draw.color = 4  # Ciano
     draw.style = 0
 
-    cob = 2.5
+    cob = 2.0
     y_bar_top = y_corte_topo - cob
     y_bar_bot = y_corte_base + cob
 
-    # Barra Superior
-    draw.Line(x_corte_esq + cob, y_bar_top, x_corte_dir - cob, y_bar_top)
-    draw.Line(x_corte_esq + cob, y_bar_top, x_corte_esq + cob, y_bar_top - 10.0)
-    draw.Line(x_corte_dir - cob, y_bar_top, x_corte_dir - cob, y_bar_top - 10.0)
-
-    # Barra Inferior
-    draw.Line(x_corte_esq + cob, y_bar_bot, x_corte_dir - cob, y_bar_bot)
-    draw.Line(x_corte_esq + cob, y_bar_bot, x_corte_esq + cob, y_bar_bot + 10.0)
-    draw.Line(x_corte_dir - cob, y_bar_bot, x_corte_dir - cob, y_bar_bot + 10.0)
+    draw.Line(x_corte_esq + 1.5, y_bar_top, x_corte_dir - 1.5, y_bar_top)
+    draw.Line(x_corte_esq + 1.5, y_bar_bot, x_corte_dir - 1.5, y_bar_bot)
 
     # ==========================================================================
-    # 4. ARMADURA TRANSVERSAL EM PONTOS (Pontos Vermelhos ao longo do corte)
+    # 4. ESTRIBOS DE PUNÇÃO NO CORTE E BOLINHAS VERMELHAS DA ARMADURA TRANSVERSAL
     # ==========================================================================
-    draw.level = 220
-    draw.color = 1  # Vermelho
-    draw.style = 0
+    y_dot_top = y_bar_top - 1.4
+    y_dot_bot = y_bar_bot + 1.4
+    y_st_top = y_bar_top + 0.6
+    y_st_bot = y_bar_bot - 0.6
 
-    span_x = (x_corte_dir - cob) - (x_corte_esq + cob) - 16.0
-    if span_x > 30.0:
-        n_dots = int(span_x / 16.0) + 1
-        dx_dot = span_x / (n_dots - 1)
-        for i in range(n_dots):
-            xd = (x_corte_esq + cob + 8.0) + i * dx_dot
-            draw.Circle(xd, y_bar_top - 2.5, 1.2)
-            draw.Circle(xd, y_bar_bot + 2.5, 1.2)
+    def _desenhar_dot_par(xd):
+        draw.level = 220
+        draw.color = 1  # Vermelho
+        draw.style = 0
+        draw.Circle(xd, y_dot_top, raio_dot)
+        draw.Circle(xd, y_dot_bot, raio_dot)
+
+    def _desenhar_estribo_corte(x_left, x_right, cor_st):
+        draw.level = 220
+        draw.color = cor_st
+        draw.style = 0
+        # Retângulo do estribo
+        draw.Line(x_left, y_st_bot, x_right, y_st_bot)
+        draw.Line(x_right, y_st_bot, x_right, y_st_top)
+        draw.Line(x_right, y_st_top, x_left, y_st_top)
+        draw.Line(x_left, y_st_top, x_left, y_st_bot)
+        # Gancho paralelo a -45° no canto superior esquerdo do estribo
+        draw.Line(x_left + 1.6, y_st_top, x_left + 4.2, y_st_top - 2.6)
+        draw.Line(x_left, y_st_top - 1.6, x_left + 2.6, y_st_top - 4.2)
+
+    # Posições das bolinhas nos estribos da esquerda e da direita
+    passo_corte = esp_pinos - passo_dupla
+    for k in range(n_estribos + 1):
+        d_k = d_face_corte + k * passo_corte
+        _desenhar_dot_par(px_min - d_k)
+        _desenhar_dot_par(px_max + d_k)
+
+    # Bolinhas intermediárias no vão central (entre o 1º estribo esquerdo e o 1º direito)
+    x_int_esq = px_min - d_face_corte
+    x_int_dir = px_max + d_face_corte
+    vao_central = x_int_dir - x_int_esq
+    n_int = max(2, int(round(vao_central / 14.5)))
+    passo_int = vao_central / n_int
+    for i in range(1, n_int):
+        _desenhar_dot_par(x_int_esq + i * passo_int)
+
+    # Bolinhas nas pontas externas (além dos últimos estribos até a borda do corte)
+    x_ult_esq = px_min - (d_face_corte + n_estribos * passo_corte)
+    x_ult_dir = px_max + (d_face_corte + n_estribos * passo_corte)
+    d_ext = 13.0
+    while x_ult_esq - d_ext >= x_corte_esq + 3.5:
+        _desenhar_dot_par(x_ult_esq - d_ext)
+        d_ext += 13.0
+    d_ext = 13.0
+    while x_ult_dir + d_ext <= x_corte_dir - 3.5:
+        _desenhar_dot_par(x_ult_dir + d_ext)
+        d_ext += 13.0
+
+    # Estribos do Lado Esquerdo do pilar (Todos Amarelos)
+    for k in range(n_estribos):
+        d_k_ini = d_face_corte + k * passo_corte
+        x_r = px_min - d_k_ini + raio_dot + 0.3
+        x_l = px_min - (d_k_ini + passo_corte) - raio_dot - 0.3
+        _desenhar_estribo_corte(x_l, x_r, 2)
+
+    # Estribos do Lado Direito do pilar (1º Roxo/Magenta, demais Amarelos)
+    for k in range(n_estribos):
+        d_k_ini = d_face_corte + k * passo_corte
+        x_l = px_max + d_k_ini - raio_dot - 0.3
+        x_r = px_max + (d_k_ini + passo_corte) + raio_dot + 0.3
+        cor_k = 6 if k == 0 else 2
+        _desenhar_estribo_corte(x_l, x_r, cor_k)
 
     # ==========================================================================
-    # 5. ESTRIBOS DE PUNÇÃO NO CORTE (Amarelos e Roxos)
-    # ==========================================================================
-    w_estribo = 15.0
-
-    # Lado Esquerdo do pilar (Amarelos)
-    draw.level = 220
-    draw.color = 2  # Amarelo
-    for k in range(num_pinos):
-        xc_st = px_min - d_face_corte - k * esp_pinos
-        x1_st = xc_st - w_estribo / 2.0
-        x2_st = xc_st + w_estribo / 2.0
-        draw.Line(x1_st, y_bar_bot, x2_st, y_bar_bot)
-        draw.Line(x2_st, y_bar_bot, x2_st, y_bar_top)
-        draw.Line(x2_st, y_bar_top, x1_st, y_bar_top)
-        draw.Line(x1_st, y_bar_top, x1_st, y_bar_bot)
-
-    # Lado Direito do pilar (1º Roxo, demais Amarelos)
-    for k in range(num_pinos):
-        xc_st = px_max + d_face_corte + k * esp_pinos
-        x1_st = xc_st - w_estribo / 2.0
-        x2_st = xc_st + w_estribo / 2.0
-        draw.color = 6 if k == 0 else 2  # Magenta no primeiro, amarelo nos demais
-        draw.Line(x1_st, y_bar_bot, x2_st, y_bar_bot)
-        draw.Line(x2_st, y_bar_bot, x2_st, y_bar_top)
-        draw.Line(x2_st, y_bar_top, x1_st, y_bar_top)
-        draw.Line(x1_st, y_bar_top, x1_st, y_bar_bot)
-
-    # ==========================================================================
-    # 6. CHAMADAS DE TEXTO: ARMADURA NEGATIVA & ARMADURA POSITIVA
+    # 6. CHAMADAS DE TEXTO: FERRAGEM NEGATIVA & FERRAGEM POSITIVA
     # ==========================================================================
     draw.level = 241
     draw.color = 3  # Verde
     draw.style = 0
 
-    # Chamada Superior: ARMADURA NEGATIVA
-    x_pt_sup = x_corte_esq + 22.0
+    # Chamada Superior (apontando para a barra ciano superior à esquerda dos estribos)
+    x_pt_sup = x_corte_esq + 6.5
     y_pt_sup = y_bar_top
-    x_knee_sup = x_corte_esq - 6.0
-    y_knee_sup = y_corte_topo + 9.0
-    x_shelf_sup = x_corte_esq + 58.0
+    x_knee_sup = x_pt_sup + 9.0
+    y_knee_sup = y_corte_topo + 8.0
+    x_shelf_sup = min(x_knee_sup + 52.0, px_min - 3.0)
     draw.Line(x_pt_sup, y_pt_sup, x_knee_sup, y_knee_sup)
     draw.Line(x_knee_sup, y_knee_sup, x_shelf_sup, y_knee_sup)
-    draw.Text(x_knee_sup + 2.0, y_knee_sup + 1.2, 5.0, 0.0, "ARMADURA NEGATIVA")
+    # Seta na ponta da chamada superior
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 2.8, y_pt_sup + 1.4)
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 1.4, y_pt_sup + 2.8)
+    draw.Text(x_knee_sup + 1.0, y_knee_sup + 1.2, 4.2, 0.0, "FERRAGEM NEGATIVA")
 
-    # Chamada Inferior: ARMADURA POSITIVA
-    x_pt_inf = x_corte_esq + 22.0
+    # Chamada Inferior (apontando para a barra ciano inferior à esquerda dos estribos)
+    x_pt_inf = x_corte_esq + 6.5
     y_pt_inf = y_bar_bot
-    x_knee_inf = x_corte_esq - 6.0
-    y_knee_inf = y_corte_base - 9.0
-    x_shelf_inf = x_corte_esq + 58.0
+    x_knee_inf = x_pt_inf + 7.5
+    y_knee_inf = y_corte_base - 14.0
+    x_shelf_inf = min(x_knee_inf + 52.0, px_min - 3.0)
     draw.Line(x_pt_inf, y_pt_inf, x_knee_inf, y_knee_inf)
     draw.Line(x_knee_inf, y_knee_inf, x_shelf_inf, y_knee_inf)
-    draw.Text(x_knee_inf + 2.0, y_knee_inf - 5.5, 5.0, 0.0, "ARMADURA POSITIVA")
+    # Seta na ponta da chamada inferior
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 2.4, y_pt_inf - 2.0)
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 0.8, y_pt_inf - 3.0)
+    draw.Text(x_knee_inf + 1.0, y_knee_inf + 1.2, 4.2, 0.0, "FERRAGEM POSITIVA")
 
     # ==========================================================================
-    # 7. COTA VERTICAL DA ESPESSURA HD DA LAJE
+    # 7. COTA VERTICAL DA ESPESSURA HD DA LAJE (Direita)
     # ==========================================================================
+    draw.level = 241
+    draw.color = 3  # Verde
+    draw.style = 0
+
     x_cota_hd = x_corte_dir + 10.0
-    draw.Line(x_corte_dir, y_corte_base, x_cota_hd + 2.0, y_corte_base)
-    draw.Line(x_corte_dir, y_corte_topo, x_cota_hd + 2.0, y_corte_topo)
-    draw.Line(x_cota_hd, y_corte_base, x_cota_hd, y_corte_topo)
+    draw.Line(x_corte_dir + 2.0, y_corte_base, x_cota_hd + 3.5, y_corte_base)
+    draw.Line(x_corte_dir + 2.0, y_corte_topo, x_cota_hd + 3.5, y_corte_topo)
+    draw.Line(x_cota_hd, y_corte_base - 3.5, x_cota_hd, y_corte_topo + 3.5)
     draw.Line(x_cota_hd - 1.2, y_corte_base - 1.2, x_cota_hd + 1.2, y_corte_base + 1.2)
     draw.Line(x_cota_hd - 1.2, y_corte_topo - 1.2, x_cota_hd + 1.2, y_corte_topo + 1.2)
     txt_hd = f"{int(hd) if hd.is_integer() else hd}"
-    draw.Text(x_cota_hd - 3.5, (y_corte_base + y_corte_topo) / 2.0 - 2.5, 5.0, 90.0, txt_hd)
+    larg_hd = len(txt_hd) * 3.5
+    draw.Text(x_cota_hd - 1.8, (y_corte_base + y_corte_topo) / 2.0 - larg_hd / 2.0, 4.8, 90.0, txt_hd)
 
     # ==========================================================================
     # 8. TÍTULO CORTE A-A
     # ==========================================================================
     draw.level = 245
     draw.color = 2  # Amarelo
-    draw.Text(x_alvo - 24.0, y_corte_base - 22.0, 8.5, 0.0, "CORTE  A-A")
+    draw.Text((px_min + px_max) / 2.0 - 160.0, y_col_inf - 16.0, 8.5, 0.0, "CORTE  A-A")
 
 
 # ==============================================================================
@@ -1534,11 +1568,11 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
     draw.Line(box_x2, box_y2, box_x1, box_y2)
     draw.Line(box_x1, box_y2, box_x1, box_y1)
 
-    # Rótulo HD no canto inferior direito interno da área
+    # Rótulo HC no canto inferior direito interno da área
     draw.level = 241
     draw.color = 3  # Verde
-    txt_hd = f"HD={int(hd) if hd.is_integer() else hd}"
-    draw.Text(box_x2 - 38.0, box_y1 + 8.0, 11.0, 0.0, txt_hd)
+    txt_hc = f"HC={int(hd) if hd.is_integer() else hd}"
+    draw.Text(box_x2 - 55.0, box_y1 + 8.0, 11.0, 0.0, txt_hc)
 
     # Título no topo
     draw.level = 245
@@ -1548,6 +1582,15 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
     # 6. ARMADURA DE PUNÇÃO (TRILHOS, PINOS E COTAGEM EM VOLTA DO PILAR)
     try:
         desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config)
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+    # 7. CORTE ESQUEMÁTICO NA PARTE DE BAIXO E SÍMBOLOS DE CORTE A-A
+    try:
+        desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config)
     except Exception as e:
         try:
             TQSUtil.ShowException(e)
