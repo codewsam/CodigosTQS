@@ -1026,14 +1026,15 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             else:
                 if n_interv > 3 and (j % 2) == 1:
                     y_start = ym_c - 1.5
-                    x_knee = x_cota - 9.5
+                    x_knee = x_cota - 12.5
                     y_knee = ym_c + 1.2
                     y_shelf_top = y_knee + max(larg_txt + 2.0, 14.0)
                     _linha_cota(x_cota - 1.2, y_start, x_knee, y_knee)
                     _linha_cota(x_knee, y_knee, x_knee, y_shelf_top)
-                    _texto_cota(x_knee - 1.5, y_knee + 0.8, txt_vy, h=4.8, ang=90.0)
+                    _texto_cota(x_knee - 1.8, y_knee + 0.8, txt_vy, h=4.8, ang=90.0)
                 else:
-                    _texto_cota(x_cota - 1.8, ym_c - larg_txt / 2.0, txt_vy, h=4.8, ang=90.0)
+                    # Afasta o texto intermediário (ex: 14.9) para a esquerda das linhas de chamada horizontais
+                    _texto_cota(x_cota - 7.5, ym_c - larg_txt / 2.0, txt_vy, h=4.8, ang=90.0)
 
     def _cotas_afastamento_ferros(dist_esq, dist_inf):
         """
