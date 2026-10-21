@@ -894,13 +894,17 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     py_min = y_alvo + c_ymin
     py_max = y_alvo + c_ymax
 
-    raio_pino = 1.8
+    raio_pino = 1.15
 
     NIV_FERRO = 220
     COR_TRILHO = 4    # Ciano
     COR_PINO = 1      # Vermelho
     NIV_COTA = 241
     COR_COTA = 3      # Verde
+
+    def _fmt_num(val):
+        val_r = round(float(val), 2)
+        return f"{int(val_r)}" if val_r.is_integer() else f"{val_r}"
 
     def _linha_ferro(x1, y1, x2, y2):
         draw.level = NIV_FERRO
@@ -926,77 +930,132 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         draw.style = 0
         draw.Line(x - 1.2, y - 1.2, x + 1.2, y + 1.2)
 
-    def _texto_cota(x, y, txt, h=5.2, ang=0.0):
+    def _texto_cota(x, y, txt, h=4.8, ang=0.0):
         draw.level = NIV_COTA
         draw.color = COR_COTA
         draw.Text(x, y, h, ang, str(txt))
 
     def _cota_horizontal_staggered(y_cota, pts_x, witness_y_start):
         """
-        Desenha linha de cota horizontal com chamada em patamar escalonado
-        para que números próximos nunca colidam, idêntico ao padrão TQS.
+        Desenha linha de cota horizontal no padrão TQS:
+        - Apenas as linhas de chamada externas (quinas do pilar) descem até próximo ao pilar;
+        - As chamadas intermediárias (nos ferros) são curtas junto à linha de cota (não invadem os ferros);
+        - As cotas das pontas ficam fora das linhas de chamada externas e as intermediárias
+          alternam entre linha base e patamar elevado (dogleg), sem qualquer sobreposição.
         """
-        _linha_cota(pts_x[0], y_cota, pts_x[-1], y_cota)
+        _linha_cota(pts_x[0] - 3.0, y_cota, pts_x[-1] + 3.0, y_cota)
 
-        for px_c in pts_x:
-            _linha_cota(px_c, witness_y_start, px_c, y_cota + 2.0)
+        n_pts = len(pts_x)
+        for idx, px_c in enumerate(pts_x):
+            if idx == 0 or idx == n_pts - 1:
+                _linha_cota(px_c, witness_y_start, px_c, y_cota + 4.5)
+            else:
+                _linha_cota(px_c, y_cota - 2.5, px_c, y_cota + 5.0)
             _tick_cota(px_c, y_cota)
 
-        n_interv = len(pts_x) - 1
+        n_interv = n_pts - 1
         for i in range(n_interv):
             x1_c, x2_c = pts_x[i], pts_x[i + 1]
-            dist_c = round(x2_c - x1_c, 2)
-            txt_v = f"{int(dist_c) if dist_c.is_integer() else dist_c}"
+            txt_v = _fmt_num(x2_c - x1_c)
+            larg_txt = len(txt_v) * 3.5
             xm_c = (x1_c + x2_c) / 2.0
 
-            # Extremos (primeiro e último intervalo): cotas diretas sobre a linha
-            if i == 0 or i == n_interv - 1:
-                _texto_cota(xm_c - 4.5, y_cota + 2.0, txt_v, h=5.2)
+            if i == 0 and n_interv > 1:
+                # Primeiro intervalo (quina esquerda): texto à esquerda da linha de chamada externa
+                _texto_cota(x1_c - larg_txt - 1.8, y_cota + 1.8, txt_v, h=4.8)
+            elif i == n_interv - 1 and n_interv > 1:
+                # Último intervalo (quina direita): texto à direita da linha de chamada externa
+                _texto_cota(x2_c + 2.0, y_cota + 1.8, txt_v, h=4.8)
             else:
-                # Intervalos intermediários: escalonados (par embaixo, ímpar com patamar elevado)
-                if (i % 2) == 0:
-                    _texto_cota(xm_c - 4.5, y_cota + 2.0, txt_v, h=5.2)
+                # Intervalos intermediários: ímpares sobem em patamar (dogleg), pares ficam na base
+                if (i % 2) == 1:
+                    x_start = xm_c + 2.0
+                    y_start = y_cota + 1.2
+                    x_knee = xm_c - 1.2
+                    y_knee = y_cota + 10.5
+                    x_shelf_left = x_knee - max(larg_txt + 2.0, 14.0)
+                    _linha_cota(x_start, y_start, x_knee, y_knee)
+                    _linha_cota(x_knee, y_knee, x_shelf_left, y_knee)
+                    _texto_cota(x_shelf_left + 0.8, y_knee + 1.5, txt_v, h=4.8)
                 else:
-                    # Chamada em patamar (dogleg leader a 60° com prateleira)
-                    x_knee = xm_c + 2.8
-                    y_knee = y_cota + 8.5
-                    x_shelf_end = x_knee + 13.0
-                    _linha_cota(xm_c, y_cota, x_knee, y_knee)
-                    _linha_cota(x_knee, y_knee, x_shelf_end, y_knee)
-                    _texto_cota(x_knee + 1.0, y_knee + 1.2, txt_v, h=5.2)
+                    _texto_cota(xm_c - larg_txt / 2.0, y_cota + 1.8, txt_v, h=4.8)
 
     def _cota_vertical_alinhada(x_cota, pts_y, witness_x_start):
         """
-        Desenha linha de cota vertical com textos a 90° e deslocamento nos extremos
-        para eliminar qualquer sobreposição.
+        Desenha linha de cota vertical no padrão TQS:
+        - Apenas as linhas de chamada das quinas do pilar vão até próximo ao pilar;
+        - As chamadas intermediárias nos ferros são curtas junto à linha de cota;
+        - Os textos das extremidades ficam por fora das quinas para nunca sobrepor.
         """
-        _linha_cota(x_cota, pts_y[0], x_cota, pts_y[-1])
+        _linha_cota(x_cota, pts_y[0] - 3.0, x_cota, pts_y[-1] + 3.0)
 
-        for py_c in pts_y:
-            _linha_cota(witness_x_start, py_c, x_cota - 2.0, py_c)
+        n_pts = len(pts_y)
+        for idx, py_c in enumerate(pts_y):
+            if idx == 0 or idx == n_pts - 1:
+                _linha_cota(witness_x_start, py_c, x_cota - 4.0, py_c)
+            else:
+                _linha_cota(x_cota - 4.0, py_c, x_cota + 2.5, py_c)
             _tick_cota(x_cota, py_c)
 
-        n_interv = len(pts_y) - 1
+        n_interv = n_pts - 1
         for j in range(n_interv):
             y1_c, y2_c = pts_y[j], pts_y[j + 1]
-            dist_cy = round(y2_c - y1_c, 2)
-            txt_vy = f"{int(dist_cy) if dist_cy.is_integer() else dist_cy}"
+            txt_vy = _fmt_num(y2_c - y1_c)
+            larg_txt = len(txt_vy) * 3.5
             ym_c = (y1_c + y2_c) / 2.0
 
-            # Se o intervalo for o primeiro (inferior) ou último (superior) e pequeno,
-            # posiciona o texto para fora do intervalo para não colidir
             if j == 0 and n_interv > 1:
-                _texto_cota(x_cota - 3.5, y1_c - 11.0, txt_vy, h=5.0, ang=90.0)
+                _texto_cota(x_cota - 1.8, y1_c - larg_txt - 2.0, txt_vy, h=4.8, ang=90.0)
             elif j == n_interv - 1 and n_interv > 1:
-                _texto_cota(x_cota - 3.5, y2_c + 2.0, txt_vy, h=5.0, ang=90.0)
+                _texto_cota(x_cota - 1.8, y2_c + 2.2, txt_vy, h=4.8, ang=90.0)
             else:
-                _texto_cota(x_cota - 3.5, ym_c - 3.0, txt_vy, h=5.0, ang=90.0)
+                if n_interv > 3 and (j % 2) == 1:
+                    y_start = ym_c - 1.5
+                    x_knee = x_cota - 9.5
+                    y_knee = ym_c + 1.2
+                    y_shelf_top = y_knee + max(larg_txt + 2.0, 14.0)
+                    _linha_cota(x_cota - 1.2, y_start, x_knee, y_knee)
+                    _linha_cota(x_knee, y_knee, x_knee, y_shelf_top)
+                    _texto_cota(x_knee - 1.5, y_knee + 0.8, txt_vy, h=4.8, ang=90.0)
+                else:
+                    _texto_cota(x_cota - 1.8, ym_c - larg_txt / 2.0, txt_vy, h=4.8, ang=90.0)
+
+    def _cotas_afastamento_ferros(dist_esq, dist_inf):
+        """
+        Desenha as cotas de afastamento entre a face do pilar e o 1º pino dos ferros,
+        posicionadas nos cantos livres exatamente como no detalhamento padrão:
+        1. Canto superior esquerdo (horizontal): afastamento dos ferros da face esquerda (dist_esq)
+        2. Canto inferior direito (vertical): afastamento dos ferros da face inferior (dist_inf)
+        """
+        # 1. Cota horizontal no canto superior esquerdo (distância da face esquerda ao 1º pino)
+        x_pino_esq = px_min - dist_esq
+        y_cota_h = py_max + max(dist_inf, 10.0) + 15.0
+        _linha_cota(x_pino_esq, py_max - min(cota_y_linha * 0.5, 3.0), x_pino_esq, y_cota_h + 3.5)
+        _linha_cota(px_min, py_max + 3.5, px_min, y_cota_h + 3.5)
+        _linha_cota(x_pino_esq - 2.5, y_cota_h, px_min + 2.5, y_cota_h)
+        _tick_cota(x_pino_esq, y_cota_h)
+        _tick_cota(px_min, y_cota_h)
+        txt_esq = _fmt_num(dist_esq)
+        larg_esq = len(txt_esq) * 3.5
+        _texto_cota(x_pino_esq - larg_esq - 2.0, y_cota_h + 1.5, txt_esq, h=4.8, ang=0.0)
+
+        # 2. Cota vertical no canto inferior direito (distância da face inferior ao 1º pino)
+        y_pino_inf = py_min - dist_inf
+        x_cota_v = px_max + 4.2
+        _linha_cota(px_max + 1.2, py_min, x_cota_v + 2.5, py_min)
+        _linha_cota(px_max - min(cota_x * 0.6, 3.5), y_pino_inf, x_cota_v + 2.5, y_pino_inf)
+        _linha_cota(x_cota_v, py_min + 2.5, x_cota_v, y_pino_inf - 2.5)
+        _tick_cota(x_cota_v, py_min)
+        _tick_cota(x_cota_v, y_pino_inf)
+        txt_inf = _fmt_num(dist_inf)
+        larg_inf = len(txt_inf) * 3.5
+        _texto_cota(x_cota_v - 1.5, y_pino_inf - larg_inf - 2.5, txt_inf, h=4.8, ang=90.0)
 
     # ==========================================================================
     # CASO 1: PILAR HORIZONTAL (Face maior no topo e base)
     # ==========================================================================
     if orientacao == 'H':
-        # 1. TRILHOS DA FACE MAIOR (Superior e Inferior)
+        # 1. TRILHOS DA FACE MAIOR (Superior e Inferior) - iniciando exatamente na cota_y
         if num_maior == 1:
             pos_maior = [(px_min + px_max) / 2.0]
         else:
@@ -1004,21 +1063,23 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             pos_maior = [px_min + cota_x + i * s_maior for i in range(num_maior)]
 
         for px_f in pos_maior:
-            # Trilho Superior
-            y_ini_sup = py_max + cota_y - 2.5
-            y_fim_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos + 3.0
-            _linha_ferro(px_f, y_ini_sup, px_f, y_fim_sup)
+            # Trilho Superior (do 1º pino em py_max + cota_y até o último pino)
+            y_ini_sup = py_max + cota_y
+            y_fim_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(px_f, y_ini_sup, px_f, y_fim_sup)
             for k in range(num_pinos):
                 _pino(px_f, py_max + cota_y + k * esp_pinos)
 
-            # Trilho Inferior
-            y_ini_inf = py_min - cota_y + 2.5
-            y_fim_inf = py_min - cota_y - (num_pinos - 1) * esp_pinos - 3.0
-            _linha_ferro(px_f, y_ini_inf, px_f, y_fim_inf)
+            # Trilho Inferior (do 1º pino em py_min - cota_y até o último pino)
+            y_ini_inf = py_min - cota_y
+            y_fim_inf = py_min - cota_y - (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(px_f, y_ini_inf, px_f, y_fim_inf)
             for k in range(num_pinos):
                 _pino(px_f, py_min - cota_y - k * esp_pinos)
 
-        # 2. TRILHOS DA FACE MENOR (Esquerda e Direita)
+        # 2. TRILHOS DA FACE MENOR (Esquerda e Direita) - iniciando exatamente na cota_x_linha
         if num_menor == 1:
             pos_menor = [(py_min + py_max) / 2.0]
         else:
@@ -1026,60 +1087,42 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             pos_menor = [py_min + cota_y_linha + j * s_menor for j in range(num_menor)]
 
         for py_f in pos_menor:
-            # Trilho Esquerdo
-            x_ini_esq = px_min - cota_x_linha + 2.5
-            x_fim_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos - 3.0
-            _linha_ferro(x_ini_esq, py_f, x_fim_esq, py_f)
+            # Trilho Esquerdo (do 1º pino em px_min - cota_x_linha até o último pino)
+            x_ini_esq = px_min - cota_x_linha
+            x_fim_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(x_ini_esq, py_f, x_fim_esq, py_f)
             for k in range(num_pinos):
                 _pino(px_min - cota_x_linha - k * esp_pinos, py_f)
 
-            # Trilho Direito
-            x_ini_dir = px_max + cota_x_linha - 2.5
-            x_fim_dir = px_max + cota_x_linha + (num_pinos - 1) * esp_pinos + 3.0
-            _linha_ferro(x_ini_dir, py_f, x_fim_dir, py_f)
+            # Trilho Direito (do 1º pino em px_max + cota_x_linha até o último pino)
+            x_ini_dir = px_max + cota_x_linha
+            x_fim_dir = px_max + cota_x_linha + (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(x_ini_dir, py_f, x_fim_dir, py_f)
             for k in range(num_pinos):
                 _pino(px_max + cota_x_linha + k * esp_pinos, py_f)
 
         # 3. COTAS (Se ativadas)
         if desenhar_cotas:
             # Cota Superior com Patamares Escalonados (Dogleg)
-            y_cota_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos + 13.0
+            y_cota_sup = py_max + cota_y + (num_pinos - 1) * esp_pinos + 9.0
             pts_cota_x = [px_min] + list(pos_maior) + [px_max]
-            _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 1.0)
-
-            # Distância ao 1º pino na face maior (cota_y)
-            if pos_maior:
-                x_ref = pos_maior[0] - 6.0
-                _linha_cota(x_ref, py_max, x_ref, py_max + cota_y)
-                _linha_cota(x_ref - 2.0, py_max, pos_maior[0], py_max)
-                _linha_cota(x_ref - 2.0, py_max + cota_y, pos_maior[0], py_max + cota_y)
-                _tick_cota(x_ref, py_max)
-                _tick_cota(x_ref, py_max + cota_y)
-                txt_cy = f"{int(cota_y) if cota_y.is_integer() else cota_y}"
-                _texto_cota(x_ref - 7.0, py_max + cota_y / 2.0 - 2.5, txt_cy, h=5.2, ang=90.0)
+            _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 3.5)
 
             # Cota Lateral Esquerda (Alinhada sem sobreposição)
-            x_cota_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos - 13.0
+            x_cota_esq = px_min - cota_x_linha - (num_pinos - 1) * esp_pinos - 9.0
             pts_cota_y = [py_min] + list(pos_menor) + [py_max]
-            _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 1.0)
+            _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 3.5)
 
-            # Distância horizontal da quina ao 1º pino da diagonal (cota 10 cm horizontal)
-            if tem_inclinado:
-                d0_diag = 10.0
-                x_pino_diag = px_min - d0_diag * 0.70710678
-                y_cota_diag_h = py_max + d0_diag * 0.70710678
-                _linha_cota(x_pino_diag, py_max, x_pino_diag, y_cota_diag_h + 3.0)
-                _linha_cota(px_min, py_max, px_min, y_cota_diag_h + 3.0)
-                _linha_cota(x_pino_diag, y_cota_diag_h, px_min, y_cota_diag_h)
-                _tick_cota(x_pino_diag, y_cota_diag_h)
-                _tick_cota(px_min, y_cota_diag_h)
-                _texto_cota((x_pino_diag + px_min) / 2.0 - 3.0, y_cota_diag_h + 1.5, f"{int(d0_diag)}", h=5.0)
+            # Cotas de afastamento (cota_x_linha na esquerda e cota_y na base)
+            _cotas_afastamento_ferros(cota_x_linha, cota_y)
 
     # ==========================================================================
     # CASO 2: PILAR VERTICAL (Face maior na lateral esquerda/direita)
     # ==========================================================================
     else:
-        # 1. TRILHOS DA FACE MAIOR (Esquerda e Direita)
+        # 1. TRILHOS DA FACE MAIOR (Esquerda e Direita) - iniciando exatamente na cota_y
         if num_maior == 1:
             pos_maior = [(py_min + py_max) / 2.0]
         else:
@@ -1088,20 +1131,22 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
         for py_f in pos_maior:
             # Trilho Esquerdo
-            x_ini_esq = px_min - cota_y + 2.5
-            x_fim_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos - 3.0
-            _linha_ferro(x_ini_esq, py_f, x_fim_esq, py_f)
+            x_ini_esq = px_min - cota_y
+            x_fim_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(x_ini_esq, py_f, x_fim_esq, py_f)
             for k in range(num_pinos):
                 _pino(px_min - cota_y - k * esp_pinos, py_f)
 
             # Trilho Direito
-            x_ini_dir = px_max + cota_y - 2.5
-            x_fim_dir = px_max + cota_y + (num_pinos - 1) * esp_pinos + 3.0
-            _linha_ferro(x_ini_dir, py_f, x_fim_dir, py_f)
+            x_ini_dir = px_max + cota_y
+            x_fim_dir = px_max + cota_y + (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(x_ini_dir, py_f, x_fim_dir, py_f)
             for k in range(num_pinos):
                 _pino(px_max + cota_y + k * esp_pinos, py_f)
 
-        # 2. TRILHOS DA FACE MENOR (Superior e Inferior)
+        # 2. TRILHOS DA FACE MENOR (Superior e Inferior) - iniciando exatamente na cota_x_linha
         if num_menor == 1:
             pos_menor = [(px_min + px_max) / 2.0]
         else:
@@ -1110,35 +1155,39 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
         for px_f in pos_menor:
             # Trilho Superior
-            y_ini_sup = py_max + cota_x_linha - 2.5
-            y_fim_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos + 3.0
-            _linha_ferro(px_f, y_ini_sup, px_f, y_fim_sup)
+            y_ini_sup = py_max + cota_x_linha
+            y_fim_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(px_f, y_ini_sup, px_f, y_fim_sup)
             for k in range(num_pinos):
                 _pino(px_f, py_max + cota_x_linha + k * esp_pinos)
 
             # Trilho Inferior
-            y_ini_inf = py_min - cota_x_linha + 2.5
-            y_fim_inf = py_min - cota_x_linha - (num_pinos - 1) * esp_pinos - 3.0
-            _linha_ferro(px_f, y_ini_inf, px_f, y_fim_inf)
+            y_ini_inf = py_min - cota_x_linha
+            y_fim_inf = py_min - cota_x_linha - (num_pinos - 1) * esp_pinos
+            if num_pinos > 1:
+                _linha_ferro(px_f, y_ini_inf, px_f, y_fim_inf)
             for k in range(num_pinos):
                 _pino(px_f, py_min - cota_x_linha - k * esp_pinos)
 
         # 3. COTAS
         if desenhar_cotas:
-            x_cota_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos - 13.0
+            x_cota_esq = px_min - cota_y - (num_pinos - 1) * esp_pinos - 9.0
             pts_cota_y = [py_min] + list(pos_maior) + [py_max]
-            _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 1.0)
+            _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 3.5)
 
-            y_cota_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos + 13.0
+            y_cota_sup = py_max + cota_x_linha + (num_pinos - 1) * esp_pinos + 9.0
             pts_cota_x = [px_min] + list(pos_menor) + [px_max]
-            _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 1.0)
+            _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 3.5)
+
+            _cotas_afastamento_ferros(cota_y, cota_x_linha)
 
     # ==========================================================================
     # 3. FERROS INCLINADOS NAS 4 QUINAS (DIAGONAL A 45°)
     # ==========================================================================
     if tem_inclinado:
-        d0 = 10.0
-        d_fim = d0 + (num_pinos - 1) * esp_pinos + 3.0
+        d0 = cota_y if cota_y > 0 else 10.0
+        d_fim = d0 + (num_pinos - 1) * esp_pinos
         quinas = [
             (px_min, py_max, -1.0, 1.0),   # Quina Sup-Esq
             (px_max, py_max, 1.0, 1.0),    # Quina Sup-Dir
@@ -1149,28 +1198,43 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         sin45 = 0.70710678
 
         for qx, qy, sx, sy in quinas:
-            lx1 = qx + sx * (d0 - 2.5) * cos45
-            ly1 = qy + sy * (d0 - 2.5) * sin45
+            # O ferro inclinado começa exatamente no 1º pino (distância d0 da quina) e termina no último pino
+            lx1 = qx + sx * d0 * cos45
+            ly1 = qy + sy * d0 * sin45
             lx2 = qx + sx * d_fim * cos45
             ly2 = qy + sy * d_fim * sin45
-            _linha_ferro(lx1, ly1, lx2, ly2)
+            if num_pinos > 1:
+                _linha_ferro(lx1, ly1, lx2, ly2)
 
             for k in range(num_pinos):
                 dk = d0 + k * esp_pinos
                 _pino(qx + sx * dk * cos45, qy + sy * dk * sin45)
 
-            # Cota na diagonal (no canto inferior direito)
-            if desenhar_cotas and sx == 1.0 and sy == -1.0:
-                # Linha de cota perpendicular à diagonal
-                c_x1 = qx
-                c_y1 = qy
-                c_x2 = qx + d0 * cos45
-                c_y2 = qy - d0 * sin45
-                _linha_cota(c_x1, c_y1, c_x2, c_y2)
-                # Ticks nas extremidades a 135°
-                _linha_cota(c_x1 - 1.2, c_y1 + 1.2, c_x1 + 1.2, c_y1 - 1.2)
-                _linha_cota(c_x2 - 1.2, c_y2 + 1.2, c_x2 + 1.2, c_y2 - 1.2)
-                _texto_cota((c_x1 + c_x2) / 2.0 - 5.0, (c_y1 + c_y2) / 2.0 + 2.0, f"{int(d0)}", h=5.0, ang=45.0)
+            # Cota inclinada na quina superior direita (deslocada da barra para não sobrepor)
+            if desenhar_cotas and sx == 1.0 and sy == 1.0:
+                offset_d = 6.0
+                # Vetor ao longo da diagonal u=(cos45, sin45), vetor perpendicular para baixo-direita v=(cos45, -sin45)
+                c1_x = qx + offset_d * cos45
+                c1_y = qy - offset_d * sin45
+                c2_x = lx1 + offset_d * cos45
+                c2_y = ly1 - offset_d * sin45
+
+                # Linhas de chamada perpendiculares à diagonal (a -45°)
+                _linha_cota(qx + 1.5 * cos45, qy - 1.5 * sin45, qx + (offset_d + 2.2) * cos45, qy - (offset_d + 2.2) * sin45)
+                _linha_cota(lx1 + 1.5 * cos45, ly1 - 1.5 * sin45, lx1 + (offset_d + 2.2) * cos45, ly1 - (offset_d + 2.2) * sin45)
+
+                # Linha de cota paralela à diagonal (a +45°)
+                _linha_cota(c1_x - 2.0 * cos45, c1_y - 2.0 * sin45, c2_x + 2.0 * cos45, c2_y + 2.0 * sin45)
+
+                # Ticks nas extremidades da cota diagonal
+                _linha_cota(c1_x - 1.5, c1_y, c1_x + 1.5, c1_y)
+                _linha_cota(c2_x - 1.5, c2_y, c2_x + 1.5, c2_y)
+
+                txt_d0 = _fmt_num(d0)
+                xm_d = (c1_x + c2_x) / 2.0
+                ym_d = (c1_y + c2_y) / 2.0
+                # Posiciona o texto centralizado sobre a linha de cota diagonal (deslocado na direção -v)
+                _texto_cota(xm_d - 2.5 * cos45 - 1.8 * cos45, ym_d - 2.5 * sin45 + 1.8 * sin45, txt_d0, h=4.5, ang=45.0)
 
 
 # ==============================================================================
