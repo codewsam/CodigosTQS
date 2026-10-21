@@ -659,7 +659,7 @@ def mostrar_tela_confirmacao(pilar):
     </style>
     <script language="javascript">
         window.onload = function() {{
-            window.resizeTo(1040, 780);
+            window.resizeTo(1040, 800);
             window.moveTo((screen.width - 1040) / 2, (screen.height - 780) / 2);
             calcContagemEstribos();
         }};
