@@ -395,6 +395,16 @@ def mostrar_tela_confirmacao(pilar):
     cota_x_linha_ini = 10.0
     cota_inclinado_ini = 10.0
 
+    larg_estribo_ini = 15.0
+    alt_estribo_ini = round(max(10.0, float(hd_p) - 5.0), 1)
+    bitola_estribo_ini = 8.0
+    pos_estribo_ini = "1"
+    num_pinos_ini = 3
+
+    total_trilhos_ini = (2 * num_maior_sug) + (2 * num_menor_sug) + 4
+    total_estribos_ini = total_trilhos_ini * num_pinos_ini
+    comp_ini = int(round(2.0 * (larg_estribo_ini + alt_estribo_ini) + 15.0))
+
     espaco_maior_sug = round((comp_maior - 2.0 * cota_x_ini) / (num_maior_sug - 1), 2) if num_maior_sug > 1 else 0.0
     espaco_menor_sug = round((comp_menor - 2.0 * cota_y_linha_ini) / (num_menor_sug - 1), 2) if num_menor_sug > 1 else 0.0
 
@@ -563,7 +573,7 @@ def mostrar_tela_confirmacao(pilar):
             color: #37474f;
             font-size: 11.5px;
         }}
-        .campo input[type="text"], .campo input[type="number"] {{
+        .campo input[type="text"], .campo input[type="number"], .campo select {{
             width: 85px;
             padding: 4px 6px;
             border: 1px solid #80cbc4;
@@ -573,6 +583,10 @@ def mostrar_tela_confirmacao(pilar):
             color: #004d40;
             font-weight: 700;
             background: #ffffff;
+        }}
+        .campo select {{
+            text-align: left;
+            cursor: pointer;
         }}
         .campo-check {{
             display: flex;
@@ -645,8 +659,9 @@ def mostrar_tela_confirmacao(pilar):
     </style>
     <script language="javascript">
         window.onload = function() {{
-            window.resizeTo(1020, 810);
-            window.moveTo((screen.width - 1020) / 2, (screen.height - 810) / 2);
+            window.resizeTo(1040, 890);
+            window.moveTo((screen.width - 1040) / 2, (screen.height - 890) / 2);
+            calcContagemEstribos();
         }};
 
         function calcEspacoMaior() {{
@@ -657,6 +672,7 @@ def mostrar_tela_confirmacao(pilar):
                 var s = (L - 2.0 * cx) / (n - 1.0);
                 document.getElementById("espaco_maior").value = s.toFixed(2);
             }}
+            calcContagemEstribos();
         }}
 
         function calcQtdMaior() {{
@@ -671,6 +687,7 @@ def mostrar_tela_confirmacao(pilar):
                     document.getElementById("espaco_maior").value = ((L - 2.0 * cx) / (n - 1.0)).toFixed(2);
                 }}
             }}
+            calcContagemEstribos();
         }}
 
         function calcEspacoMenor() {{
@@ -681,6 +698,7 @@ def mostrar_tela_confirmacao(pilar):
                 var s = (W - 2.0 * cy) / (n - 1.0);
                 document.getElementById("espaco_menor").value = s.toFixed(2);
             }}
+            calcContagemEstribos();
         }}
 
         function calcQtdMenor() {{
@@ -695,6 +713,7 @@ def mostrar_tela_confirmacao(pilar):
                     document.getElementById("espaco_menor").value = ((W - 2.0 * cy) / (n - 1.0)).toFixed(2);
                 }}
             }}
+            calcContagemEstribos();
         }}
 
         function toggleInclinado() {{
@@ -702,6 +721,44 @@ def mostrar_tela_confirmacao(pilar):
             var box = document.getElementById("wrap_cota_inclinado");
             if (box) {{
                 box.style.display = chk ? "flex" : "none";
+            }}
+            calcContagemEstribos();
+        }}
+
+        function atualizarHdEstribo() {{
+            var hdVal = parseFloat(document.getElementById("hd").value.replace(',', '.')) || 26.0;
+            var altSug = Math.max(10.0, hdVal - 5.0);
+            var elAlt = document.getElementById("alt_estribo");
+            if (elAlt) elAlt.value = altSug.toFixed(1);
+            calcContagemEstribos();
+        }}
+
+        function calcContagemEstribos() {{
+            var nMaior = parseInt(document.getElementById("num_maior").value) || 0;
+            var nMenor = parseInt(document.getElementById("num_menor").value) || 0;
+            var temInc = document.getElementById("tem_inclinado").checked;
+            var nPinos = parseInt(document.getElementById("num_pinos").value) || 1;
+            var largSt = parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0;
+            var altSt = parseFloat(document.getElementById("alt_estribo").value.replace(',', '.')) || 21.0;
+            var bitolaVal = document.getElementById("bitola_estribo").value || "8.0";
+            var posSt = (document.getElementById("pos_estribo").value || "1").trim().toUpperCase();
+            if (posSt.indexOf("P") === 0) posSt = posSt.substring(1);
+            if (!posSt) posSt = "1";
+
+            var totalTrilhos = (2 * nMaior) + (2 * nMenor) + (temInc ? 4 : 0);
+            var totalEstribos = totalTrilhos * nPinos;
+            var compTotal = Math.round(2.0 * (largSt + altSt) + 15.0);
+
+            var bNum = parseFloat(bitolaVal);
+            var bitolaTxt = (bNum % 1 === 0) ? bNum.toFixed(0) : bNum.toString();
+
+            var chamada = totalTrilhos + "x" + nPinos + " P" + posSt + " \u00f8 " + bitolaTxt + " C=" + compTotal;
+            var elChamada = document.getElementById("txt_chamada_preview");
+            if (elChamada) elChamada.innerText = chamada;
+
+            var elDet = document.getElementById("txt_detalhe_preview");
+            if (elDet) {{
+                elDet.innerHTML = "Total: <b>" + totalEstribos + " estribos</b> (" + totalTrilhos + " trilhos x " + nPinos + " | " + largSt + "x" + altSt + " cm)";
             }}
         }}
 
@@ -721,7 +778,12 @@ def mostrar_tela_confirmacao(pilar):
                 tem_inclinado: document.getElementById("tem_inclinado").checked,
                 cota_inclinado: parseFloat(document.getElementById("cota_inclinado").value.replace(',', '.')) || {cota_inclinado_ini},
                 num_pinos: parseInt(document.getElementById("num_pinos").value) || 3,
-                esp_pinos: parseFloat(document.getElementById("esp_pinos").value.replace(',', '.')) || 15.0,
+                larg_estribo: parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0,
+                alt_estribo: parseFloat(document.getElementById("alt_estribo").value.replace(',', '.')) || 21.0,
+                bitola_estribo: parseFloat(document.getElementById("bitola_estribo").value.replace(',', '.')) || 8.0,
+                pos_estribo: (document.getElementById("pos_estribo").value || "1").trim(),
+                esp_pinos: parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0,
+                desenhar_detalhe_estribo: document.getElementById("desenhar_detalhe_estribo").checked,
                 desenhar_cotas: document.getElementById("desenhar_cotas").checked
             }};
 
@@ -786,7 +848,7 @@ def mostrar_tela_confirmacao(pilar):
                 </div>
                 <div class="campo" style="margin-top:6px;">
                     <label>Espessura HC (cm):</label>
-                    <input type="text" id="hd" value="{hd_p}" />
+                    <input type="text" id="hd" value="{hd_p}" onchange="atualizarHdEstribo()" />
                 </div>
             </div>
 
@@ -821,14 +883,50 @@ def mostrar_tela_confirmacao(pilar):
 
             <!-- 3. ESTRIBOS E COTAS -->
             <div class="card">
-                <h3>Estribos & Cotagem</h3>
+                <h3>Configuração dos Estribos & Detalhe</h3>
                 <div class="campo">
-                    <label>Quantidade de estribos:</label>
-                    <input type="number" id="num_pinos" value="3" min="1" max="15" />
+                    <label>Estribos por trilho (pinos):</label>
+                    <input type="number" id="num_pinos" value="{num_pinos_ini}" min="1" max="15" onchange="calcContagemEstribos()" />
                 </div>
                 <div class="campo">
-                    <label>Espaçamento / largura do estribo (cm):</label>
-                    <input type="text" id="esp_pinos" value="15.0" />
+                    <label>Largura do estribo (cm):</label>
+                    <input type="text" id="larg_estribo" value="{larg_estribo_ini}" onchange="calcContagemEstribos()" />
+                </div>
+                <div class="campo">
+                    <label>Altura do estribo (cm):</label>
+                    <input type="text" id="alt_estribo" value="{alt_estribo_ini}" onchange="calcContagemEstribos()" />
+                </div>
+                <div class="campo">
+                    <label>Bitola do estribo:</label>
+                    <select id="bitola_estribo" onchange="calcContagemEstribos()">
+                        <option value="5.0">ø 5.0 mm</option>
+                        <option value="6.3">ø 6.3 mm</option>
+                        <option value="8.0" selected>ø 8.0 mm</option>
+                        <option value="10.0">ø 10.0 mm</option>
+                        <option value="12.5">ø 12.5 mm</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Posição / Marca:</label>
+                    <input type="text" id="pos_estribo" value="{pos_estribo_ini}" style="width:85px; text-align:center;" onchange="calcContagemEstribos()" />
+                </div>
+
+                <!-- Resumo automático -->
+                <div style="margin-top:10px; padding:8px 10px; background:#e8f5e9; border:1px solid #81c784; border-radius:6px;">
+                    <div style="font-size:10.5px; font-weight:700; color:#2e7d32; text-transform:uppercase; letter-spacing:0.5px;">
+                        ✓ Contagem Automática
+                    </div>
+                    <div id="txt_chamada_preview" style="font-size:16px; font-weight:800; color:#1b5e20; font-family:Consolas, monospace; margin:4px 0 2px 0;">
+                        {total_trilhos_ini}x{num_pinos_ini} P{pos_estribo_ini} ø 8 C={comp_ini}
+                    </div>
+                    <div id="txt_detalhe_preview" style="font-size:11px; color:#388e3c;">
+                        Total: <b>{total_estribos_ini} estribos</b> ({total_trilhos_ini} trilhos x {num_pinos_ini} | {larg_estribo_ini}x{alt_estribo_ini} cm)
+                    </div>
+                </div>
+
+                <div class="campo-check" style="margin-top:8px;">
+                    <input type="checkbox" id="desenhar_detalhe_estribo" checked />
+                    <label for="desenhar_detalhe_estribo"><b>Desenhar detalhe esquemático</b> dos estribos</label>
                 </div>
                 <div class="campo-check">
                     <input type="checkbox" id="desenhar_cotas" checked />
@@ -1483,6 +1581,141 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
 
 
 # ==============================================================================
+# DETALHE ESQUEMÁTICO DOS ESTRIBOS E CHAMADA (Ex: 28x3 P1 ø 8 C=87)
+# ==============================================================================
+
+def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
+    """
+    Desenha os estribos esquemáticos sobrepostos e a chamada completa:
+    Exemplo: 28x3 P1 ø 8 C=87 com as cotas de largura (15) e altura (21).
+    """
+    draw = dwg.draw
+
+    larg_area = float(pilar.get("larg_area", 180.0))
+    alt_area = float(pilar.get("alt_area", 140.0))
+    hd = float(config.get("hd", pilar.get("hd", 26.0)))
+
+    box_x1 = x_alvo - larg_area / 2.0
+    box_y1 = y_alvo - alt_area / 2.0
+
+    larg_st = float(config.get("larg_estribo", config.get("esp_pinos", 15.0)))
+    alt_st = float(config.get("alt_estribo", max(10.0, hd - 5.0)))
+    bitola = float(config.get("bitola_estribo", 8.0))
+    pos_marca = str(config.get("pos_estribo", "1")).strip().upper()
+    if pos_marca.startswith("P"):
+        pos_marca = pos_marca[1:]
+    if not pos_marca:
+        pos_marca = "1"
+
+    num_maior = int(config.get("num_maior", 10))
+    num_menor = int(config.get("num_menor", 2))
+    tem_inclinado = bool(config.get("tem_inclinado", True))
+    n_pinos = int(config.get("num_pinos", 3))
+
+    total_trilhos = (2 * num_maior) + (2 * num_menor) + (4 if tem_inclinado else 0)
+    comp_total = int(round(2.0 * (larg_st + alt_st) + 15.0))
+    bitola_str = f"{int(bitola) if bitola.is_integer() else bitola}"
+
+    # Ponto base no canto inferior esquerdo da área da laje
+    x1 = box_x1 + 30.0
+    y1 = box_y1 + 36.0
+
+    def _desenhar_retangulo_estribo(x_l, y_b, x_r, y_t, cor):
+        draw.level = 220
+        draw.color = cor
+        draw.style = 0
+        draw.Line(x_l, y_b, x_r, y_b)
+        draw.Line(x_r, y_b, x_r, y_t)
+        draw.Line(x_r, y_t, x_l, y_t)
+        draw.Line(x_l, y_t, x_l, y_b)
+        # Gancho a -45° no canto superior esquerdo
+        draw.Line(x_l + 1.6, y_t, x_l + 4.2, y_t - 2.6)
+        draw.Line(x_l, y_t - 1.6, x_l + 2.6, y_t - 4.2)
+
+    # 1. Tenta criar o estribo principal como SmartRebar REAL do TQS (com multiplicador 28x3 e identificação nativa)
+    usou_smart = False
+    try:
+        rebar = TQSDwg.SmartRebar(dwg)
+        rebar.type = getattr(TQSDwg, "ICPSTR", 2)
+        try:
+            rebar.mark = int(pos_marca) if str(pos_marca).isdigit() else 1
+        except Exception:
+            rebar.mark = 1
+        rebar.quantity = int(n_pinos)
+        rebar.multiplier = int(total_trilhos)
+        rebar.diameter = float(bitola)
+        rebar.spacing = float(larg_st)
+        rebar.cover = 0.0
+        rebar.stirrupType = getattr(TQSDwg, "ICPEFC", getattr(TQSDwg, "ICPENR", 1))
+        rebar.stirrupLegs = getattr(TQSDwg, "ICPNR2", 1)
+        rebar.stirrupSectionWidth = float(larg_st)
+        rebar.stirrupSectionHeight = float(alt_st)
+        try:
+            rebar.stirrupHookType = getattr(TQSDwg, "ICPTPPATA45", 0)
+            rebar.stirrupHookLength = 8.0
+        except Exception:
+            pass
+
+        # RebarLine(x, y, ang, esc, identfer, identdobr, ipatas, iexplodir, inivel, iestilo, icor)
+        rebar.RebarLine(x1, y1, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+        usou_smart = True
+    except Exception as e:
+        usou_smart = False
+        try:
+            TQSUtil.writef("Aviso ao criar SmartRebar do estribo: %s" % str(e))
+        except Exception:
+            pass
+
+    # 2. Se for SmartRebar real, desenha apenas as representações esquemáticas dos outros estribos amarelos do grupo
+    if usou_smart:
+        if n_pinos >= 2:
+            _desenhar_retangulo_estribo(x1 + 10.0, y1 + 7.5, x1 + 10.0 + larg_st, y1 + 7.5 + alt_st, 2)
+        if n_pinos >= 3:
+            _desenhar_retangulo_estribo(x1 + 18.0, y1, x1 + 18.0 + larg_st, y1 + alt_st, 2)
+        for extra in range(3, n_pinos):
+            dx_extra = 18.0 + (extra - 2) * 8.0
+            dy_extra = 7.5 if (extra % 2 == 1) else 0.0
+            _desenhar_retangulo_estribo(x1 + dx_extra, y1 + dy_extra, x1 + dx_extra + larg_st, y1 + dy_extra + alt_st, 2)
+    else:
+        # Fallback gráfico caso SmartRebar não esteja disponível
+        if n_pinos <= 1:
+            _desenhar_retangulo_estribo(x1, y1, x1 + larg_st, y1 + alt_st, 6)
+            x_topo = x1
+            y_topo = y1 + alt_st
+        elif n_pinos == 2:
+            _desenhar_retangulo_estribo(x1, y1, x1 + larg_st, y1 + alt_st, 6)
+            _desenhar_retangulo_estribo(x1 + 10.0, y1 + 7.5, x1 + 10.0 + larg_st, y1 + 7.5 + alt_st, 2)
+            x_topo = x1 + 10.0
+            y_topo = y1 + 7.5 + alt_st
+        else:
+            _desenhar_retangulo_estribo(x1, y1, x1 + larg_st, y1 + alt_st, 6)
+            _desenhar_retangulo_estribo(x1 + 10.0, y1 + 7.5, x1 + 10.0 + larg_st, y1 + 7.5 + alt_st, 2)
+            _desenhar_retangulo_estribo(x1 + 18.0, y1, x1 + 18.0 + larg_st, y1 + alt_st, 2)
+            x_topo = x1 + 10.0
+            y_topo = y1 + 7.5 + alt_st
+            for extra in range(3, n_pinos):
+                dx_extra = 18.0 + (extra - 2) * 8.0
+                dy_extra = 7.5 if (extra % 2 == 1) else 0.0
+                _desenhar_retangulo_estribo(x1 + dx_extra, y1 + dy_extra, x1 + dx_extra + larg_st, y1 + dy_extra + alt_st, 2)
+
+        # Cotas de largura e altura
+        draw.level = 241
+        draw.color = 3
+        draw.style = 0
+        txt_larg = f"{int(larg_st) if larg_st.is_integer() else larg_st}"
+        draw.Text(x_topo + (larg_st / 2.0) - (len(txt_larg) * 1.6), y_topo + 2.5, 4.8, 0.0, txt_larg)
+        txt_alt = f"{int(alt_st) if alt_st.is_integer() else alt_st}"
+        draw.Text(x1 - 4.5, y1 + (alt_st / 2.0) - (len(txt_alt) * 1.6), 4.8, 90.0, txt_alt)
+
+        # Chamada com símbolo ø
+        draw.level = 220
+        draw.color = 2
+        draw.style = 0
+        texto_chamada = f"{total_trilhos}x{n_pinos} P{pos_marca} ø {bitola_str} C={comp_total}"
+        draw.Text(x1 - 4.0, y1 - 8.5, 5.0, 0.0, texto_chamada)
+
+
+# ==============================================================================
 # DESENHO FIDEDIGNO: QUADRADO DA ÁREA + PILAR + FERRO DE DENTRO + PUNÇÃO
 # ==============================================================================
 
@@ -1596,6 +1829,16 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
             TQSUtil.ShowException(e)
         except Exception:
             pass
+
+    # 8. DETALHE ESQUEMÁTICO DOS ESTRIBOS E CHAMADA (Ex: 28x3 P1 ø 8 C=87)
+    if config.get("desenhar_detalhe_estribo", True):
+        try:
+            desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config)
+        except Exception as e:
+            try:
+                TQSUtil.ShowException(e)
+            except Exception:
+                pass
 
 
 
