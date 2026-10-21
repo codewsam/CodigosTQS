@@ -659,8 +659,8 @@ def mostrar_tela_confirmacao(pilar):
     </style>
     <script language="javascript">
         window.onload = function() {{
-            window.resizeTo(1040, 890);
-            window.moveTo((screen.width - 1040) / 2, (screen.height - 890) / 2);
+            window.resizeTo(1040, 780);
+            window.moveTo((screen.width - 1040) / 2, (screen.height - 780) / 2);
             calcContagemEstribos();
         }};
 
@@ -783,8 +783,8 @@ def mostrar_tela_confirmacao(pilar):
                 bitola_estribo: parseFloat(document.getElementById("bitola_estribo").value.replace(',', '.')) || 8.0,
                 pos_estribo: (document.getElementById("pos_estribo").value || "1").trim(),
                 esp_pinos: parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0,
-                desenhar_detalhe_estribo: document.getElementById("desenhar_detalhe_estribo").checked,
-                desenhar_cotas: document.getElementById("desenhar_cotas").checked
+                desenhar_detalhe_estribo: true,
+                desenhar_cotas: true
             }};
 
             try {{
@@ -825,14 +825,10 @@ def mostrar_tela_confirmacao(pilar):
                     <!-- Box 4: x' (Face Menor - da face do pilar ao 1º pino) -->
                     <input type="text" id="cota_x_linha" class="cota-box box-x-linha" value="{cota_x_linha_ini}" title="Distância da face até o 1º pino/conector da face menor (x')" />
                 </div>
-                
             </div>
-        </div>
 
-        <!-- COLUNA DIREITA: CONFIGURAÇÕES DA ARMADURA -->
-        <div class="col-right">
-            <!-- 1. IDENTIFICAÇÃO -->
-            <div class="card">
+            <!-- IDENTIFICAÇÃO DO PILAR (EMBAIXO DA IMAGEM) -->
+            <div class="card" style="margin-top:9px;">
                 <h3>Identificação do Pilar</h3>
                 <div class="campo">
                     <label>Título / Identificação:</label>
@@ -851,8 +847,11 @@ def mostrar_tela_confirmacao(pilar):
                     <input type="text" id="hd" value="{hd_p}" onchange="atualizarHdEstribo()" />
                 </div>
             </div>
+        </div>
 
-            <!-- 2. QUANTIDADE E ESPAÇO ENTRE OS FERROS (TRILHOS) -->
+        <!-- COLUNA DIREITA: CONFIGURAÇÕES DA ARMADURA -->
+        <div class="col-right">
+            <!-- 1. QUANTIDADE E ESPAÇO ENTRE OS FERROS (TRILHOS) -->
             <div class="card">
                 <h3>Disposição dos Ferros (Trilhos)</h3>
                 <div class="campo">
@@ -881,7 +880,7 @@ def mostrar_tela_confirmacao(pilar):
                 </div>
             </div>
 
-            <!-- 3. ESTRIBOS E COTAS -->
+            <!-- 2. CONFIGURAÇÃO DOS ESTRIBOS & DETALHE -->
             <div class="card">
                 <h3>Configuração dos Estribos & Detalhe</h3>
                 <div class="campo">
@@ -912,25 +911,7 @@ def mostrar_tela_confirmacao(pilar):
                 </div>
 
                 <!-- Resumo automático -->
-                <div style="margin-top:10px; padding:8px 10px; background:#e8f5e9; border:1px solid #81c784; border-radius:6px;">
-                    <div style="font-size:10.5px; font-weight:700; color:#2e7d32; text-transform:uppercase; letter-spacing:0.5px;">
-                        ✓ Contagem Automática
-                    </div>
-                    <div id="txt_chamada_preview" style="font-size:16px; font-weight:800; color:#1b5e20; font-family:Consolas, monospace; margin:4px 0 2px 0;">
-                        {total_trilhos_ini}x{num_pinos_ini} P{pos_estribo_ini} ø 8 C={comp_ini}
-                    </div>
-                    <div id="txt_detalhe_preview" style="font-size:11px; color:#388e3c;">
-                        Total: <b>{total_estribos_ini} estribos</b> ({total_trilhos_ini} trilhos x {num_pinos_ini} | {larg_estribo_ini}x{alt_estribo_ini} cm)
-                    </div>
-                </div>
-
-                <div class="campo-check" style="margin-top:8px;">
-                    <input type="checkbox" id="desenhar_detalhe_estribo" checked />
-                    <label for="desenhar_detalhe_estribo"><b>Desenhar detalhe esquemático</b> dos estribos</label>
-                </div>
-                <div class="campo-check">
-                    <input type="checkbox" id="desenhar_cotas" checked />
-                    <label for="desenhar_cotas"><b>Desenhar cotas verdes</b> no detalhamento</label>
+                
                 </div>
             </div>
         </div>
@@ -1322,7 +1303,7 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 # DESENHO DO CORTE A-A E SÍMBOLOS DE CORTE NA PLANTA (OPCIONAL/FUTURO)
 # ==============================================================================
 
-def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
+def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     """
     Desenha o corte esquemático na parte inferior e os símbolos de corte A na planta:
     1. Símbolos A ▲ nas laterais do quadrado da planta (Nível 241, Cor 2 Amarelo);
@@ -1514,13 +1495,23 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config):
         x_l = px_min - (d_k_ini + passo_corte) - raio_dot - 0.3
         _desenhar_estribo_corte(x_l, x_r, 2)
 
-    # Estribos do Lado Direito do pilar (1º Roxo/Magenta, demais Amarelos)
+    # Estribos do Lado Direito do pilar (1º Roxo/Magenta conectado ao SmartRebar, demais Amarelos)
     for k in range(n_estribos):
         d_k_ini = d_face_corte + k * passo_corte
         x_l = px_max + d_k_ini - raio_dot - 0.3
         x_r = px_max + (d_k_ini + passo_corte) + raio_dot + 0.3
-        cor_k = 6 if k == 0 else 2
-        _desenhar_estribo_corte(x_l, x_r, cor_k)
+        if k == 0 and rebar_estribo is not None:
+            desenhou_smart_corte = False
+            try:
+                rebar_estribo.RebarLine(x_l, y_st_bot, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
+                desenhou_smart_corte = True
+            except Exception:
+                desenhou_smart_corte = False
+            if not desenhou_smart_corte:
+                _desenhar_estribo_corte(x_l, x_r, 6)
+        else:
+            cor_k = 6 if k == 0 else 2
+            _desenhar_estribo_corte(x_l, x_r, cor_k)
 
     # ==========================================================================
     # 6. CHAMADAS DE TEXTO: FERRAGEM NEGATIVA & FERRAGEM POSITIVA
@@ -1617,8 +1608,9 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
     bitola_str = f"{int(bitola) if bitola.is_integer() else bitola}"
 
     # Ponto base no canto inferior esquerdo da área da laje
-    x1 = box_x1 + 30.0
-    y1 = box_y1 + 36.0
+    # Afastado mais para a direita e para cima para os dados do ferro (28x3...) não cruzarem a borda
+    x1 = box_x1 + 52.0
+    y1 = box_y1 + 42.0
 
     def _desenhar_retangulo_estribo(x_l, y_b, x_r, y_t, cor):
         draw.level = 220
@@ -1646,13 +1638,13 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
         rebar.diameter = float(bitola)
         rebar.spacing = float(larg_st)
         rebar.cover = 0.0
-        rebar.stirrupType = getattr(TQSDwg, "ICPEFC", getattr(TQSDwg, "ICPENR", 1))
+        rebar.stirrupType = getattr(TQSDwg, "ICPENR", 0)
         rebar.stirrupLegs = getattr(TQSDwg, "ICPNR2", 1)
         rebar.stirrupSectionWidth = float(larg_st)
         rebar.stirrupSectionHeight = float(alt_st)
         try:
             rebar.stirrupHookType = getattr(TQSDwg, "ICPTPPATA45", 0)
-            rebar.stirrupHookLength = 8.0
+            rebar.stirrupHookLength = 7.5
         except Exception:
             pass
 
@@ -1713,6 +1705,8 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
         draw.style = 0
         texto_chamada = f"{total_trilhos}x{n_pinos} P{pos_marca} ø {bitola_str} C={comp_total}"
         draw.Text(x1 - 4.0, y1 - 8.5, 5.0, 0.0, texto_chamada)
+
+    return rebar if usou_smart else None
 
 
 # ==============================================================================
@@ -1821,24 +1815,25 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
         except Exception:
             pass
 
-    # 7. CORTE ESQUEMÁTICO NA PARTE DE BAIXO E SÍMBOLOS DE CORTE A-A
-    try:
-        desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config)
-    except Exception as e:
-        try:
-            TQSUtil.ShowException(e)
-        except Exception:
-            pass
-
-    # 8. DETALHE ESQUEMÁTICO DOS ESTRIBOS E CHAMADA (Ex: 28x3 P1 ø 8 C=87)
+    # 7. DETALHE ESQUEMÁTICO DOS ESTRIBOS E CHAMADA (SmartRebar conectado)
+    rebar_obj = None
     if config.get("desenhar_detalhe_estribo", True):
         try:
-            desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config)
+            rebar_obj = desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config)
         except Exception as e:
             try:
                 TQSUtil.ShowException(e)
             except Exception:
                 pass
+
+    # 8. CORTE ESQUEMÁTICO NA PARTE DE BAIXO E SÍMBOLOS DE CORTE A-A
+    try:
+        desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=rebar_obj)
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
 
 
 
