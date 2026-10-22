@@ -1948,7 +1948,7 @@ def meucmd(eag, tqsjan):
             tqsjan.Regen()
         except Exception:
             pass
-
+fiz esse plugin (punção.py) para desenhar automatico as punções mas agora meu chefe disse que vai mudar a forma, vai ser varias mudanças então vamos por partes, primeiro : a forma de colocar os ferros, atualmente o ferro coloca os ferros igual na primeira imagem ( na vertical e tal) e coloca as bolinhas baseado na quantidade de estribos selecionado, agora em vez de colocar na vertical eles vao ficar igual a segunda foto, na horizontal em sequencia, e eu vou escolher numero de colunas e de linhas em vez dizer um valor exato para o plgin de estribos, isso para as faces maiores, para a face menor eu vou continuar dizend o numero de estribos mas agora eles ficarao na vertical 
 
 if __name__ == "__main__":
     pass
