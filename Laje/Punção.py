@@ -689,8 +689,10 @@ def mostrar_tela_confirmacao(pilar):
         function atualizarHdEstribo() {{
             var hdVal = parseFloat(document.getElementById("hd").value.replace(',', '.')) || 26.0;
             var altSug = Math.max(10.0, hdVal - 5.0);
-            var elAlt = document.getElementById("alt_estribo");
-            if (elAlt) elAlt.value = altSug.toFixed(1);
+            var elAltMaior = document.getElementById("alt_estribo_maior");
+            var elAltMenor = document.getElementById("alt_estribo_menor");
+            if (elAltMaior) elAltMaior.value = altSug.toFixed(1);
+            if (elAltMenor) elAltMenor.value = altSug.toFixed(1);
             calcContagemEstribos();
         }}
 
@@ -699,15 +701,17 @@ def mostrar_tela_confirmacao(pilar):
             var nLin = parseInt(document.getElementById("num_linhas").value) || 0;
             var nMenor = parseInt(document.getElementById("num_menor").value) || 0;
             var temInc = document.getElementById("tem_inclinado").checked;
-            var largSt = parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0;
-            var altSt = parseFloat(document.getElementById("alt_estribo").value.replace(',', '.')) || 21.0;
+            var largStMaior = parseFloat(document.getElementById("larg_estribo_maior").value.replace(',', '.')) || 15.0;
+            var altStMaior = parseFloat(document.getElementById("alt_estribo_maior").value.replace(',', '.')) || 21.0;
+            var largStMenor = parseFloat(document.getElementById("larg_estribo_menor").value.replace(',', '.')) || 15.0;
+            var altStMenor = parseFloat(document.getElementById("alt_estribo_menor").value.replace(',', '.')) || 21.0;
             var bitolaVal = document.getElementById("bitola_estribo").value || "8.0";
             var posSt = (document.getElementById("pos_estribo").value || "1").trim().toUpperCase();
             if (posSt.indexOf("P") === 0) posSt = posSt.substring(1);
             if (!posSt) posSt = "1";
 
             var totalEstribos = (2 * nCol * nLin) + (2 * nMenor) + (temInc ? (4 * nLin) : 0);
-            var compTotal = Math.round(2.0 * (largSt + altSt) + 15.0);
+            var compTotal = Math.round(2.0 * (largStMaior + altStMaior) + 15.0);
 
             var bNum = parseFloat(bitolaVal);
             var bitolaTxt = (bNum % 1 === 0) ? bNum.toFixed(0) : bNum.toString();
@@ -718,7 +722,7 @@ def mostrar_tela_confirmacao(pilar):
 
             var elDet = document.getElementById("txt_detalhe_preview");
             if (elDet) {{
-                elDet.innerHTML = "Total: <b>" + totalEstribos + " estribos</b> (" + largSt + "x" + altSt + " cm)";
+                elDet.innerHTML = "Total: <b>" + totalEstribos + " estribos</b> (Maior: " + largStMaior + "x" + altStMaior + " cm | Menor: " + largStMenor + "x" + altStMenor + " cm)";
             }}
         }}
 
@@ -727,9 +731,12 @@ def mostrar_tela_confirmacao(pilar):
             var nCol = parseInt(document.getElementById("num_colunas").value) || {num_colunas_sug};
             var nLin = parseInt(document.getElementById("num_linhas").value) || {num_linhas_sug};
             var cx = parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || {cota_x_ini};
-            var largSt = parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0;
+            var largStMaior = parseFloat(document.getElementById("larg_estribo_maior").value.replace(',', '.')) || 15.0;
+            var altStMaior = parseFloat(document.getElementById("alt_estribo_maior").value.replace(',', '.')) || 21.0;
+            var largStMenor = parseFloat(document.getElementById("larg_estribo_menor").value.replace(',', '.')) || 15.0;
+            var altStMenor = parseFloat(document.getElementById("alt_estribo_menor").value.replace(',', '.')) || 21.0;
             var espLin = parseFloat(document.getElementById("espaco_linhas").value.replace(',', '.')) || {espaco_linhas_ini};
-            var espColAuto = (nCol > 1) ? ((L - 2.0 * cx - (nCol * largSt)) / (nCol - 1.0)) : 0.0;
+            var espColAuto = (nCol > 1) ? ((L - 2.0 * cx - (nCol * largStMaior)) / (nCol - 1.0)) : 0.0;
 
             var dados = {{
                 acao: acao,
@@ -750,11 +757,15 @@ def mostrar_tela_confirmacao(pilar):
                 tem_inclinado: document.getElementById("tem_inclinado").checked,
                 cota_inclinado: parseFloat(document.getElementById("cota_inclinado").value.replace(',', '.')) || {cota_inclinado_ini},
                 num_pinos: nLin,
-                larg_estribo: largSt,
-                alt_estribo: parseFloat(document.getElementById("alt_estribo").value.replace(',', '.')) || 21.0,
+                larg_estribo_maior: largStMaior,
+                alt_estribo_maior: altStMaior,
+                larg_estribo_menor: largStMenor,
+                alt_estribo_menor: altStMenor,
+                larg_estribo: largStMaior,
+                alt_estribo: altStMaior,
                 bitola_estribo: parseFloat(document.getElementById("bitola_estribo").value.replace(',', '.')) || 8.0,
                 pos_estribo: (document.getElementById("pos_estribo").value || "1").trim(),
-                esp_pinos: largSt,
+                esp_pinos: largStMaior,
                 desenhar_detalhe_estribo: true,
                 desenhar_cotas: true
             }};
@@ -822,26 +833,52 @@ def mostrar_tela_confirmacao(pilar):
 
         <!-- COLUNA DIREITA: CONFIGURAÇÕES DA ARMADURA -->
         <div class="col-right">
-            <!-- 1. QUANTIDADE DE COLUNAS, LINHAS E ESTRIBOS DA FACE MENOR -->
+            <!-- 1. ESTRIBOS DA FACE MAIOR -->
             <div class="card">
-                <h3>Disposição dos Ferros</h3>
+                <h3>Estribos — Face Maior ({int(comp_maior)} cm)</h3>
                 <div class="campo">
-                    <label>Nº de Colunas - Face Maior ({int(comp_maior)} cm):</label>
+                    <label>Nº de Colunas:</label>
                     <input type="number" id="num_colunas" value="{num_colunas_sug}" min="1" max="30" onchange="calcEspacoMaior()" />
                 </div>
                 <div class="campo">
-                    <label>Nº de Linhas - Face Maior:</label>
+                    <label>Nº de Linhas:</label>
                     <input type="number" id="num_linhas" value="{num_linhas_sug}" min="1" max="20" onchange="calcContagemEstribos()" />
                 </div>
                 <div class="campo">
-                    <label>Distância entre linhas de estribos (cm):</label>
+                    <label>Distância entre linhas (cm):</label>
                     <input type="text" id="espaco_linhas" value="{espaco_linhas_ini}" onchange="calcContagemEstribos()" />
                 </div>
-                <div class="campo" style="margin-top:6px;">
-                    <label>Nº de Estribos - Face Menor ({int(comp_menor)} cm):</label>
+                <div class="campo" style="border-top: 1px dashed #e0f2f1; padding-top: 5px; margin-top: 4px;">
+                    <label>Largura do estribo (cm):</label>
+                    <input type="text" id="larg_estribo_maior" value="{larg_estribo_ini}" onchange="calcEspacoMaior()" />
+                </div>
+                <div class="campo" style="margin-bottom: 0;">
+                    <label>Altura do estribo (cm):</label>
+                    <input type="text" id="alt_estribo_maior" value="{alt_estribo_ini}" onchange="calcContagemEstribos()" />
+                </div>
+            </div>
+
+            <!-- 2. ESTRIBOS DA FACE MENOR -->
+            <div class="card">
+                <h3>Estribos — Face Menor ({int(comp_menor)} cm)</h3>
+                <div class="campo">
+                    <label>Nº de Estribos:</label>
                     <input type="number" id="num_menor" value="{num_menor_sug}" min="1" max="20" onchange="calcEspacoMenor()" />
                 </div>
-                <div class="campo-check">
+                <div class="campo" style="border-top: 1px dashed #e0f2f1; padding-top: 5px; margin-top: 4px;">
+                    <label>Largura do estribo (cm):</label>
+                    <input type="text" id="larg_estribo_menor" value="{larg_estribo_ini}" onchange="calcContagemEstribos()" />
+                </div>
+                <div class="campo" style="margin-bottom: 0;">
+                    <label>Altura do estribo (cm):</label>
+                    <input type="text" id="alt_estribo_menor" value="{alt_estribo_ini}" onchange="calcContagemEstribos()" />
+                </div>
+            </div>
+
+            <!-- 3. FERROS INCLINADOS & DADOS GERAIS -->
+            <div class="card">
+                <h3>Ferros Inclinados &amp; Dados Gerais</h3>
+                <div class="campo-check" style="margin-top: 0;">
                     <input type="checkbox" id="tem_inclinado" checked onclick="toggleInclinado()" onchange="toggleInclinado()" />
                     <label for="tem_inclinado"><b>Gerar ferros inclinados</b> (diagonal nas 4 quinas)</label>
                 </div>
@@ -849,20 +886,7 @@ def mostrar_tela_confirmacao(pilar):
                     <label for="cota_inclinado" style="color:#004d40;">Cota do ferro inclinado (cm):</label>
                     <input type="text" id="cota_inclinado" value="{cota_inclinado_ini}" />
                 </div>
-            </div>
-
-            <!-- 2. CONFIGURAÇÃO DOS ESTRIBOS & DETALHE -->
-            <div class="card">
-                <h3>Configuração dos Estribos & Detalhe</h3>
-                <div class="campo">
-                    <label>Tamanho / Largura do estribo (cm):</label>
-                    <input type="text" id="larg_estribo" value="{larg_estribo_ini}" onchange="calcEspacoMaior()" />
-                </div>
-                <div class="campo">
-                    <label>Altura do estribo (cm):</label>
-                    <input type="text" id="alt_estribo" value="{alt_estribo_ini}" onchange="calcContagemEstribos()" />
-                </div>
-                <div class="campo">
+                <div class="campo" style="margin-top: 6px;">
                     <label>Bitola do estribo:</label>
                     <select id="bitola_estribo" onchange="calcContagemEstribos()">
                         <option value="5.0">ø 5.0 mm</option>
@@ -872,13 +896,9 @@ def mostrar_tela_confirmacao(pilar):
                         <option value="12.5">ø 12.5 mm</option>
                     </select>
                 </div>
-                <div class="campo">
+                <div class="campo" style="margin-bottom: 0;">
                     <label>Posição / Marca:</label>
                     <input type="text" id="pos_estribo" value="{pos_estribo_ini}" style="width:85px; text-align:center;" onchange="calcContagemEstribos()" />
-                </div>
-
-                <!-- Resumo automático -->
-                
                 </div>
             </div>
         </div>
@@ -951,7 +971,9 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     tem_inclinado = bool(config.get("tem_inclinado", True))
     num_pinos = int(config.get("num_pinos", 3))
     larg_estribo = float(config.get("larg_estribo", config.get("esp_pinos", 15.0)))
-    esp_pinos = larg_estribo
+    larg_estribo_maior = float(config.get("larg_estribo_maior", larg_estribo))
+    larg_estribo_menor = float(config.get("larg_estribo_menor", larg_estribo))
+    esp_pinos = larg_estribo_maior
     desenhar_cotas = bool(config.get("desenhar_cotas", True))
 
     # 2. Dimensões do pilar
@@ -1145,15 +1167,15 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     if orientacao == 'H':
         # 1. FACES MAIORES (Superior e Inferior):
         #    Estribos na HORIZONTAL em sequência (num_colunas x num_linhas).
-        #    Desconta cota_x de cada lado e o tamanho do estribo (larg_estribo) para calcular o espaço entre eles.
+        #    Desconta cota_x de cada lado e o tamanho do estribo da face maior (larg_estribo_maior) para calcular o espaço entre eles.
         if num_colunas == 1:
-            x0_col = (px_min + px_max - larg_estribo) / 2.0
-            colunas_x = [(x0_col, x0_col + larg_estribo)]
+            x0_col = (px_min + px_max - larg_estribo_maior) / 2.0
+            colunas_x = [(x0_col, x0_col + larg_estribo_maior)]
         else:
-            gap_col = (col_dx - 2.0 * cota_x - num_colunas * larg_estribo) / (num_colunas - 1)
-            passo_col = larg_estribo + gap_col
+            gap_col = (col_dx - 2.0 * cota_x - num_colunas * larg_estribo_maior) / (num_colunas - 1)
+            passo_col = larg_estribo_maior + gap_col
             colunas_x = [
-                (px_min + cota_x + c * passo_col, px_min + cota_x + c * passo_col + larg_estribo)
+                (px_min + cota_x + c * passo_col, px_min + cota_x + c * passo_col + larg_estribo_maior)
                 for c in range(num_colunas)
             ]
 
@@ -1167,9 +1189,9 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                 _desenhar_estribo_individual(x_ini_c, y_inf_r, x_fim_c, y_inf_r)
 
         # 2. FACES MENORES (Esquerda e Direita):
-        #    1 sequência de num_menor estribos na VERTICAL indo para os lados.
+        #    1 sequência de num_menor estribos na VERTICAL indo para os lados (usa larg_estribo_menor).
         y_top_menor = py_max - cota_y_linha
-        y_bot_menor = y_top_menor - larg_estribo
+        y_bot_menor = y_top_menor - larg_estribo_menor
 
         for k in range(num_menor):
             x_esq_k = px_min - (cota_x_linha + k * espaco_menor)
@@ -1204,13 +1226,13 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         # 1. FACES MAIORES (Esquerda e Direita):
         #    Estribos paralelos à face maior (verticais) em malha (num_colunas x num_linhas).
         if num_colunas == 1:
-            y0_col = (py_min + py_max - larg_estribo) / 2.0
-            colunas_y = [(y0_col, y0_col + larg_estribo)]
+            y0_col = (py_min + py_max - larg_estribo_maior) / 2.0
+            colunas_y = [(y0_col, y0_col + larg_estribo_maior)]
         else:
-            gap_col = (col_dy - 2.0 * cota_x - num_colunas * larg_estribo) / (num_colunas - 1)
-            passo_col = larg_estribo + gap_col
+            gap_col = (col_dy - 2.0 * cota_x - num_colunas * larg_estribo_maior) / (num_colunas - 1)
+            passo_col = larg_estribo_maior + gap_col
             colunas_y = [
-                (py_min + cota_x + c * passo_col, py_min + cota_x + c * passo_col + larg_estribo)
+                (py_min + cota_x + c * passo_col, py_min + cota_x + c * passo_col + larg_estribo_maior)
                 for c in range(num_colunas)
             ]
 
@@ -1222,9 +1244,9 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                 _desenhar_estribo_individual(x_dir_r, y_ini_c, x_dir_r, y_fim_c)
 
         # 2. FACES MENORES (Superior e Inferior):
-        #    1 sequência de num_menor estribos paralelos à face menor (horizontais).
+        #    1 sequência de num_menor estribos paralelos à face menor (horizontais, usa larg_estribo_menor).
         x_ini_menor = px_min + cota_y_linha
-        x_fim_menor = x_ini_menor + larg_estribo
+        x_fim_menor = x_ini_menor + larg_estribo_menor
 
         for k in range(num_menor):
             y_sup_k = py_max + cota_x_linha + k * espaco_menor
