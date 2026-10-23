@@ -385,10 +385,7 @@ def mostrar_tela_confirmacao(pilar):
     comp_maior = col_dx if orientacao == 'H' else col_dy
     comp_menor = col_dy if orientacao == 'H' else col_dx
 
-    # Sugestão de quantidade e espaçamento inicial
-    num_maior_sug = max(4, int(round((comp_maior - 13.5) / 18.5)) + 1)
-    num_menor_sug = max(2, int(round((comp_menor - 15.1) / 15.0)) + 1)
-
+    # Sugestão inicial de colunas e linhas (Face Maior) e estribos (Face Menor)
     cota_x_ini = 6.75
     cota_y_ini = 10.0
     cota_y_linha_ini = 7.55
@@ -399,14 +396,22 @@ def mostrar_tela_confirmacao(pilar):
     alt_estribo_ini = round(max(10.0, float(hd_p) - 5.0), 1)
     bitola_estribo_ini = 8.0
     pos_estribo_ini = "1"
-    num_pinos_ini = 3
 
-    total_trilhos_ini = (2 * num_maior_sug) + (2 * num_menor_sug) + 4
-    total_estribos_ini = total_trilhos_ini * num_pinos_ini
+    vao_util_maior = max(larg_estribo_ini, comp_maior - 2.0 * cota_x_ini)
+    num_colunas_sug = max(2, int(vao_util_maior // (larg_estribo_ini + 12.0)))
+    if num_colunas_sug * larg_estribo_ini > vao_util_maior and num_colunas_sug > 2:
+        num_colunas_sug = max(2, int(vao_util_maior // larg_estribo_ini))
+    num_linhas_sug = 4
+    espaco_linhas_ini = 13.0
+
+    num_menor_sug = 3
+    espaco_menor_sug = 13.0
+    num_pinos_ini = num_linhas_sug
+
+    espaco_colunas_sug = round((comp_maior - 2.0 * cota_x_ini - num_colunas_sug * larg_estribo_ini) / (num_colunas_sug - 1), 2) if num_colunas_sug > 1 else 0.0
+
+    total_estribos_ini = (2 * num_colunas_sug * num_linhas_sug) + (2 * num_menor_sug) + (4 * num_linhas_sug)
     comp_ini = int(round(2.0 * (larg_estribo_ini + alt_estribo_ini) + 15.0))
-
-    espaco_maior_sug = round((comp_maior - 2.0 * cota_x_ini) / (num_maior_sug - 1), 2) if num_maior_sug > 1 else 0.0
-    espaco_menor_sug = round((comp_menor - 2.0 * cota_y_linha_ini) / (num_menor_sug - 1), 2) if num_menor_sug > 1 else 0.0
 
     hta_content = f"""<!DOCTYPE html>
 <html>
@@ -665,54 +670,10 @@ def mostrar_tela_confirmacao(pilar):
         }};
 
         function calcEspacoMaior() {{
-            var L = {comp_maior};
-            var cx = parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || 6.75;
-            var n = parseInt(document.getElementById("num_maior").value) || 1;
-            if (n > 1) {{
-                var s = (L - 2.0 * cx) / (n - 1.0);
-                document.getElementById("espaco_maior").value = s.toFixed(2);
-            }}
-            calcContagemEstribos();
-        }}
-
-        function calcQtdMaior() {{
-            var L = {comp_maior};
-            var cx = parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || 6.75;
-            var s = parseFloat(document.getElementById("espaco_maior").value.replace(',', '.')) || 18.5;
-            if (s > 0) {{
-                var n = Math.round((L - 2.0 * cx) / s) + 1;
-                if (n < 1) n = 1;
-                document.getElementById("num_maior").value = n;
-                if (n > 1) {{
-                    document.getElementById("espaco_maior").value = ((L - 2.0 * cx) / (n - 1.0)).toFixed(2);
-                }}
-            }}
             calcContagemEstribos();
         }}
 
         function calcEspacoMenor() {{
-            var W = {comp_menor};
-            var cy = parseFloat(document.getElementById("cota_y_linha").value.replace(',', '.')) || 7.55;
-            var n = parseInt(document.getElementById("num_menor").value) || 1;
-            if (n > 1) {{
-                var s = (W - 2.0 * cy) / (n - 1.0);
-                document.getElementById("espaco_menor").value = s.toFixed(2);
-            }}
-            calcContagemEstribos();
-        }}
-
-        function calcQtdMenor() {{
-            var W = {comp_menor};
-            var cy = parseFloat(document.getElementById("cota_y_linha").value.replace(',', '.')) || 7.55;
-            var s = parseFloat(document.getElementById("espaco_menor").value.replace(',', '.')) || 15.0;
-            if (s > 0) {{
-                var n = Math.round((W - 2.0 * cy) / s) + 1;
-                if (n < 1) n = 1;
-                document.getElementById("num_menor").value = n;
-                if (n > 1) {{
-                    document.getElementById("espaco_menor").value = ((W - 2.0 * cy) / (n - 1.0)).toFixed(2);
-                }}
-            }}
             calcContagemEstribos();
         }}
 
@@ -734,10 +695,10 @@ def mostrar_tela_confirmacao(pilar):
         }}
 
         function calcContagemEstribos() {{
-            var nMaior = parseInt(document.getElementById("num_maior").value) || 0;
+            var nCol = parseInt(document.getElementById("num_colunas").value) || 0;
+            var nLin = parseInt(document.getElementById("num_linhas").value) || 0;
             var nMenor = parseInt(document.getElementById("num_menor").value) || 0;
             var temInc = document.getElementById("tem_inclinado").checked;
-            var nPinos = parseInt(document.getElementById("num_pinos").value) || 1;
             var largSt = parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0;
             var altSt = parseFloat(document.getElementById("alt_estribo").value.replace(',', '.')) || 21.0;
             var bitolaVal = document.getElementById("bitola_estribo").value || "8.0";
@@ -745,44 +706,55 @@ def mostrar_tela_confirmacao(pilar):
             if (posSt.indexOf("P") === 0) posSt = posSt.substring(1);
             if (!posSt) posSt = "1";
 
-            var totalTrilhos = (2 * nMaior) + (2 * nMenor) + (temInc ? 4 : 0);
-            var totalEstribos = totalTrilhos * nPinos;
+            var totalEstribos = (2 * nCol * nLin) + (2 * nMenor) + (temInc ? (4 * nLin) : 0);
             var compTotal = Math.round(2.0 * (largSt + altSt) + 15.0);
 
             var bNum = parseFloat(bitolaVal);
             var bitolaTxt = (bNum % 1 === 0) ? bNum.toFixed(0) : bNum.toString();
 
-            var chamada = totalTrilhos + "x" + nPinos + " P" + posSt + " \u00f8 " + bitolaTxt + " C=" + compTotal;
+            var chamada = totalEstribos + " P" + posSt + " \u00f8 " + bitolaTxt + " C=" + compTotal;
             var elChamada = document.getElementById("txt_chamada_preview");
             if (elChamada) elChamada.innerText = chamada;
 
             var elDet = document.getElementById("txt_detalhe_preview");
             if (elDet) {{
-                elDet.innerHTML = "Total: <b>" + totalEstribos + " estribos</b> (" + totalTrilhos + " trilhos x " + nPinos + " | " + largSt + "x" + altSt + " cm)";
+                elDet.innerHTML = "Total: <b>" + totalEstribos + " estribos</b> (" + largSt + "x" + altSt + " cm)";
             }}
         }}
 
         function responder(acao) {{
+            var L = {comp_maior};
+            var nCol = parseInt(document.getElementById("num_colunas").value) || {num_colunas_sug};
+            var nLin = parseInt(document.getElementById("num_linhas").value) || {num_linhas_sug};
+            var cx = parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || {cota_x_ini};
+            var largSt = parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0;
+            var espLin = parseFloat(document.getElementById("espaco_linhas").value.replace(',', '.')) || {espaco_linhas_ini};
+            var espColAuto = (nCol > 1) ? ((L - 2.0 * cx - (nCol * largSt)) / (nCol - 1.0)) : 0.0;
+
             var dados = {{
                 acao: acao,
                 nome_pilar: document.getElementById("nome_pilar").value || "{nome_p}",
                 hd: parseFloat(document.getElementById("hd").value.replace(',', '.')) || {hd_p},
-                cota_x: parseFloat(document.getElementById("cota_x").value.replace(',', '.')) || {cota_x_ini},
+                cota_x: cx,
                 cota_y: parseFloat(document.getElementById("cota_y").value.replace(',', '.')) || {cota_y_ini},
                 cota_y_linha: parseFloat(document.getElementById("cota_y_linha").value.replace(',', '.')) || {cota_y_linha_ini},
                 cota_x_linha: parseFloat(document.getElementById("cota_x_linha").value.replace(',', '.')) || {cota_x_linha_ini},
-                num_maior: parseInt(document.getElementById("num_maior").value) || {num_maior_sug},
-                espaco_maior: parseFloat(document.getElementById("espaco_maior").value.replace(',', '.')) || {espaco_maior_sug},
+                num_colunas: nCol,
+                num_linhas: nLin,
+                espaco_colunas: espColAuto,
+                espaco_linhas: espLin,
+                num_maior: nCol,
+                espaco_maior: espColAuto,
                 num_menor: parseInt(document.getElementById("num_menor").value) || {num_menor_sug},
-                espaco_menor: parseFloat(document.getElementById("espaco_menor").value.replace(',', '.')) || {espaco_menor_sug},
+                espaco_menor: espLin,
                 tem_inclinado: document.getElementById("tem_inclinado").checked,
                 cota_inclinado: parseFloat(document.getElementById("cota_inclinado").value.replace(',', '.')) || {cota_inclinado_ini},
-                num_pinos: parseInt(document.getElementById("num_pinos").value) || 3,
-                larg_estribo: parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0,
+                num_pinos: nLin,
+                larg_estribo: largSt,
                 alt_estribo: parseFloat(document.getElementById("alt_estribo").value.replace(',', '.')) || 21.0,
                 bitola_estribo: parseFloat(document.getElementById("bitola_estribo").value.replace(',', '.')) || 8.0,
                 pos_estribo: (document.getElementById("pos_estribo").value || "1").trim(),
-                esp_pinos: parseFloat(document.getElementById("larg_estribo").value.replace(',', '.')) || 15.0,
+                esp_pinos: largSt,
                 desenhar_detalhe_estribo: true,
                 desenhar_cotas: true
             }};
@@ -802,7 +774,6 @@ def mostrar_tela_confirmacao(pilar):
 </head>
 <body>
     <div class="topbar">
-        <div class="icon">P</div>
         <div>
             <h1>Armação de Punção - Detalhamento das Cotas & Geometria</h1>
             <p>G3 Plugins - Ediglânthio Samuel Araújo Brandão - TQS</p>
@@ -851,24 +822,24 @@ def mostrar_tela_confirmacao(pilar):
 
         <!-- COLUNA DIREITA: CONFIGURAÇÕES DA ARMADURA -->
         <div class="col-right">
-            <!-- 1. QUANTIDADE E ESPAÇO ENTRE OS FERROS (TRILHOS) -->
+            <!-- 1. QUANTIDADE DE COLUNAS, LINHAS E ESTRIBOS DA FACE MENOR -->
             <div class="card">
-                <h3>Disposição dos Ferros (Trilhos)</h3>
+                <h3>Disposição dos Ferros</h3>
                 <div class="campo">
-                    <label>Ferros na Face Maior ({int(comp_maior)} cm):</label>
-                    <input type="number" id="num_maior" value="{num_maior_sug}" min="1" max="30" onchange="calcEspacoMaior()" />
+                    <label>Nº de Colunas - Face Maior ({int(comp_maior)} cm):</label>
+                    <input type="number" id="num_colunas" value="{num_colunas_sug}" min="1" max="30" onchange="calcEspacoMaior()" />
                 </div>
                 <div class="campo">
-                    <label>Espaço entre ferros Maior (cm):</label>
-                    <input type="text" id="espaco_maior" value="{espaco_maior_sug}" onchange="calcQtdMaior()" />
+                    <label>Nº de Linhas - Face Maior:</label>
+                    <input type="number" id="num_linhas" value="{num_linhas_sug}" min="1" max="20" onchange="calcContagemEstribos()" />
+                </div>
+                <div class="campo">
+                    <label>Distância entre linhas de estribos (cm):</label>
+                    <input type="text" id="espaco_linhas" value="{espaco_linhas_ini}" onchange="calcContagemEstribos()" />
                 </div>
                 <div class="campo" style="margin-top:6px;">
-                    <label>Ferros na Face Menor ({int(comp_menor)} cm):</label>
+                    <label>Nº de Estribos - Face Menor ({int(comp_menor)} cm):</label>
                     <input type="number" id="num_menor" value="{num_menor_sug}" min="1" max="20" onchange="calcEspacoMenor()" />
-                </div>
-                <div class="campo">
-                    <label>Espaço entre ferros Menor (cm):</label>
-                    <input type="text" id="espaco_menor" value="{espaco_menor_sug}" onchange="calcQtdMenor()" />
                 </div>
                 <div class="campo-check">
                     <input type="checkbox" id="tem_inclinado" checked onclick="toggleInclinado()" onchange="toggleInclinado()" />
@@ -884,12 +855,8 @@ def mostrar_tela_confirmacao(pilar):
             <div class="card">
                 <h3>Configuração dos Estribos & Detalhe</h3>
                 <div class="campo">
-                    <label>Estribos por trilho (pinos):</label>
-                    <input type="number" id="num_pinos" value="{num_pinos_ini}" min="1" max="15" onchange="calcContagemEstribos()" />
-                </div>
-                <div class="campo">
-                    <label>Largura do estribo (cm):</label>
-                    <input type="text" id="larg_estribo" value="{larg_estribo_ini}" onchange="calcContagemEstribos()" />
+                    <label>Tamanho / Largura do estribo (cm):</label>
+                    <input type="text" id="larg_estribo" value="{larg_estribo_ini}" onchange="calcEspacoMaior()" />
                 </div>
                 <div class="campo">
                     <label>Altura do estribo (cm):</label>
@@ -959,11 +926,11 @@ def mostrar_tela_confirmacao(pilar):
 
 def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     """
-    Desenha os trilhos, conectores/estribos e cotas da Armadura de Punção em volta do pilar.
-    - Face maior: num_maior ferros perpendiculares com cotas escalonadas em patamar (dogleg)
-    - Face menor: num_menor ferros perpendiculares com cotas alinhadas e sem sobreposição
-    - 4 quinas: ferros inclinados a 45° com cotas
-    - Detalhe esquemático dos estribos (15x21 cm) e texto 28x3 P1 ø 8 C=87
+    Desenha os estribos, conectores/pinos e cotas da Armadura de Punção em volta do pilar:
+    - Face maior: malha de (num_colunas x num_linhas) com estribos na horizontal em sequência,
+      descontando cota_x de cada lado e o tamanho do estribo para calcular o espaço entre colunas;
+    - Face menor: sequência de num_menor estribos na vertical indo para os lados;
+    - 4 quinas: ferros inclinados a 45° (mantidos inalterados por enquanto).
     """
     draw = dwg.draw
 
@@ -973,11 +940,18 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     cota_y_linha = float(config.get("cota_y_linha", 7.55))
     cota_x_linha = float(config.get("cota_x_linha", 10.0))
     cota_inclinado = float(config.get("cota_inclinado", 10.0))
-    num_maior = int(config.get("num_maior", 10))
-    num_menor = int(config.get("num_menor", 2))
+
+    num_colunas = max(1, int(config.get("num_colunas", config.get("num_maior", 5))))
+    num_linhas = max(1, int(config.get("num_linhas", 4)))
+    espaco_linhas = float(config.get("espaco_linhas", 15.0))
+
+    num_menor = max(1, int(config.get("num_menor", 3)))
+    espaco_menor = float(config.get("espaco_menor", 15.0))
+
     tem_inclinado = bool(config.get("tem_inclinado", True))
     num_pinos = int(config.get("num_pinos", 3))
-    esp_pinos = float(config.get("esp_pinos", 15.0))
+    larg_estribo = float(config.get("larg_estribo", config.get("esp_pinos", 15.0)))
+    esp_pinos = larg_estribo
     desenhar_cotas = bool(config.get("desenhar_cotas", True))
 
     # 2. Dimensões do pilar
@@ -989,10 +963,13 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     py_max = y_alvo + c_ymax
 
     raio_pino = 1.15
-    # Distância entre os centros das 2 bolinhas de cada dupla intermediária (conexão entre estribos adjacentes)
-    passo_dupla = 2.25
-    n_estribos = max(1, num_pinos)
-    comp_trilho = n_estribos * esp_pinos + (n_estribos - 1) * passo_dupla
+    # Lógica dinâmica do reforço radial (ferros inclinados nas 4 quinas):
+    # - Pontas antes da 1ª bolinha e depois da última usam cota_inclinado (ex: 10 cm)
+    # - Espaço entre as bolinhas usa espaco_linhas (distância vertical entre as linhas de estribos paralelos, ex: 13 cm)
+    ponta_inclinado = cota_inclinado if cota_inclinado > 0 else 10.0
+    passo_inclinado = espaco_linhas if espaco_linhas > 0 else 13.0
+    n_estribos = max(1, int(config.get("num_linhas", num_pinos)))
+    comp_trilho = 2.0 * ponta_inclinado + max(0, n_estribos - 1) * passo_inclinado
 
     NIV_FERRO = 220
     COR_TRILHO = 4    # Ciano
@@ -1016,11 +993,21 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         draw.style = 0
         draw.Circle(xc_p, yc_p, raio_pino)
 
+    def _desenhar_estribo_individual(x1, y1, x2, y2):
+        """
+        Desenha um estribo individual na planta:
+        1 linha ciano de (x1, y1) até (x2, y2) com 1 bolinha vermelha em cada extremidade.
+        """
+        _linha_ferro(x1, y1, x2, y2)
+        _pino(x1, y1)
+        _pino(x2, y2)
+
     def _desenhar_trilho_estribos(x_base, y_base, ux, uy, d_ini):
         """
-        Desenha um trilho (ferro) e as bolinhas dos N estribos ao longo da direção (ux, uy):
-        - Cada estribo k (0 .. N-1) possui 1 bolinha no início e 1 bolinha no fim;
-        - Resultado: 1 bolinha em cada ponta do ferro e (N - 1) duplas no meio.
+        Desenha o ferro inclinado (reforço radial) nas 4 quinas:
+        - A linha azul começa em d_ini, passa direto pelas bolinhas (sobrando 10 cm antes da 1ª
+          e 10 cm depois da última);
+        - Cada bolinha vermelha simples fica espaçada a cada 13 cm ao longo da diagonal.
         """
         x_ini = x_base + ux * d_ini
         y_ini = y_base + uy * d_ini
@@ -1029,10 +1016,8 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         _linha_ferro(x_ini, y_ini, x_fim, y_fim)
 
         for k in range(n_estribos):
-            d_k_ini = d_ini + k * (esp_pinos + passo_dupla)
-            d_k_fim = d_k_ini + esp_pinos
-            _pino(x_base + ux * d_k_ini, y_base + uy * d_k_ini)
-            _pino(x_base + ux * d_k_fim, y_base + uy * d_k_fim)
+            d_bolinha = d_ini + ponta_inclinado + k * passo_inclinado
+            _pino(x_base + ux * d_bolinha, y_base + uy * d_bolinha)
 
     def _linha_cota(x1, y1, x2, y2):
         draw.level = NIV_COTA
@@ -1053,11 +1038,7 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
     def _cota_horizontal_staggered(y_cota, pts_x, witness_y_start):
         """
-        Desenha linha de cota horizontal no padrão TQS:
-        - Apenas as linhas de chamada externas (quinas do pilar) descem até próximo ao pilar;
-        - As chamadas intermediárias (nos ferros) são curtas junto à linha de cota (não invadem os ferros);
-        - As cotas das pontas ficam fora das linhas de chamada externas e as intermediárias
-          alternam entre linha base e patamar elevado (dogleg), sem qualquer sobreposição.
+        Desenha linha de cota horizontal no padrão TQS.
         """
         _linha_cota(pts_x[0] - 3.0, y_cota, pts_x[-1] + 3.0, y_cota)
 
@@ -1077,13 +1058,10 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
             xm_c = (x1_c + x2_c) / 2.0
 
             if i == 0 and n_interv > 1:
-                # Primeiro intervalo (quina esquerda): texto à esquerda da linha de chamada externa
                 _texto_cota(x1_c - larg_txt - 1.8, y_cota + 1.8, txt_v, h=4.8)
             elif i == n_interv - 1 and n_interv > 1:
-                # Último intervalo (quina direita): texto à direita da linha de chamada externa
                 _texto_cota(x2_c + 2.0, y_cota + 1.8, txt_v, h=4.8)
             else:
-                # Intervalos intermediários: ímpares sobem em patamar (dogleg), pares ficam na base
                 if (i % 2) == 1:
                     x_start = xm_c + 2.0
                     y_start = y_cota + 1.2
@@ -1098,10 +1076,7 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
 
     def _cota_vertical_alinhada(x_cota, pts_y, witness_x_start):
         """
-        Desenha linha de cota vertical no padrão TQS:
-        - Apenas as linhas de chamada das quinas do pilar vão até próximo ao pilar;
-        - As chamadas intermediárias nos ferros são curtas junto à linha de cota;
-        - Os textos das extremidades ficam por fora das quinas para nunca sobrepor.
+        Desenha linha de cota vertical no padrão TQS.
         """
         _linha_cota(x_cota, pts_y[0] - 3.0, x_cota, pts_y[-1] + 3.0)
 
@@ -1134,15 +1109,11 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
                     _linha_cota(x_knee, y_knee, x_knee, y_shelf_top)
                     _texto_cota(x_knee - 1.8, y_knee + 0.8, txt_vy, h=4.8, ang=90.0)
                 else:
-                    # Afasta o texto intermediário (ex: 14.9) para a esquerda das linhas de chamada horizontais
                     _texto_cota(x_cota - 7.5, ym_c - larg_txt / 2.0, txt_vy, h=4.8, ang=90.0)
 
     def _cotas_afastamento_ferros(dist_esq, dist_inf):
         """
-        Desenha as cotas de afastamento entre a face do pilar e o 1º pino dos ferros,
-        posicionadas nos cantos livres exatamente como no detalhamento padrão:
-        1. Canto superior esquerdo (horizontal): afastamento dos ferros da face esquerda (dist_esq)
-        2. Canto inferior direito (vertical): afastamento dos ferros da face inferior (dist_inf)
+        Desenha as cotas de afastamento entre a face do pilar e o 1º pino dos ferros.
         """
         # 1. Cota horizontal no canto superior esquerdo (distância da face esquerda ao 1º pino)
         x_pino_esq = px_min - dist_esq
@@ -1172,79 +1143,109 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
     # CASO 1: PILAR HORIZONTAL (Face maior no topo e base)
     # ==========================================================================
     if orientacao == 'H':
-        # 1. TRILHOS DA FACE MAIOR (Superior e Inferior) - iniciando exatamente na cota_y
-        if num_maior == 1:
-            pos_maior = [(px_min + px_max) / 2.0]
+        # 1. FACES MAIORES (Superior e Inferior):
+        #    Estribos na HORIZONTAL em sequência (num_colunas x num_linhas).
+        #    Desconta cota_x de cada lado e o tamanho do estribo (larg_estribo) para calcular o espaço entre eles.
+        if num_colunas == 1:
+            x0_col = (px_min + px_max - larg_estribo) / 2.0
+            colunas_x = [(x0_col, x0_col + larg_estribo)]
         else:
-            s_maior = (col_dx - 2.0 * cota_x) / (num_maior - 1)
-            pos_maior = [px_min + cota_x + i * s_maior for i in range(num_maior)]
+            gap_col = (col_dx - 2.0 * cota_x - num_colunas * larg_estribo) / (num_colunas - 1)
+            passo_col = larg_estribo + gap_col
+            colunas_x = [
+                (px_min + cota_x + c * passo_col, px_min + cota_x + c * passo_col + larg_estribo)
+                for c in range(num_colunas)
+            ]
 
-        for px_f in pos_maior:
-            # Trilho Superior e Inferior (1 bolinha em cada ponta + N-1 duplas no meio)
-            _desenhar_trilho_estribos(px_f, py_max, 0.0, 1.0, cota_y)
-            _desenhar_trilho_estribos(px_f, py_min, 0.0, -1.0, cota_y)
+        for r in range(num_linhas):
+            y_sup_r = py_max + cota_y + r * espaco_linhas
+            y_inf_r = py_min - (cota_y + r * espaco_linhas)
+            for x_ini_c, x_fim_c in colunas_x:
+                # Face superior (horizontal)
+                _desenhar_estribo_individual(x_ini_c, y_sup_r, x_fim_c, y_sup_r)
+                # Face inferior (horizontal)
+                _desenhar_estribo_individual(x_ini_c, y_inf_r, x_fim_c, y_inf_r)
 
-        # 2. TRILHOS DA FACE MENOR (Esquerda e Direita) - iniciando exatamente na cota_x_linha
-        if num_menor == 1:
-            pos_menor = [(py_min + py_max) / 2.0]
-        else:
-            s_menor = (col_dy - 2.0 * cota_y_linha) / (num_menor - 1)
-            pos_menor = [py_min + cota_y_linha + j * s_menor for j in range(num_menor)]
+        # 2. FACES MENORES (Esquerda e Direita):
+        #    1 sequência de num_menor estribos na VERTICAL indo para os lados.
+        y_top_menor = py_max - cota_y_linha
+        y_bot_menor = y_top_menor - larg_estribo
 
-        for py_f in pos_menor:
-            # Trilho Esquerdo e Direito (1 bolinha em cada ponta + N-1 duplas no meio)
-            _desenhar_trilho_estribos(px_min, py_f, -1.0, 0.0, cota_x_linha)
-            _desenhar_trilho_estribos(px_max, py_f, 1.0, 0.0, cota_x_linha)
+        for k in range(num_menor):
+            x_esq_k = px_min - (cota_x_linha + k * espaco_menor)
+            x_dir_k = px_max + (cota_x_linha + k * espaco_menor)
+            # Face esquerda (vertical)
+            _desenhar_estribo_individual(x_esq_k, y_bot_menor, x_esq_k, y_top_menor)
+            # Face direita (vertical)
+            _desenhar_estribo_individual(x_dir_k, y_bot_menor, x_dir_k, y_top_menor)
 
         # 3. COTAS (Se ativadas)
         if desenhar_cotas:
-            # Cota Superior com Patamares Escalonados (Dogleg)
-            y_cota_sup = py_max + cota_y + comp_trilho + 9.0
-            pts_cota_x = [px_min] + list(pos_maior) + [px_max]
+            alt_malha_sup = cota_y + (num_linhas - 1) * espaco_linhas
+            y_cota_sup = py_max + alt_malha_sup + 9.0
+            pts_cota_x = [px_min]
+            for x_ini_c, x_fim_c in colunas_x:
+                pts_cota_x.extend([x_ini_c, x_fim_c])
+            pts_cota_x.append(px_max)
+            pts_cota_x = sorted(list(set(round(p, 4) for p in pts_cota_x)))
             _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 3.5)
 
-            # Cota Lateral Esquerda (Alinhada sem sobreposição)
-            x_cota_esq = px_min - cota_x_linha - comp_trilho - 9.0
-            pts_cota_y = [py_min] + list(pos_menor) + [py_max]
+            larg_seq_esq = cota_x_linha + (num_menor - 1) * espaco_menor
+            x_cota_esq = px_min - larg_seq_esq - 9.0
+            pts_cota_y = sorted(list(set([round(py_min, 4), round(y_bot_menor, 4), round(y_top_menor, 4), round(py_max, 4)])))
             _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 3.5)
 
-            # Cotas de afastamento (cota_x_linha na esquerda e cota_y na base)
             _cotas_afastamento_ferros(cota_x_linha, cota_y)
 
     # ==========================================================================
     # CASO 2: PILAR VERTICAL (Face maior na lateral esquerda/direita)
     # ==========================================================================
     else:
-        # 1. TRILHOS DA FACE MAIOR (Esquerda e Direita) - iniciando exatamente na cota_y
-        if num_maior == 1:
-            pos_maior = [(py_min + py_max) / 2.0]
+        # 1. FACES MAIORES (Esquerda e Direita):
+        #    Estribos paralelos à face maior (verticais) em malha (num_colunas x num_linhas).
+        if num_colunas == 1:
+            y0_col = (py_min + py_max - larg_estribo) / 2.0
+            colunas_y = [(y0_col, y0_col + larg_estribo)]
         else:
-            s_maior = (col_dy - 2.0 * cota_x) / (num_maior - 1)
-            pos_maior = [py_min + cota_x + i * s_maior for i in range(num_maior)]
+            gap_col = (col_dy - 2.0 * cota_x - num_colunas * larg_estribo) / (num_colunas - 1)
+            passo_col = larg_estribo + gap_col
+            colunas_y = [
+                (py_min + cota_x + c * passo_col, py_min + cota_x + c * passo_col + larg_estribo)
+                for c in range(num_colunas)
+            ]
 
-        for py_f in pos_maior:
-            _desenhar_trilho_estribos(px_min, py_f, -1.0, 0.0, cota_y)
-            _desenhar_trilho_estribos(px_max, py_f, 1.0, 0.0, cota_y)
+        for r in range(num_linhas):
+            x_esq_r = px_min - (cota_y + r * espaco_linhas)
+            x_dir_r = px_max + cota_y + r * espaco_linhas
+            for y_ini_c, y_fim_c in colunas_y:
+                _desenhar_estribo_individual(x_esq_r, y_ini_c, x_esq_r, y_fim_c)
+                _desenhar_estribo_individual(x_dir_r, y_ini_c, x_dir_r, y_fim_c)
 
-        # 2. TRILHOS DA FACE MENOR (Superior e Inferior) - iniciando exatamente na cota_x_linha
-        if num_menor == 1:
-            pos_menor = [(px_min + px_max) / 2.0]
-        else:
-            s_menor = (col_dx - 2.0 * cota_y_linha) / (num_menor - 1)
-            pos_menor = [px_min + cota_y_linha + j * s_menor for j in range(num_menor)]
+        # 2. FACES MENORES (Superior e Inferior):
+        #    1 sequência de num_menor estribos paralelos à face menor (horizontais).
+        x_ini_menor = px_min + cota_y_linha
+        x_fim_menor = x_ini_menor + larg_estribo
 
-        for px_f in pos_menor:
-            _desenhar_trilho_estribos(px_f, py_max, 0.0, 1.0, cota_x_linha)
-            _desenhar_trilho_estribos(px_f, py_min, 0.0, -1.0, cota_x_linha)
+        for k in range(num_menor):
+            y_sup_k = py_max + cota_x_linha + k * espaco_menor
+            y_inf_k = py_min - (cota_x_linha + k * espaco_menor)
+            _desenhar_estribo_individual(x_ini_menor, y_sup_k, x_fim_menor, y_sup_k)
+            _desenhar_estribo_individual(x_ini_menor, y_inf_k, x_fim_menor, y_inf_k)
 
         # 3. COTAS
         if desenhar_cotas:
-            x_cota_esq = px_min - cota_y - comp_trilho - 9.0
-            pts_cota_y = [py_min] + list(pos_maior) + [py_max]
+            larg_malha_esq = cota_y + (num_linhas - 1) * espaco_linhas
+            x_cota_esq = px_min - larg_malha_esq - 9.0
+            pts_cota_y = [py_min]
+            for y_ini_c, y_fim_c in colunas_y:
+                pts_cota_y.extend([y_ini_c, y_fim_c])
+            pts_cota_y.append(py_max)
+            pts_cota_y = sorted(list(set(round(p, 4) for p in pts_cota_y)))
             _cota_vertical_alinhada(x_cota_esq, pts_cota_y, px_min - 3.5)
 
-            y_cota_sup = py_max + cota_x_linha + comp_trilho + 9.0
-            pts_cota_x = [px_min] + list(pos_menor) + [px_max]
+            alt_seq_sup = cota_x_linha + (num_menor - 1) * espaco_menor
+            y_cota_sup = py_max + alt_seq_sup + 9.0
+            pts_cota_x = sorted(list(set([round(px_min, 4), round(x_ini_menor, 4), round(x_fim_menor, 4), round(px_max, 4)])))
             _cota_horizontal_staggered(y_cota_sup, pts_cota_x, py_max + 3.5)
 
             _cotas_afastamento_ferros(cota_y, cota_x_linha)
@@ -1948,7 +1949,7 @@ def meucmd(eag, tqsjan):
             tqsjan.Regen()
         except Exception:
             pass
-fiz esse plugin (punção.py) para desenhar automatico as punções mas agora meu chefe disse que vai mudar a forma, vai ser varias mudanças então vamos por partes, primeiro : a forma de colocar os ferros, atualmente o ferro coloca os ferros igual na primeira imagem ( na vertical e tal) e coloca as bolinhas baseado na quantidade de estribos selecionado, agora em vez de colocar na vertical eles vao ficar igual a segunda foto, na horizontal em sequencia, e eu vou escolher numero de colunas e de linhas em vez dizer um valor exato para o plgin de estribos, isso para as faces maiores, para a face menor eu vou continuar dizend o numero de estribos mas agora eles ficarao na vertical 
+
 
 if __name__ == "__main__":
     pass
