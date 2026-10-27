@@ -707,22 +707,27 @@ def mostrar_tela_confirmacao(pilar):
             var altStMenor = parseFloat(document.getElementById("alt_estribo_menor").value.replace(',', '.')) || 21.0;
             var bitolaVal = document.getElementById("bitola_estribo").value || "8.0";
             var posSt = (document.getElementById("pos_estribo").value || "1").trim().toUpperCase();
-            if (posSt.indexOf("P") === 0) posSt = posSt.substring(1);
-            if (!posSt) posSt = "1";
+            var posNum = parseInt(posSt.replace(/\\D/g, '')) || 1;
 
-            var totalEstribos = (2 * nCol * nLin) + (2 * nMenor) + (temInc ? (4 * nLin) : 0);
-            var compTotal = Math.round(2.0 * (largStMaior + altStMaior) + 15.0);
+            var multMaior = 2 * nCol;
+            var compMenor = Math.round(2.0 * (largStMenor + altStMenor) + 15.0);
+            var compMaior = Math.round(2.0 * (largStMaior + altStMaior) + 15.0);
+            var elCotaInc = document.getElementById("cota_inclinado");
+            var cotaInc = elCotaInc ? (parseFloat(elCotaInc.value.replace(',', '.')) || 10.0) : 10.0;
+            var elEspLin = document.getElementById("espaco_linhas");
+            var espLin = elEspLin ? (parseFloat(elEspLin.value.replace(',', '.')) || 13.0) : 13.0;
+            var compCob = Math.round(2.0 * cotaInc + nLin * altStMaior + Math.max(0, nLin - 1) * espLin);
 
             var bNum = parseFloat(bitolaVal);
             var bitolaTxt = (bNum % 1 === 0) ? bNum.toFixed(0) : bNum.toString();
 
-            var chamada = totalEstribos + " P" + posSt + " \u00f8 " + bitolaTxt + " C=" + compTotal;
-            var elChamada = document.getElementById("txt_chamada_preview");
-            if (elChamada) elChamada.innerText = chamada;
-
-            var elDet = document.getElementById("txt_detalhe_preview");
-            if (elDet) {{
-                elDet.innerHTML = "Total: <b>" + totalEstribos + " estribos</b> (Maior: " + largStMaior + "x" + altStMaior + " cm | Menor: " + largStMenor + "x" + altStMenor + " cm)";
+            var elResumo = document.getElementById("txt_resumo_preview");
+            if (elResumo) {{
+                var html = "<div style='font-size:11px; color:#004d40; line-height:1.5;'>";
+                html += "<div><b>Face Menor:</b> 2x" + nMenor + " N" + posNum + " \u00f8 " + bitolaTxt + " (" + largStMenor + "x" + altStMenor + " cm)</div>";
+                html += "<div><b>Face Maior:</b> " + multMaior + "x" + nLin + " N" + (posNum + 1) + " \u00f8 " + bitolaTxt + " (" + largStMaior + "x" + altStMaior + " cm)</div>";
+                html += "</div>";
+                elResumo.innerHTML = html;
             }}
         }}
 
@@ -900,6 +905,7 @@ def mostrar_tela_confirmacao(pilar):
                     <label>Posição / Marca:</label>
                     <input type="text" id="pos_estribo" value="{pos_estribo_ini}" style="width:85px; text-align:center;" onchange="calcContagemEstribos()" />
                 </div>
+                <div id="txt_resumo_preview" style="margin-top: 8px; padding: 6px 10px; background: #f1f8e9; border: 1px solid #c8e6c9; border-radius: 5px;"></div>
             </div>
         </div>
     </div>
@@ -1595,13 +1601,14 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
 
 
 # ==============================================================================
-# DETALHE ESQUEMÁTICO DOS ESTRIBOS E CHAMADA (Ex: 28x3 P1 ø 8 C=87)
+# DETALHE ESQUEMÁTICO DOS ESTRIBOS E REFORÇO RADIAL (COBRINHA)
 # ==============================================================================
 
 def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
     """
-    Desenha os estribos esquemáticos sobrepostos e a chamada completa:
-    Exemplo: 28x3 P1 ø 8 C=87 com as cotas de largura (15) e altura (21).
+    Desenha os ferros esquemáticos e chamadas conforme novo padrão:
+    1. Estribo da Face Menor (fechado explodido, ex: 2x3 N1 ø 10 C/12 C=86);
+    2. Estribo da Face Maior (fechado explodido, ex: 4x3 N2 ø 10 C/12 C=88).
     """
     draw = dwg.draw
 
@@ -1612,124 +1619,125 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
     box_x1 = x_alvo - larg_area / 2.0
     box_y1 = y_alvo - alt_area / 2.0
 
-    larg_st = float(config.get("larg_estribo", config.get("esp_pinos", 15.0)))
-    alt_st = float(config.get("alt_estribo", max(10.0, hd - 5.0)))
+    larg_st_maior = float(config.get("larg_estribo_maior", config.get("larg_estribo", 15.0)))
+    alt_st_maior = float(config.get("alt_estribo_maior", config.get("alt_estribo", max(10.0, hd - 5.0))))
+    larg_st_menor = float(config.get("larg_estribo_menor", config.get("larg_estribo", 15.0)))
+    alt_st_menor = float(config.get("alt_estribo_menor", config.get("alt_estribo", max(10.0, hd - 5.0))))
+
     bitola = float(config.get("bitola_estribo", 8.0))
-    pos_marca = str(config.get("pos_estribo", "1")).strip().upper()
-    if pos_marca.startswith("P"):
-        pos_marca = pos_marca[1:]
-    if not pos_marca:
-        pos_marca = "1"
+    pos_str = str(config.get("pos_estribo", "1")).strip().upper()
+    digits = ''.join(filter(str.isdigit, pos_str))
+    base_pos = int(digits) if digits else 1
 
-    num_maior = int(config.get("num_maior", 10))
-    num_menor = int(config.get("num_menor", 2))
-    tem_inclinado = bool(config.get("tem_inclinado", True))
-    n_pinos = int(config.get("num_pinos", 3))
+    num_colunas = max(1, int(config.get("num_colunas", config.get("num_maior", 2))))
+    num_linhas = max(1, int(config.get("num_linhas", 3)))
+    num_menor = max(1, int(config.get("num_menor", 3)))
+    espaco_linhas = float(config.get("espaco_linhas", 13.0))
+    espaco_menor = float(config.get("espaco_menor", 13.0))
 
-    total_trilhos = (2 * num_maior) + (2 * num_menor) + (4 if tem_inclinado else 0)
-    comp_total = int(round(2.0 * (larg_st + alt_st) + 15.0))
-    bitola_str = f"{int(bitola) if bitola.is_integer() else bitola}"
+    # Ponto base inicial no canto inferior esquerdo da área delimitada
+    x1 = box_x1 + 32.0
+    y1 = box_y1 + 38.0
 
-    # Ponto base no canto inferior esquerdo da área da laje
-    # Afastado mais para a direita e para cima para os dados do ferro (28x3...) não cruzarem a borda
-    x1 = box_x1 + 52.0
-    y1 = box_y1 + 42.0
-
-    def _desenhar_retangulo_estribo(x_l, y_b, x_r, y_t, cor):
-        draw.level = 220
-        draw.color = cor
-        draw.style = 0
-        draw.Line(x_l, y_b, x_r, y_b)
-        draw.Line(x_r, y_b, x_r, y_t)
-        draw.Line(x_r, y_t, x_l, y_t)
-        draw.Line(x_l, y_t, x_l, y_b)
-        # Gancho a -45° no canto superior esquerdo
-        draw.Line(x_l + 1.6, y_t, x_l + 4.2, y_t - 2.6)
-        draw.Line(x_l, y_t - 1.6, x_l + 2.6, y_t - 4.2)
-
-    # 1. Tenta criar o estribo principal como SmartRebar REAL do TQS (com multiplicador 28x3 e identificação nativa)
+    rebar_principal = None
     usou_smart = False
-    try:
-        rebar = TQSDwg.SmartRebar(dwg)
-        rebar.type = getattr(TQSDwg, "ICPSTR", 2)
-        try:
-            rebar.mark = int(pos_marca) if str(pos_marca).isdigit() else 1
-        except Exception:
-            rebar.mark = 1
-        rebar.quantity = int(n_pinos)
-        rebar.multiplier = int(total_trilhos)
-        rebar.diameter = float(bitola)
-        rebar.spacing = float(larg_st)
-        rebar.cover = 0.0
-        rebar.stirrupType = getattr(TQSDwg, "ICPENR", 0)
-        rebar.stirrupLegs = getattr(TQSDwg, "ICPNR2", 1)
-        rebar.stirrupSectionWidth = float(larg_st)
-        rebar.stirrupSectionHeight = float(alt_st)
-        try:
-            rebar.stirrupHookType = getattr(TQSDwg, "ICPTPPATA45", 0)
-            rebar.stirrupHookLength = 7.5
-        except Exception:
-            pass
 
-        # RebarLine(x, y, ang, esc, identfer, identdobr, ipatas, iexplodir, inivel, iestilo, icor)
-        rebar.RebarLine(x1, y1, 0.0, 1.0, 1, 1, 1, 0, 220, -1, -1)
+    try:
+        # ----------------------------------------------------------------------
+        # 1. ESTRIBO DA FACE MENOR (N1)
+        # ----------------------------------------------------------------------
+        r1 = TQSDwg.SmartRebar(dwg)
+        r1.type = TQSDwg.ICPSTR
+        r1.mark = base_pos
+        r1.multiplier = 2  # 2 faces menores
+        r1.quantity = num_menor
+        r1.diameter = bitola
+        r1.spacing = espaco_menor
+        r1.cover = 0.0
+        r1.stirrupType = TQSDwg.ICPEFC  # Fechado com ponta triangular
+        r1.stirrupLegs = TQSDwg.ICPNR2
+        r1.stirrupSectionWidth = larg_st_menor
+        r1.stirrupSectionHeight = alt_st_menor
+        r1.RebarLine(x1, y1, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
+        r1.leaderLine = 0
+        r1.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+        rebar_principal = r1
+
+        # ----------------------------------------------------------------------
+        # 2. ESTRIBO DA FACE MAIOR (N2) - posicionado à direita e um pouco acima
+        # ----------------------------------------------------------------------
+        x2 = x1 + max(larg_st_menor, 12.0) + 28.0
+        y2 = y1 + 14.0
+
+        r2 = TQSDwg.SmartRebar(dwg)
+        r2.type = TQSDwg.ICPSTR
+        r2.mark = base_pos + 1
+        r2.multiplier = 2 * num_colunas  # 2 faces maiores * número de colunas
+        r2.quantity = num_linhas
+        r2.diameter = bitola
+        r2.spacing = espaco_linhas
+        r2.cover = 0.0
+        r2.stirrupType = TQSDwg.ICPEFC  # Fechado com ponta triangular
+        r2.stirrupLegs = TQSDwg.ICPNR2
+        r2.stirrupSectionWidth = larg_st_maior
+        r2.stirrupSectionHeight = alt_st_maior
+        r2.RebarLine(x2, y2, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
+        r2.leaderLine = 0
+        r2.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+
         usou_smart = True
     except Exception as e:
         usou_smart = False
         try:
-            TQSUtil.writef("Aviso ao criar SmartRebar do estribo: %s" % str(e))
+            TQSUtil.writef("Aviso ao criar SmartRebar dos ferros: %s" % str(e))
         except Exception:
             pass
 
-    # 2. Se for SmartRebar real, desenha apenas as representações esquemáticas dos outros estribos amarelos do grupo
-    if usou_smart:
-        if n_pinos >= 2:
-            _desenhar_retangulo_estribo(x1 + 10.0, y1 + 7.5, x1 + 10.0 + larg_st, y1 + 7.5 + alt_st, 2)
-        if n_pinos >= 3:
-            _desenhar_retangulo_estribo(x1 + 18.0, y1, x1 + 18.0 + larg_st, y1 + alt_st, 2)
-        for extra in range(3, n_pinos):
-            dx_extra = 18.0 + (extra - 2) * 8.0
-            dy_extra = 7.5 if (extra % 2 == 1) else 0.0
-            _desenhar_retangulo_estribo(x1 + dx_extra, y1 + dy_extra, x1 + dx_extra + larg_st, y1 + dy_extra + alt_st, 2)
-    else:
-        # Fallback gráfico caso SmartRebar não esteja disponível
-        if n_pinos <= 1:
-            _desenhar_retangulo_estribo(x1, y1, x1 + larg_st, y1 + alt_st, 6)
-            x_topo = x1
-            y_topo = y1 + alt_st
-        elif n_pinos == 2:
-            _desenhar_retangulo_estribo(x1, y1, x1 + larg_st, y1 + alt_st, 6)
-            _desenhar_retangulo_estribo(x1 + 10.0, y1 + 7.5, x1 + 10.0 + larg_st, y1 + 7.5 + alt_st, 2)
-            x_topo = x1 + 10.0
-            y_topo = y1 + 7.5 + alt_st
-        else:
-            _desenhar_retangulo_estribo(x1, y1, x1 + larg_st, y1 + alt_st, 6)
-            _desenhar_retangulo_estribo(x1 + 10.0, y1 + 7.5, x1 + 10.0 + larg_st, y1 + 7.5 + alt_st, 2)
-            _desenhar_retangulo_estribo(x1 + 18.0, y1, x1 + 18.0 + larg_st, y1 + alt_st, 2)
-            x_topo = x1 + 10.0
-            y_topo = y1 + 7.5 + alt_st
-            for extra in range(3, n_pinos):
-                dx_extra = 18.0 + (extra - 2) * 8.0
-                dy_extra = 7.5 if (extra % 2 == 1) else 0.0
-                _desenhar_retangulo_estribo(x1 + dx_extra, y1 + dy_extra, x1 + dx_extra + larg_st, y1 + dy_extra + alt_st, 2)
+    # --------------------------------------------------------------------------
+    # FALLBACK GRÁFICO (caso SmartRebar não esteja disponível)
+    # --------------------------------------------------------------------------
+    if not usou_smart:
+        def _desenhar_estribo_fechado_grafico(x_ins, y_ins, larg_e, alt_e, mult, qtd, pos_n, espac):
+            draw.level = 220
+            draw.color = 4  # Ciano
+            draw.style = 0
+            # Retângulo base
+            draw.Line(x_ins, y_ins, x_ins + larg_e, y_ins)
+            draw.Line(x_ins + larg_e, y_ins, x_ins + larg_e, y_ins + alt_e)
+            draw.Line(x_ins + larg_e, y_ins + alt_e, x_ins, y_ins + alt_e)
+            draw.Line(x_ins, y_ins + alt_e, x_ins, y_ins)
+            # Gancho triangular no topo
+            xm = x_ins + larg_e * 0.45
+            draw.Line(x_ins + larg_e, y_ins + alt_e, xm, y_ins + alt_e + 4.0)
+            draw.Line(xm, y_ins + alt_e + 4.0, xm - 1.8, y_ins + alt_e + 1.2)
 
-        # Cotas de largura e altura
-        draw.level = 241
-        draw.color = 3
-        draw.style = 0
-        txt_larg = f"{int(larg_st) if larg_st.is_integer() else larg_st}"
-        draw.Text(x_topo + (larg_st / 2.0) - (len(txt_larg) * 1.6), y_topo + 2.5, 4.8, 0.0, txt_larg)
-        txt_alt = f"{int(alt_st) if alt_st.is_integer() else alt_st}"
-        draw.Text(x1 - 4.5, y1 + (alt_st / 2.0) - (len(txt_alt) * 1.6), 4.8, 90.0, txt_alt)
+            # Cotas de largura (embaixo) e altura (na esquerda)
+            draw.level = 241
+            draw.color = 3  # Verde
+            txt_l = f"{int(larg_e) if larg_e.is_integer() else larg_e}"
+            draw.Text(x_ins + (larg_e / 2.0) - (len(txt_l) * 1.6), y_ins - 6.5, 4.8, 0.0, txt_l)
+            txt_a = f"{int(alt_e) if alt_e.is_integer() else alt_e}"
+            draw.Text(x_ins - 5.5, y_ins + (alt_e / 2.0) - (len(txt_a) * 1.6), 4.8, 90.0, txt_a)
 
-        # Chamada com símbolo ø
-        draw.level = 220
-        draw.color = 2
-        draw.style = 0
-        texto_chamada = f"{total_trilhos}x{n_pinos} P{pos_marca} ø {bitola_str} C={comp_total}"
-        draw.Text(x1 - 4.0, y1 - 8.5, 5.0, 0.0, texto_chamada)
+            # Texto de identificação (em 2 linhas)
+            draw.level = 220
+            draw.color = 2  # Amarelo
+            comp_e = int(round(2.0 * (larg_e + alt_e) + 15.0))
+            bit_txt = f"{int(bitola) if bitola.is_integer() else bitola}"
+            t1 = f"{mult}x{qtd} N{pos_n} ø {bit_txt}"
+            t2 = f"C/{int(espac)} C={comp_e}"
+            draw.Text(x_ins - 4.0, y_ins - 14.0, 5.0, 0.0, t1)
+            draw.Text(x_ins - 2.0, y_ins - 20.5, 5.0, 0.0, t2)
 
-    return rebar if usou_smart else None
+        # 1. Estribo menor
+        _desenhar_estribo_fechado_grafico(x1, y1, larg_st_menor, alt_st_menor, 2, num_menor, base_pos, espaco_menor)
+
+        # 2. Estribo maior
+        x2 = x1 + max(larg_st_menor, 12.0) + 28.0
+        y2 = y1 + 14.0
+        _desenhar_estribo_fechado_grafico(x2, y2, larg_st_maior, alt_st_maior, 2 * num_colunas, num_linhas, base_pos + 1, espaco_linhas)
+
+    return rebar_principal
 
 
 # ==============================================================================
