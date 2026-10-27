@@ -1532,6 +1532,20 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     for xf in pts_x_dir:
         _desenhar_bastao(xf)
 
+    # Bolinhas ao longo de toda a extensão da laje além dos estribos laterais
+    x_step = esp_corte_menor if esp_corte_menor > 0 else 13.0
+    x_ult_esq = min(pts_x_esq)
+    x_curr = x_ult_esq - x_step
+    while x_curr >= x_corte_esq + 3.5:
+        _desenhar_dot_par(x_curr)
+        x_curr -= x_step
+
+    x_ult_dir = max(pts_x_dir)
+    x_curr = x_ult_dir + x_step
+    while x_curr <= x_corte_dir - 3.5:
+        _desenhar_dot_par(x_curr)
+        x_curr += x_step
+
     # --------------------------------------------------------------------------
     # 4.2. ESTRIBOS DO CENTRO (Rosa movido para o centro, mantendo posição lateral)
     # --------------------------------------------------------------------------
@@ -1561,6 +1575,16 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         else:
             cor_k = 6 if k == 0 else 2
             _desenhar_estribo_corte(x_l, x_r, cor_k)
+
+    # Bolinhas intermediárias no vão central à esquerda dos estribos
+    x_livre_esq = px_min + d_face_corte
+    x_livre_dir = x_ini_grupo
+    if x_livre_dir > x_livre_esq + 8.0:
+        vao_livre = x_livre_dir - x_livre_esq
+        n_int = max(1, int(round(vao_livre / x_step)))
+        passo_int = vao_livre / n_int
+        for i in range(n_int):
+            _desenhar_dot_par(x_livre_esq + i * passo_int)
 
 
     # ==========================================================================
