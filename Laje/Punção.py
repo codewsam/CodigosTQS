@@ -1362,15 +1362,26 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     box_x2 = x_alvo + larg_area / 2.0
     box_y1 = y_alvo - alt_area / 2.0
 
-    if orientacao == 'H':
-        d_face_corte = float(config.get("cota_x_linha", 10.0))
-    else:
-        d_face_corte = float(config.get("cota_y", 10.0))
+    num_menor = max(1, int(config.get("num_menor", 3)))
+    espaco_menor = float(config.get("espaco_menor", 13.0))
+    cota_x_linha = float(config.get("cota_x_linha", 10.0))
+    cota_y = float(config.get("cota_y", 10.0))
+    num_linhas = max(1, int(config.get("num_linhas", 4)))
+    espaco_linhas = float(config.get("espaco_linhas", 13.0))
+    larg_st_maior = float(config.get("larg_estribo_maior", config.get("larg_estribo", 15.0)))
+    alt_st_maior = float(config.get("alt_estribo_maior", config.get("alt_estribo", 21.0)))
 
-    n_estribos = max(1, num_pinos)
-    passo_dupla = 2.25
+    if orientacao == 'H':
+        d_face_corte = cota_x_linha
+        esp_corte_menor = espaco_menor
+        n_ferros_laterais = num_menor
+    else:
+        d_face_corte = cota_y
+        esp_corte_menor = espaco_linhas
+        n_ferros_laterais = num_linhas
+
     raio_dot = 1.15
-    comp_trilho = n_estribos * esp_pinos + (n_estribos - 1) * passo_dupla
+    comp_trilho_lateral = d_face_corte + (n_ferros_laterais - 1) * esp_corte_menor
 
     # ==========================================================================
     # 1. SÍMBOLOS DE CORTE A-A NA PLANTA (Laterais da laje)
@@ -1406,8 +1417,8 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     y_corte_base = y_corte_topo - hd
 
     # Largura da laje no corte acompanha os estribos laterais + folga
-    x_corte_esq = px_min - d_face_corte - comp_trilho - 24.0
-    x_corte_dir = px_max + d_face_corte + comp_trilho + 24.0
+    x_corte_esq = px_min - comp_trilho_lateral - 24.0
+    x_corte_dir = px_max + comp_trilho_lateral + 24.0
 
     y_col_sup = y_corte_topo + 18.0
     y_col_inf = y_corte_base - 18.0
@@ -1489,46 +1500,55 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         draw.Line(x_left + 1.6, y_st_top, x_left + 4.2, y_st_top - 2.6)
         draw.Line(x_left, y_st_top - 1.6, x_left + 2.6, y_st_top - 4.2)
 
-    # Posições das bolinhas nos estribos da esquerda e da direita
-    passo_corte = esp_pinos - passo_dupla
-    for k in range(n_estribos + 1):
-        d_k = d_face_corte + k * passo_corte
-        _desenhar_dot_par(px_min - d_k)
-        _desenhar_dot_par(px_max + d_k)
+    # --------------------------------------------------------------------------
+    # 4.1. FERROS DA FACE MENOR (Laterais no corte, formato tipo bastão)
+    # --------------------------------------------------------------------------
+    pts_x_esq = [px_min - (d_face_corte + k * esp_corte_menor) for k in range(n_ferros_laterais)]
+    pts_x_dir = [px_max + (d_face_corte + k * esp_corte_menor) for k in range(n_ferros_laterais)]
 
-    # Bolinhas intermediárias no vão central (entre o 1º estribo esquerdo e o 1º direito)
-    x_int_esq = px_min - d_face_corte
-    x_int_dir = px_max + d_face_corte
-    vao_central = x_int_dir - x_int_esq
-    n_int = max(2, int(round(vao_central / 14.5)))
-    passo_int = vao_central / n_int
-    for i in range(1, n_int):
-        _desenhar_dot_par(x_int_esq + i * passo_int)
+    def _desenhar_bastao(xf):
+        """
+        Desenha o ferro da face menor no corte em formato de bastão:
+        - Par de bolinhas vermelhas;
+        - Duas pernas verticais em ciano nas bordas das bolinhas,
+          acabando exatamente na metade (centro) das bolinhas (de y_dot_bot a y_dot_top).
+        """
+        # 1. Par de bolinhas vermelhas
+        _desenhar_dot_par(xf)
 
-    # Bolinhas nas pontas externas (além dos últimos estribos até a borda do corte)
-    x_ult_esq = px_min - (d_face_corte + n_estribos * passo_corte)
-    x_ult_dir = px_max + (d_face_corte + n_estribos * passo_corte)
-    d_ext = 13.0
-    while x_ult_esq - d_ext >= x_corte_esq + 3.5:
-        _desenhar_dot_par(x_ult_esq - d_ext)
-        d_ext += 13.0
-    d_ext = 13.0
-    while x_ult_dir + d_ext <= x_corte_dir - 3.5:
-        _desenhar_dot_par(x_ult_dir + d_ext)
-        d_ext += 13.0
+        # 2. Haste do bastão (duas linhas verticais em ciano acabando no centro das bolinhas)
+        draw.level = 220
+        draw.color = 4  # Ciano
+        draw.style = 0
+        shank_w = raio_dot
+        draw.Line(xf - shank_w, y_dot_bot, xf - shank_w, y_dot_top)
+        draw.Line(xf + shank_w, y_dot_bot, xf + shank_w, y_dot_top)
 
-    # Estribos do Lado Esquerdo do pilar (Todos Amarelos)
-    for k in range(n_estribos):
-        d_k_ini = d_face_corte + k * passo_corte
-        x_r = px_min - d_k_ini + raio_dot + 0.3
-        x_l = px_min - (d_k_ini + passo_corte) - raio_dot - 0.3
-        _desenhar_estribo_corte(x_l, x_r, 2)
+    # Ferros na esquerda (formato bastão, simétricos à planta)
+    for xf in pts_x_esq:
+        _desenhar_bastao(xf)
 
-    # Estribos do Lado Direito do pilar (1º Roxo/Magenta conectado ao SmartRebar, demais Amarelos)
-    for k in range(n_estribos):
-        d_k_ini = d_face_corte + k * passo_corte
-        x_l = px_max + d_k_ini - raio_dot - 0.3
-        x_r = px_max + (d_k_ini + passo_corte) + raio_dot + 0.3
+    # Ferros na direita (formato bastão, simétricos à planta)
+    for xf in pts_x_dir:
+        _desenhar_bastao(xf)
+
+    # --------------------------------------------------------------------------
+    # 4.2. ESTRIBOS DO CENTRO (Rosa movido para o centro, mantendo posição lateral)
+    # --------------------------------------------------------------------------
+    n_estribos_centro = num_linhas
+    passo_corte = 12.75
+    comp_grupo = (n_estribos_centro - 1) * passo_corte + larg_st_maior
+    x_fim_grupo = px_max - d_face_corte
+    x_ini_grupo = x_fim_grupo - comp_grupo
+
+    # Se o pilar for estreito, garante que fica contido entre px_min e px_max
+    if x_ini_grupo < px_min + 5.0:
+        x_ini_grupo = px_min + 5.0
+        x_fim_grupo = x_ini_grupo + comp_grupo
+
+    for k in range(n_estribos_centro):
+        x_l = x_ini_grupo + k * passo_corte
+        x_r = x_l + larg_st_maior
         if k == 0 and rebar_estribo is not None:
             desenhou_smart_corte = False
             try:
@@ -1541,6 +1561,7 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         else:
             cor_k = 6 if k == 0 else 2
             _desenhar_estribo_corte(x_l, x_r, cor_k)
+
 
     # ==========================================================================
     # 6. CHAMADAS DE TEXTO: FERRAGEM NEGATIVA & FERRAGEM POSITIVA
@@ -1684,6 +1705,7 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
         r2.RebarLine(x2, y2, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
         r2.leaderLine = 0
         r2.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+        rebar_principal = r2
 
         usou_smart = True
     except Exception as e:
