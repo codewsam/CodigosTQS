@@ -1682,9 +1682,17 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
     espaco_linhas = float(config.get("espaco_linhas", 13.0))
     espaco_menor = float(config.get("espaco_menor", 13.0))
 
-    # Ponto base inicial no canto inferior esquerdo da área delimitada
-    x1 = box_x1 + 32.0
-    y1 = box_y1 + 38.0
+    # Ponto base inicial no canto inferior esquerdo da área delimitada (organização horizontal paralela)
+    y_base = box_y1 + 38.0
+    x1 = box_x1 + 38.0
+    y1 = y_base
+
+    # Espaçamento horizontal ampliado para maior distância entre os dois ferros
+    espaco_entre_estribos = max(larg_st_menor, larg_st_maior, 15.0) + 55.0
+    x2 = x1 + espaco_entre_estribos
+    y2 = y_base
+
+    alt_fonte_plot = 0.10  # Altura reduzida da fonte de identificação (cm de plotagem)
 
     rebar_principal = None
     usou_smart = False
@@ -1705,17 +1713,23 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
         r1.stirrupLegs = TQSDwg.ICPNR2
         r1.stirrupSectionWidth = larg_st_menor
         r1.stirrupSectionHeight = alt_st_menor
+        for attr in ('textHeigth', 'textHeight', 'distributionTextHeigth'):
+            try:
+                setattr(r1, attr, alt_fonte_plot)
+            except Exception:
+                pass
         r1.RebarLine(x1, y1, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
         r1.leaderLine = 0
         r1.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+        try:
+            r1.RebarTextDisplayPosition(x1 + larg_st_menor / 2.0, y1 - 15.0, alt_fonte_plot, 0.0, 0, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+        except Exception:
+            pass
         rebar_principal = r1
 
         # ----------------------------------------------------------------------
-        # 2. ESTRIBO DA FACE MAIOR (N2) - posicionado à direita e um pouco acima
+        # 2. ESTRIBO DA FACE MAIOR (N2) - paralelo horizontalmente (mesmo Y)
         # ----------------------------------------------------------------------
-        x2 = x1 + max(larg_st_menor, 12.0) + 28.0
-        y2 = y1 + 14.0
-
         r2 = TQSDwg.SmartRebar(dwg)
         r2.type = TQSDwg.ICPSTR
         r2.mark = base_pos + 1
@@ -1728,9 +1742,18 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
         r2.stirrupLegs = TQSDwg.ICPNR2
         r2.stirrupSectionWidth = larg_st_maior
         r2.stirrupSectionHeight = alt_st_maior
+        for attr in ('textHeigth', 'textHeight', 'distributionTextHeigth'):
+            try:
+                setattr(r2, attr, alt_fonte_plot)
+            except Exception:
+                pass
         r2.RebarLine(x2, y2, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
         r2.leaderLine = 0
         r2.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+        try:
+            r2.RebarTextDisplayPosition(x2 + larg_st_maior / 2.0, y2 - 15.0, alt_fonte_plot, 0.0, 0, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+        except Exception:
+            pass
         rebar_principal = r2
 
         usou_smart = True
@@ -1759,30 +1782,28 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
             draw.Line(x_ins + larg_e, y_ins + alt_e, xm, y_ins + alt_e + 4.0)
             draw.Line(xm, y_ins + alt_e + 4.0, xm - 1.8, y_ins + alt_e + 1.2)
 
-            # Cotas de largura (embaixo) e altura (na esquerda)
+            # Cotas de largura (embaixo) e altura (na esquerda) com fonte menor
             draw.level = 241
             draw.color = 3  # Verde
             txt_l = f"{int(larg_e) if larg_e.is_integer() else larg_e}"
-            draw.Text(x_ins + (larg_e / 2.0) - (len(txt_l) * 1.6), y_ins - 6.5, 4.8, 0.0, txt_l)
+            draw.Text(x_ins + (larg_e / 2.0) - (len(txt_l) * 1.0), y_ins - 4.5, 3.2, 0.0, txt_l)
             txt_a = f"{int(alt_e) if alt_e.is_integer() else alt_e}"
-            draw.Text(x_ins - 5.5, y_ins + (alt_e / 2.0) - (len(txt_a) * 1.6), 4.8, 90.0, txt_a)
+            draw.Text(x_ins - 4.2, y_ins + (alt_e / 2.0) - (len(txt_a) * 1.0), 3.2, 90.0, txt_a)
 
-            # Texto de identificação (em 2 linhas)
+            # Texto de identificação (em 2 linhas compactas com fonte menor)
             draw.level = 220
             draw.color = 2  # Amarelo
             comp_e = int(round(2.0 * (larg_e + alt_e) + 15.0))
             bit_txt = f"{int(bitola) if bitola.is_integer() else bitola}"
             t1 = f"{mult}x{qtd} N{pos_n} ø {bit_txt}"
             t2 = f"C/{int(espac)} C={comp_e}"
-            draw.Text(x_ins - 4.0, y_ins - 14.0, 5.0, 0.0, t1)
-            draw.Text(x_ins - 2.0, y_ins - 20.5, 5.0, 0.0, t2)
+            draw.Text(x_ins - 2.0, y_ins - 9.0, 3.5, 0.0, t1)
+            draw.Text(x_ins - 2.0, y_ins - 14.0, 3.5, 0.0, t2)
 
         # 1. Estribo menor
         _desenhar_estribo_fechado_grafico(x1, y1, larg_st_menor, alt_st_menor, 2, num_menor, base_pos, espaco_menor)
 
-        # 2. Estribo maior
-        x2 = x1 + max(larg_st_menor, 12.0) + 28.0
-        y2 = y1 + 14.0
+        # 2. Estribo maior (paralelo horizontalmente, mesmo Y)
         _desenhar_estribo_fechado_grafico(x2, y2, larg_st_maior, alt_st_maior, 2 * num_colunas, num_linhas, base_pos + 1, espaco_linhas)
 
     return rebar_principal
