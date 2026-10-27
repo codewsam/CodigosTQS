@@ -1365,11 +1365,15 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     num_menor = max(1, int(config.get("num_menor", 3)))
     espaco_menor = float(config.get("espaco_menor", 13.0))
     cota_x_linha = float(config.get("cota_x_linha", 10.0))
+    cota_x = float(config.get("cota_x", 6.75))
     cota_y = float(config.get("cota_y", 10.0))
+    cota_y_linha = float(config.get("cota_y_linha", 7.55))
+    num_colunas = max(1, int(config.get("num_colunas", config.get("num_maior", 4))))
     num_linhas = max(1, int(config.get("num_linhas", 4)))
     espaco_linhas = float(config.get("espaco_linhas", 13.0))
     larg_st_maior = float(config.get("larg_estribo_maior", config.get("larg_estribo", 15.0)))
     alt_st_maior = float(config.get("alt_estribo_maior", config.get("alt_estribo", 21.0)))
+    larg_estribo_menor = float(config.get("larg_estribo_menor", larg_st_maior))
 
     if orientacao == 'H':
         d_face_corte = cota_x_linha
@@ -1487,7 +1491,7 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         draw.Circle(xd, y_dot_top, raio_dot)
         draw.Circle(xd, y_dot_bot, raio_dot)
 
-    def _desenhar_estribo_corte(x_left, x_right, cor_st):
+    def _desenhar_estribo_corte(x_left, x_right, cor_st=2):
         draw.level = 220
         draw.color = cor_st
         draw.style = 0
@@ -1499,6 +1503,9 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         # Gancho paralelo a -45° no canto superior esquerdo do estribo
         draw.Line(x_left + 1.6, y_st_top, x_left + 4.2, y_st_top - 2.6)
         draw.Line(x_left, y_st_top - 1.6, x_left + 2.6, y_st_top - 4.2)
+        # Bolinhas vermelhas nas pernas do estribo
+        _desenhar_dot_par(x_left)
+        _desenhar_dot_par(x_right)
 
     # --------------------------------------------------------------------------
     # 4.1. FERROS DA FACE MENOR (Laterais no corte, formato tipo bastão)
@@ -1547,44 +1554,36 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         x_curr += x_step
 
     # --------------------------------------------------------------------------
-    # 4.2. ESTRIBOS DO CENTRO (Rosa movido para o centro, mantendo posição lateral)
+    # 4.2. ESTRIBOS DO CENTRO (Seguindo a quantidade de colunas e o espaço entre eles)
     # --------------------------------------------------------------------------
-    n_estribos_centro = num_linhas
-    passo_corte = 12.75
-    comp_grupo = (n_estribos_centro - 1) * passo_corte + larg_st_maior
-    x_fim_grupo = px_max - d_face_corte
-    x_ini_grupo = x_fim_grupo - comp_grupo
-
-    # Se o pilar for estreito, garante que fica contido entre px_min e px_max
-    if x_ini_grupo < px_min + 5.0:
-        x_ini_grupo = px_min + 5.0
-        x_fim_grupo = x_ini_grupo + comp_grupo
-
-    for k in range(n_estribos_centro):
-        x_l = x_ini_grupo + k * passo_corte
-        x_r = x_l + larg_st_maior
-        if k == 0 and rebar_estribo is not None:
-            desenhou_smart_corte = False
-            try:
-                rebar_estribo.RebarLine(x_l, y_st_bot, 0.0, 1.0, 0, 0, 1, 0, 220, -1, -1)
-                desenhou_smart_corte = True
-            except Exception:
-                desenhou_smart_corte = False
-            if not desenhou_smart_corte:
-                _desenhar_estribo_corte(x_l, x_r, 6)
+    if orientacao == 'H':
+        if num_colunas == 1:
+            x0_col = (px_min + px_max - larg_st_maior) / 2.0
+            colunas_x = [(x0_col, x0_col + larg_st_maior)]
         else:
-            cor_k = 6 if k == 0 else 2
-            _desenhar_estribo_corte(x_l, x_r, cor_k)
+            gap_col = (col_dx - 2.0 * cota_x - num_colunas * larg_st_maior) / (num_colunas - 1)
+            passo_col = larg_st_maior + gap_col
+            colunas_x = [
+                (px_min + cota_x + c * passo_col, px_min + cota_x + c * passo_col + larg_st_maior)
+                for c in range(num_colunas)
+            ]
+    else:
+        x_ini_menor = px_min + cota_y_linha
+        colunas_x = [(x_ini_menor, x_ini_menor + larg_estribo_menor)]
 
-    # Bolinhas intermediárias no vão central à esquerda dos estribos
-    x_livre_esq = px_min + d_face_corte
-    x_livre_dir = x_ini_grupo
-    if x_livre_dir > x_livre_esq + 8.0:
-        vao_livre = x_livre_dir - x_livre_esq
-        n_int = max(1, int(round(vao_livre / x_step)))
-        passo_int = vao_livre / n_int
-        for i in range(n_int):
-            _desenhar_dot_par(x_livre_esq + i * passo_int)
+    for x_l, x_r in colunas_x:
+        _desenhar_estribo_corte(x_l, x_r, cor_st=2)
+
+    # Bolinhas intermediárias nos vãos entre colunas se o espaçamento for grande
+    for c_idx in range(len(colunas_x) - 1):
+        x_gap_ini = colunas_x[c_idx][1]
+        x_gap_fim = colunas_x[c_idx + 1][0]
+        vao = x_gap_fim - x_gap_ini
+        if vao >= 18.0:
+            n_dots = max(1, int(round(vao / 13.0)))
+            passo = vao / (n_dots + 1)
+            for i in range(1, n_dots + 1):
+                _desenhar_dot_par(x_gap_ini + i * passo)
 
 
     # ==========================================================================
