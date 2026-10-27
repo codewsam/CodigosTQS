@@ -1479,10 +1479,10 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     # ==========================================================================
     # 4. ESTRIBOS DE PUNÇÃO NO CORTE E BOLINHAS VERMELHAS DA ARMADURA TRANSVERSAL
     # ==========================================================================
-    y_dot_top = y_bar_top - 1.4
-    y_dot_bot = y_bar_bot + 1.4
-    y_st_top = y_bar_top + 0.6
-    y_st_bot = y_bar_bot - 0.6
+    y_dot_top = y_bar_top - raio_dot
+    y_dot_bot = y_bar_bot + raio_dot
+    y_st_top = y_dot_top + raio_dot  # Tangente ao topo dos círculos (alinhado a y_bar_top)
+    y_st_bot = y_dot_bot - raio_dot  # Tangente à base dos círculos (alinhado a y_bar_bot)
 
     def _desenhar_dot_par(xd):
         draw.level = 220
@@ -1495,14 +1495,17 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
         draw.level = 220
         draw.color = cor_st
         draw.style = 0
-        # Retângulo do estribo
-        draw.Line(x_left, y_st_bot, x_right, y_st_bot)
-        draw.Line(x_right, y_st_bot, x_right, y_st_top)
-        draw.Line(x_right, y_st_top, x_left, y_st_top)
-        draw.Line(x_left, y_st_top, x_left, y_st_bot)
+        # O estribo fica exatamente tangente aos círculos nos 4 lados
+        x_st_l = x_left - raio_dot
+        x_st_r = x_right + raio_dot
+        # Retângulo do estribo perfeitamente encaixado
+        draw.Line(x_st_l, y_st_bot, x_st_r, y_st_bot)
+        draw.Line(x_st_r, y_st_bot, x_st_r, y_st_top)
+        draw.Line(x_st_r, y_st_top, x_st_l, y_st_top)
+        draw.Line(x_st_l, y_st_top, x_st_l, y_st_bot)
         # Gancho paralelo a -45° no canto superior esquerdo do estribo
-        draw.Line(x_left + 1.6, y_st_top, x_left + 4.2, y_st_top - 2.6)
-        draw.Line(x_left, y_st_top - 1.6, x_left + 2.6, y_st_top - 4.2)
+        draw.Line(x_st_l + 1.2, y_st_top, x_st_l + 3.4, y_st_top - 2.2)
+        draw.Line(x_st_l, y_st_top - 1.2, x_st_l + 2.2, y_st_top - 3.4)
         # Bolinhas vermelhas nas pernas do estribo
         _desenhar_dot_par(x_left)
         _desenhar_dot_par(x_right)
