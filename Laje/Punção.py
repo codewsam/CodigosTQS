@@ -1293,8 +1293,8 @@ def desenhar_armadura_puncao(dwg, x_alvo, y_alvo, pilar, config):
         sin45 = 0.70710678
 
         for qx, qy, sx, sy in quinas:
-            # Desenha o ferro inclinado com 1 bolinha em cada ponta e N-1 duplas no meio
-            _desenhar_trilho_estribos(qx, qy, sx * cos45, sy * sin45, d0)
+            # Desenha o ferro inclinado tocando exatamente na quina (d_ini=0.0)
+            _desenhar_trilho_estribos(qx, qy, sx * cos45, sy * sin45, 0.0)
             lx1 = qx + sx * d0 * cos45
             ly1 = qy + sy * d0 * sin45
 
@@ -1681,16 +1681,54 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
     num_menor = max(1, int(config.get("num_menor", 3)))
     espaco_linhas = float(config.get("espaco_linhas", 13.0))
     espaco_menor = float(config.get("espaco_menor", 13.0))
+    tem_inclinado = bool(config.get("tem_inclinado", True))
+    cota_inclinado = float(config.get("cota_inclinado", 10.0))
 
     # Ponto base inicial no canto inferior esquerdo da área delimitada (organização horizontal paralela)
     y_base = box_y1 + 38.0
     x1 = box_x1 + 38.0
     y1 = y_base
 
-    # Espaçamento horizontal ampliado para maior distância entre os dois ferros
+    # Espaçamento horizontal entre os ferros esquemáticos
     espaco_entre_estribos = max(larg_st_menor, larg_st_maior, 15.0) + 55.0
     x2 = x1 + espaco_entre_estribos
     y2 = y_base
+
+    # Geometria do 3º ferro ("cobrinha" / reforço radial das quinas):
+    # Totalmente baseada nos valores e dimensões dos estribos da horizontal (Face Maior):
+    # - Altura das pernas verticais = altura do estribo horizontal (alt_st_maior)
+    # - Espaço horizontal entre as pernas = espaçamento entre linhas da horizontal (espaco_linhas)
+    # - Quantidade de pernas verticais = número de linhas da horizontal (num_linhas)
+    # - Pontas inicial e final = cota_inclinado (ou cota_y da horizontal)
+    ponta_cobr = cota_inclinado if cota_inclinado > 0 else float(config.get("cota_y", 10.0))
+    passo_cobr = espaco_linhas if espaco_linhas > 0 else 13.0
+    h_onda_cobr = alt_st_maior if alt_st_maior > 0 else 21.0
+    n_ondas_cobr = num_linhas
+
+    pts_cobrinha = [(0.0, 0.0)]
+    xc_c = ponta_cobr
+    yc_c = 0.0
+    pts_cobrinha.append((xc_c, yc_c))
+    for k in range(n_ondas_cobr):
+        if (k % 2) == 0:
+            yc_c = h_onda_cobr
+            pts_cobrinha.append((xc_c, yc_c))
+            if k < n_ondas_cobr - 1:
+                xc_c += passo_cobr
+                pts_cobrinha.append((xc_c, yc_c))
+        else:
+            yc_c = 0.0
+            pts_cobrinha.append((xc_c, yc_c))
+            if k < n_ondas_cobr - 1:
+                xc_c += passo_cobr
+                pts_cobrinha.append((xc_c, yc_c))
+    xc_c += ponta_cobr
+    pts_cobrinha.append((xc_c, yc_c))
+    comp_x_cobr = xc_c
+
+    # Posição da cobrinha (paralela aos outros dois estribos)
+    x3 = x2 + espaco_entre_estribos
+    y3 = y_base
 
     alt_fonte_plot = 0.10  # Altura reduzida da fonte de identificação (cm de plotagem)
 
@@ -1718,6 +1756,10 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
                 setattr(r1, attr, alt_fonte_plot)
             except Exception:
                 pass
+        try:
+            r1.bendBendLengthMode = TQSDwg.ICPDOBSMS
+        except Exception:
+            pass
         r1.RebarLine(x1, y1, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
         r1.leaderLine = 0
         r1.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
@@ -1747,6 +1789,10 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
                 setattr(r2, attr, alt_fonte_plot)
             except Exception:
                 pass
+        try:
+            r2.bendBendLengthMode = TQSDwg.ICPDOBSMS
+        except Exception:
+            pass
         r2.RebarLine(x2, y2, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
         r2.leaderLine = 0
         r2.RebarTextDisplaySelection(1, 1, 1, 1, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
@@ -1755,6 +1801,37 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
         except Exception:
             pass
         rebar_principal = r2
+
+        if tem_inclinado:
+            # ------------------------------------------------------------------
+            # 3. FERRO DIAGONAL / COBRINHA (N3) - paralelo horizontalmente (mesmo Y)
+            # ------------------------------------------------------------------
+            r3 = TQSDwg.SmartRebar(dwg)
+            r3.type = TQSDwg.ICPFGN  # Ferro genérico
+            r3.mark = base_pos + 2
+            r3.multiplier = 1        # Representação direta: 4 barras P3 (1 para cada uma das 4 diagonais)
+            r3.quantity = 4          # 4 diagonais no total
+            r3.diameter = bitola
+            r3.spacing = 0.0
+            r3.cover = 0.0
+            for attr in ('textHeigth', 'textHeight', 'distributionTextHeigth'):
+                try:
+                    setattr(r3, attr, alt_fonte_plot)
+                except Exception:
+                    pass
+            try:
+                r3.bendBendLengthMode = TQSDwg.ICPDOBSMS
+            except Exception:
+                pass
+            for px, py in pts_cobrinha:
+                r3.GenRebarPoint(px, py, 0.0, 0, 1, -1)
+            r3.RebarLine(x3, y3, 0.0, 1.0, 1, 1, 1, 1, 220, -1, -1)
+            r3.leaderLine = 0
+            r3.RebarTextDisplaySelection(1, 1, 1, 0, 1, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+            try:
+                r3.RebarTextDisplayPosition(x3 + comp_x_cobr / 2.0, y3 - 15.0, alt_fonte_plot, 0.0, 0, TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SALTODECD)
+            except Exception:
+                pass
 
         usou_smart = True
     except Exception as e:
@@ -1805,6 +1882,92 @@ def desenhar_detalhe_estribo(dwg, x_alvo, y_alvo, pilar, config):
 
         # 2. Estribo maior (paralelo horizontalmente, mesmo Y)
         _desenhar_estribo_fechado_grafico(x2, y2, larg_st_maior, alt_st_maior, 2 * num_colunas, num_linhas, base_pos + 1, espaco_linhas)
+
+        # 3. Ferro diagonal / cobrinha (paralelo horizontalmente, mesmo Y)
+        if tem_inclinado:
+            def _desenhar_cobrinha_grafico(x_ins, y_ins, d_ponta, h_o, p_passo, n_o, mult, qtd, pos_n):
+                draw.level = 220
+                draw.color = 4  # Ciano
+                draw.style = 0
+                r_b = 2.0
+
+                # 1. Traçado dos segmentos retos com arcos de curvatura nas quinas
+                # Segmento horizontal inicial (inferior)
+                draw.Line(x_ins, y_ins, x_ins + d_ponta - r_b, y_ins)
+
+                for k in range(n_o):
+                    xk = x_ins + d_ponta + k * p_passo
+                    if (k % 2) == 0:
+                        # Arco inferior esquerdo (vira para cima)
+                        draw.Arc(xk - r_b, y_ins + r_b, r_b, 270.0, 360.0)
+                        # Trecho vertical (sobe)
+                        draw.Line(xk, y_ins + r_b, xk, y_ins + h_o - r_b)
+                        if k < n_o - 1:
+                            # Arco superior esquerdo (vira para a direita)
+                            draw.Arc(xk + r_b, y_ins + h_o - r_b, r_b, 90.0, 180.0)
+                            # Trecho horizontal superior
+                            draw.Line(xk + r_b, y_ins + h_o, xk + p_passo - r_b, y_ins + h_o)
+                        else:
+                            # Arco superior final (vira para a direita)
+                            draw.Arc(xk + r_b, y_ins + h_o - r_b, r_b, 90.0, 180.0)
+                            # Ponta horizontal final (superior)
+                            draw.Line(xk + r_b, y_ins + h_o, xk + d_ponta, y_ins + h_o)
+                    else:
+                        # Arco superior direito (vira para baixo)
+                        draw.Arc(xk - r_b, y_ins + h_o - r_b, r_b, 0.0, 90.0)
+                        # Trecho vertical (desce)
+                        draw.Line(xk, y_ins + h_o - r_b, xk, y_ins + r_b)
+                        if k < n_o - 1:
+                            # Arco inferior direito (vira para a direita)
+                            draw.Arc(xk + r_b, y_ins + r_b, r_b, 180.0, 270.0)
+                            # Trecho horizontal inferior
+                            draw.Line(xk + r_b, y_ins, xk + p_passo - r_b, y_ins)
+                        else:
+                            # Arco inferior final (vira para a direita)
+                            draw.Arc(xk + r_b, y_ins + r_b, r_b, 180.0, 270.0)
+                            # Ponta horizontal final (inferior)
+                            draw.Line(xk + r_b, y_ins, xk + d_ponta, y_ins)
+
+                # 2. Cotas das dobras conforme imagem de referência (Nível 241, Verde)
+                draw.level = 241
+                draw.color = 3  # Verde
+                txt_pt = f"{int(d_ponta) if d_ponta.is_integer() else d_ponta}"
+                # Cota da ponta inicial
+                draw.Text(x_ins + d_ponta / 2.0 - len(txt_pt) * 1.0, y_ins - 4.5, 3.2, 0.0, txt_pt)
+                # Cotas verticais
+                txt_h = f"{int(h_o) if h_o.is_integer() else h_o}"
+                for k in range(n_o):
+                    xk = x_ins + d_ponta + k * p_passo
+                    draw.Text(xk - 4.5, y_ins + h_o / 2.0 - len(txt_h) * 1.0, 3.2, 90.0, txt_h)
+                # Cotas horizontais intermediárias
+                txt_p = f"{int(p_passo) if p_passo.is_integer() else p_passo}"
+                for k in range(n_o - 1):
+                    xk_mid = x_ins + d_ponta + k * p_passo + p_passo / 2.0
+                    if (k % 2) == 0:
+                        draw.Text(xk_mid - len(txt_p) * 1.0, y_ins + h_o + 2.0, 3.2, 0.0, txt_p)
+                    else:
+                        draw.Text(xk_mid - len(txt_p) * 1.0, y_ins - 4.5, 3.2, 0.0, txt_p)
+                # Cota da ponta final
+                x_fim_pt = x_ins + d_ponta + (n_o - 1) * p_passo + d_ponta / 2.0
+                y_fim_pt = y_ins + h_o + 2.0 if ((n_o - 1) % 2 == 0) else y_ins - 4.5
+                draw.Text(x_fim_pt - len(txt_pt) * 1.0, y_fim_pt, 3.2, 0.0, txt_pt)
+
+                # 3. Texto de identificação abaixo do ferro
+                draw.level = 220
+                draw.color = 2  # Amarelo
+                comp_tot = int(round(2.0 * d_ponta + n_o * h_o + (n_o - 1) * p_passo))
+                bit_txt = f"{int(bitola) if bitola.is_integer() else bitola}"
+                if mult > 1 and qtd > 1:
+                    t1 = f"{mult}x{qtd} N{pos_n} ø {bit_txt}"
+                else:
+                    total_pecas = mult * qtd
+                    t1 = f"{total_pecas} N{pos_n} ø {bit_txt}"
+                t2 = f"C={comp_tot}"
+                xc_tot = x_ins + (2.0 * d_ponta + (n_o - 1) * p_passo) / 2.0
+                draw.Text(xc_tot - len(t1) * 1.0, y_ins - 9.0, 3.5, 0.0, t1)
+                draw.Text(xc_tot - len(t2) * 1.0, y_ins - 14.0, 3.5, 0.0, t2)
+
+            _desenhar_cobrinha_grafico(x3, y3, ponta_cobr, h_onda_cobr, passo_cobr, n_ondas_cobr, 1, 4, base_pos + 2)
 
     return rebar_principal
 
