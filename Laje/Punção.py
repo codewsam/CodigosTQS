@@ -1427,9 +1427,9 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     x_ext_esq = min(box_x1, px_min - comp_trilho_lateral - 15.0)
     x_ext_dir = max(box_x2, px_max + comp_trilho_lateral + 15.0)
 
-    # Posicoes de referencia nas laterais
-    x_ref_esq = x_ext_esq - 20.0
-    x_ref_dir = x_ext_dir + 20.0
+    # Posicoes de referencia nas laterais - coladas no quadrado da area
+    x_ref_esq = box_x1 - 8.0
+    x_ref_dir = box_x2 + 8.0
 
     # 1.1 Simbolo Esquerdo: [ Seta ]  [ A ] + Linha na base
     x_tri_esq = x_ref_esq - (larg_seta / 2.0)
@@ -1721,6 +1721,58 @@ def desenhar_corte_bb(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
 
     raio_dot = 1.15
     comp_trilho_bb = cota_y + max(0, num_linhas - 1) * espaco_linhas
+
+    # ==========================================================================
+    # 1. SÍMBOLOS DE CORTE B-B NA PLANTA (Topo e Base da laje - Visão para Esquerda)
+    # ==========================================================================
+    px_corte_planta = (px_min + px_max) / 2.0
+
+    draw.level = 241
+    draw.color = 2  # Amarelo
+    draw.style = 0
+
+    larg_seta = 7.0
+    alt_seta = 6.0
+    alt_txt = 6.5
+    larg_txt = 4.5
+    gap_seta_txt = 3.5
+    ext_linha = 5.5
+
+    def _desenhar_seta_solida_esq(x_ponta, y_c):
+        """Desenha triângulo amarelo sólido apontando para a ESQUERDA (◄)."""
+        x_base = x_ponta + alt_seta
+        draw.Line(x_ponta, y_c, x_base, y_c - larg_seta / 2.0)
+        draw.Line(x_ponta, y_c, x_base, y_c + larg_seta / 2.0)
+        draw.Line(x_base, y_c - larg_seta / 2.0, x_base, y_c + larg_seta / 2.0)
+        n_passos = int(alt_seta / 0.20)
+        for i in range(1, n_passos):
+            dx = i * 0.20
+            x_curr = x_ponta + dx
+            t = dx / alt_seta
+            h_h = (larg_seta / 2.0) * t
+            draw.Line(x_curr, y_c - h_h, x_curr, y_c + h_h)
+
+    # Posições no topo e na base da planta - coladas no quadrado da área
+    y_mark_sup = box_y2 + 5.5
+    y_mark_inf = box_y1 - 5.5
+
+    # 1.1 Símbolo Superior: [ ◄ ]  [ B ] + Linha na base
+    x_ponta_sup = px_corte_planta - alt_seta / 2.0
+    _desenhar_seta_solida_esq(x_ponta_sup, y_mark_sup)
+    x_txt_sup = px_corte_planta + alt_seta / 2.0 + gap_seta_txt
+    draw.Text(x_txt_sup, y_mark_sup - alt_txt / 2.0, alt_txt, 0.0, "B")
+    # Linha horizontal na base
+    y_lin_sup = y_mark_sup - larg_seta / 2.0
+    draw.Line(x_ponta_sup - ext_linha, y_lin_sup, x_txt_sup + larg_txt + ext_linha, y_lin_sup)
+
+    # 1.2 Símbolo Inferior: [ ◄ ]  [ B ] + Linha na base
+    x_ponta_inf = px_corte_planta - alt_seta / 2.0
+    _desenhar_seta_solida_esq(x_ponta_inf, y_mark_inf)
+    x_txt_inf = px_corte_planta + alt_seta / 2.0 + gap_seta_txt
+    draw.Text(x_txt_inf, y_mark_inf - alt_txt / 2.0, alt_txt, 0.0, "B")
+    # Linha horizontal na base
+    y_lin_inf = y_mark_inf - larg_seta / 2.0
+    draw.Line(x_ponta_inf - ext_linha, y_lin_inf, x_txt_inf + larg_txt + ext_linha, y_lin_inf)
 
     # ==========================================================================
     # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE B-B (ABAIXO DO CORTE A-A)
