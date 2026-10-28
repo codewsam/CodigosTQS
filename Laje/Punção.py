@@ -1406,6 +1406,7 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     alt_txt = 6.5
     larg_txt = 4.5
     gap_seta_txt = 3.5
+    ext_linha = 5.5
 
     # Alinhamento vertical centrado no eixo do corte
     y_base_corte = py_corte_planta - alt_seta / 2.0
@@ -1430,17 +1431,25 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     x_ref_esq = x_ext_esq - 20.0
     x_ref_dir = x_ext_dir + 20.0
 
-    # 1.1 Simbolo Esquerdo: [ Seta ]  [ A ]
+    # 1.1 Simbolo Esquerdo: [ Seta ]  [ A ] + Linha na base
     x_tri_esq = x_ref_esq - (larg_seta / 2.0)
     _desenhar_seta_solida(x_tri_esq, y_base_corte)
     x_txt_esq = x_tri_esq + (larg_seta / 2.0) + gap_seta_txt
     draw.Text(x_txt_esq, y_base_corte, alt_txt, 0.0, "A")
+    # Linha horizontal na base passando sob a seta e o texto, prolongando em direcao ao desenho
+    x_lin_esq_ini = x_tri_esq - (larg_seta / 2.0)
+    x_lin_esq_fim = x_txt_esq + larg_txt + ext_linha
+    draw.Line(x_lin_esq_ini, y_base_corte, x_lin_esq_fim, y_base_corte)
 
-    # 1.2 Simbolo Direito: [ A ]  [ Seta ]
+    # 1.2 Simbolo Direito: [ A ]  [ Seta ] + Linha na base
     x_tri_dir = x_ref_dir + (larg_seta / 2.0)
     _desenhar_seta_solida(x_tri_dir, y_base_corte)
     x_txt_dir = x_tri_dir - (larg_seta / 2.0) - gap_seta_txt - larg_txt
     draw.Text(x_txt_dir, y_base_corte, alt_txt, 0.0, "A")
+    # Linha horizontal na base passando sob o texto e a seta, prolongando em direcao ao desenho
+    x_lin_dir_ini = x_txt_dir - ext_linha
+    x_lin_dir_fim = x_tri_dir + (larg_seta / 2.0)
+    draw.Line(x_lin_dir_ini, y_base_corte, x_lin_dir_fim, y_base_corte)
 
     # ==========================================================================
     # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE (PARTE DE BAIXO)
