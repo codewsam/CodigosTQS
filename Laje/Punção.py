@@ -1388,31 +1388,59 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     comp_trilho_lateral = d_face_corte + (n_ferros_laterais - 1) * esp_corte_menor
 
     # ==========================================================================
-    # 1. SÍMBOLOS DE CORTE A-A NA PLANTA (Laterais da laje)
+    # 1. SIMBOLOS DE CORTE A-A NA PLANTA (Laterais da laje - Padrao Espelhado)
     # ==========================================================================
+    # Padrao TQS de corte espelhado nas laterais da planta:
+    # - Esquerda: [ Seta ] [ Letra A ]  (seta na ponta externa, 'A' voltado para o desenho)
+    # - Direita:  [ Letra A ] [ Seta ]  ('A' voltado para o desenho, seta na ponta externa)
+    # Ambas as setas sao triangulos amarelos preenchidos apontando para CIMA.
+    # Sem linha horizontal passando por baixo.
     py_corte_planta = (py_min + py_max) / 2.0
 
     draw.level = 241
     draw.color = 2  # Amarelo
     draw.style = 0
 
-    # Símbolo Esquerdo
-    x_mark_esq = box_x1 - 16.0
-    draw.Line(x_mark_esq - 12.0, py_corte_planta - 1.5, x_mark_esq + 6.0, py_corte_planta - 1.5)
-    draw.Line(x_mark_esq - 3.5, py_corte_planta - 1.5, x_mark_esq, py_corte_planta + 5.0)
-    draw.Line(x_mark_esq + 3.5, py_corte_planta - 1.5, x_mark_esq, py_corte_planta + 5.0)
-    draw.Line(x_mark_esq - 2.2, py_corte_planta + 0.5, x_mark_esq + 2.2, py_corte_planta + 0.5)
-    draw.Line(x_mark_esq - 1.2, py_corte_planta + 2.5, x_mark_esq + 1.2, py_corte_planta + 2.5)
-    draw.Text(x_mark_esq + 4.5, py_corte_planta - 1.0, 7.5, 0.0, "A")
+    larg_seta = 7.0
+    alt_seta = 6.0
+    alt_txt = 6.5
+    larg_txt = 4.5
+    gap_seta_txt = 3.5
 
-    # Símbolo Direito
-    x_mark_dir = box_x2 + 16.0
-    draw.Line(x_mark_dir - 12.0, py_corte_planta - 1.5, x_mark_dir + 6.0, py_corte_planta - 1.5)
-    draw.Line(x_mark_dir - 3.5, py_corte_planta - 1.5, x_mark_dir, py_corte_planta + 5.0)
-    draw.Line(x_mark_dir + 3.5, py_corte_planta - 1.5, x_mark_dir, py_corte_planta + 5.0)
-    draw.Line(x_mark_dir - 2.2, py_corte_planta + 0.5, x_mark_dir + 2.2, py_corte_planta + 0.5)
-    draw.Line(x_mark_dir - 1.2, py_corte_planta + 2.5, x_mark_dir + 1.2, py_corte_planta + 2.5)
-    draw.Text(x_mark_dir - 11.0, py_corte_planta - 1.0, 7.5, 0.0, "A")
+    # Alinhamento vertical centrado no eixo do corte
+    y_base_corte = py_corte_planta - alt_seta / 2.0
+
+    def _desenhar_seta_solida(x_c, y_b):
+        """Desenha triangulo amarelo solido apontando para CIMA."""
+        draw.Line(x_c - larg_seta / 2.0, y_b, x_c + larg_seta / 2.0, y_b)
+        draw.Line(x_c - larg_seta / 2.0, y_b, x_c, y_b + alt_seta)
+        draw.Line(x_c + larg_seta / 2.0, y_b, x_c, y_b + alt_seta)
+        n_passos = int(alt_seta / 0.20)
+        for i in range(1, n_passos):
+            y_curr = y_b + i * 0.20
+            t = (y_b + alt_seta - y_curr) / alt_seta
+            w_h = (larg_seta / 2.0) * t
+            draw.Line(x_c - w_h, y_curr, x_c + w_h, y_curr)
+
+    # Afastamento lateral seguro em relacao aos trilhos/area
+    x_ext_esq = min(box_x1, px_min - comp_trilho_lateral - 15.0)
+    x_ext_dir = max(box_x2, px_max + comp_trilho_lateral + 15.0)
+
+    # Posicoes de referencia nas laterais
+    x_ref_esq = x_ext_esq - 20.0
+    x_ref_dir = x_ext_dir + 20.0
+
+    # 1.1 Simbolo Esquerdo: [ Seta ]  [ A ]
+    x_tri_esq = x_ref_esq - (larg_seta / 2.0)
+    _desenhar_seta_solida(x_tri_esq, y_base_corte)
+    x_txt_esq = x_tri_esq + (larg_seta / 2.0) + gap_seta_txt
+    draw.Text(x_txt_esq, y_base_corte, alt_txt, 0.0, "A")
+
+    # 1.2 Simbolo Direito: [ A ]  [ Seta ]
+    x_tri_dir = x_ref_dir + (larg_seta / 2.0)
+    _desenhar_seta_solida(x_tri_dir, y_base_corte)
+    x_txt_dir = x_tri_dir - (larg_seta / 2.0) - gap_seta_txt - larg_txt
+    draw.Text(x_txt_dir, y_base_corte, alt_txt, 0.0, "A")
 
     # ==========================================================================
     # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE (PARTE DE BAIXO)
