@@ -1681,7 +1681,237 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     # ==========================================================================
     draw.level = 245
     draw.color = 2  # Amarelo
-    draw.Text((px_min + px_max) / 2.0 - 160.0, y_col_inf - 16.0, 8.5, 0.0, "CORTE  A-A")
+    draw.Text((px_min + px_max) / 2.0 - 20.0, y_col_inf - 16.0, 8.5, 0.0, "CORTE  A-A")
+
+
+# ==============================================================================
+# DESENHO DO CORTE B-B (Abaixo do Corte A-A) E SÍMBOLOS DE CORTE B-B
+# ==============================================================================
+
+def desenhar_corte_bb(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
+    """
+    Desenha o corte esquemático B-B abaixo do CORTE A-A e os símbolos de corte B na planta:
+    - Visão da Direita para a Esquerda (setas amarelas apontando para a ESQUERDA ◄);
+    - Largura do pilar no corte = col_dy (dimensão vertical da seção do pilar);
+    - Estribos das colunas (fora do pilar) ficam DE LADO (formato bastão);
+    - Estribos dentro do pilar (face menor) ficam DE FRENTE (formato fechado).
+    """
+    draw = dwg.draw
+
+    hd = float(config.get("hd", pilar.get("hd", 26.0)))
+    larg_area = float(pilar.get("larg_area", 248.0))
+    alt_area = float(pilar.get("alt_area", 200.0))
+
+    c_xmin, c_xmax, c_ymin, c_ymax, col_dx, col_dy, orientacao = obter_geometria_pilar(pilar)
+
+    px_min = x_alvo + c_xmin
+    px_max = x_alvo + c_xmax
+    py_min = y_alvo + c_ymin
+    py_max = y_alvo + c_ymax
+
+    box_x1 = x_alvo - larg_area / 2.0
+    box_x2 = x_alvo + larg_area / 2.0
+    box_y1 = y_alvo - alt_area / 2.0
+    box_y2 = y_alvo + alt_area / 2.0
+
+    num_linhas = max(1, int(config.get("num_linhas", 4)))
+    espaco_linhas = float(config.get("espaco_linhas", 13.0))
+    cota_y = float(config.get("cota_y", 10.0))
+    larg_estribo_menor = float(config.get("larg_estribo_menor", config.get("larg_estribo_maior", 15.0)))
+
+    raio_dot = 1.15
+    comp_trilho_bb = cota_y + max(0, num_linhas - 1) * espaco_linhas
+
+    # ==========================================================================
+    # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE B-B (ABAIXO DO CORTE A-A)
+    # ==========================================================================
+    y_corte_topo_aa = box_y1 - 45.0
+    y_corte_base_aa = y_corte_topo_aa - hd
+    y_col_inf_aa = y_corte_base_aa - 18.0
+
+    # Posicionamento do CORTE B-B abaixo de CORTE A-A
+    y_corte_topo_bb = y_col_inf_aa - 75.0
+    y_corte_base_bb = y_corte_topo_bb - hd
+
+    xc_corte = (px_min + px_max) / 2.0
+
+    # Largura do pilar no corte B-B é a dimensão vertical (col_dy)
+    pilar_bb_x1 = xc_corte - col_dy / 2.0
+    pilar_bb_x2 = xc_corte + col_dy / 2.0
+
+    # Extensão da laje para os dois lados acompanhando os trilhos verticais
+    x_corte_bb_esq = pilar_bb_x1 - comp_trilho_bb - 24.0
+    x_corte_bb_dir = pilar_bb_x2 + comp_trilho_bb + 24.0
+
+    y_col_sup_bb = y_corte_topo_bb + 18.0
+    y_col_inf_bb = y_corte_base_bb - 18.0
+
+    def _linha_quebra_h(x1, x2, y, h_zig=6.5, w_zig=2.5):
+        xm = (x1 + x2) / 2.0
+        draw.Line(x1, y, xm - w_zig, y)
+        draw.Line(xm - w_zig, y, xm - w_zig / 3.0, y + h_zig)
+        draw.Line(xm - w_zig / 3.0, y + h_zig, xm + w_zig / 3.0, y - h_zig)
+        draw.Line(xm + w_zig / 3.0, y - h_zig, xm + w_zig, y)
+        draw.Line(xm + w_zig, y, x2, y)
+
+    # Contorno de Concreto (Nível 241, Cor 3 Verde)
+    draw.level = 241
+    draw.color = 3  # Verde
+    draw.style = 0
+
+    # Laje Superior
+    draw.Line(x_corte_bb_esq, y_corte_topo_bb, pilar_bb_x1, y_corte_topo_bb)
+    draw.Line(pilar_bb_x2, y_corte_topo_bb, x_corte_bb_dir, y_corte_topo_bb)
+
+    # Laje Inferior
+    draw.Line(x_corte_bb_esq, y_corte_base_bb, pilar_bb_x1, y_corte_base_bb)
+    draw.Line(pilar_bb_x2, y_corte_base_bb, x_corte_bb_dir, y_corte_base_bb)
+
+    # Fechamentos laterais da laje
+    draw.Line(x_corte_bb_esq, y_corte_base_bb, x_corte_bb_esq, y_corte_topo_bb)
+    draw.Line(x_corte_bb_dir, y_corte_base_bb, x_corte_bb_dir, y_corte_topo_bb)
+
+    # Projeção do Pilar Superior
+    draw.Line(pilar_bb_x1, y_corte_topo_bb, pilar_bb_x1, y_col_sup_bb)
+    draw.Line(pilar_bb_x2, y_corte_topo_bb, pilar_bb_x2, y_col_sup_bb)
+    _linha_quebra_h(pilar_bb_x1, pilar_bb_x2, y_col_sup_bb)
+
+    # Projeção do Pilar Inferior
+    draw.Line(pilar_bb_x1, y_corte_base_bb, pilar_bb_x1, y_col_inf_bb)
+    draw.Line(pilar_bb_x2, y_corte_base_bb, pilar_bb_x2, y_col_inf_bb)
+    _linha_quebra_h(pilar_bb_x1, pilar_bb_x2, y_col_inf_bb)
+
+    # ==========================================================================
+    # 3. BARRAS LONGITUDINAIS CONTÍNUAS SUPERIOR E INFERIOR (Ciano)
+    # ==========================================================================
+    draw.level = 220
+    draw.color = 4  # Ciano
+    draw.style = 0
+
+    cob = 2.0
+    y_bar_top = y_corte_topo_bb - cob
+    y_bar_bot = y_corte_base_bb + cob
+
+    draw.Line(x_corte_bb_esq + 1.5, y_bar_top, x_corte_bb_dir - 1.5, y_bar_top)
+    draw.Line(x_corte_bb_esq + 1.5, y_bar_bot, x_corte_bb_dir - 1.5, y_bar_bot)
+
+    # ==========================================================================
+    # 4. ESTRIBOS DE PUNÇÃO NO CORTE B-B
+    # ==========================================================================
+    y_dot_top = y_bar_top - raio_dot
+    y_dot_bot = y_bar_bot + raio_dot
+    y_st_top = y_dot_top + raio_dot
+    y_st_bot = y_dot_bot - raio_dot
+
+    def _desenhar_dot_par(xd):
+        draw.level = 220
+        draw.color = 1  # Vermelho
+        draw.style = 0
+        draw.Circle(xd, y_dot_top, raio_dot)
+        draw.Circle(xd, y_dot_bot, raio_dot)
+
+    def _desenhar_estribo_corte(x_left, x_right, cor_st=2):
+        draw.level = 220
+        draw.color = cor_st
+        draw.style = 0
+        x_st_l = x_left - raio_dot
+        x_st_r = x_right + raio_dot
+        draw.Line(x_st_l, y_st_bot, x_st_r, y_st_bot)
+        draw.Line(x_st_r, y_st_bot, x_st_r, y_st_top)
+        draw.Line(x_st_r, y_st_top, x_st_l, y_st_top)
+        draw.Line(x_st_l, y_st_top, x_st_l, y_st_bot)
+        # Gancho a -45° no canto superior esquerdo
+        draw.Line(x_st_l + 1.2, y_st_top, x_st_l + 3.4, y_st_top - 2.2)
+        draw.Line(x_st_l, y_st_top - 1.2, x_st_l + 2.2, y_st_top - 3.4)
+        _desenhar_dot_par(x_left)
+        _desenhar_dot_par(x_right)
+
+    def _desenhar_bastao(xf):
+        _desenhar_dot_par(xf)
+        draw.level = 220
+        draw.color = 4  # Ciano
+        draw.style = 0
+        shank_w = raio_dot
+        draw.Line(xf - shank_w, y_dot_bot, xf - shank_w, y_dot_top)
+        draw.Line(xf + shank_w, y_dot_bot, xf + shank_w, y_dot_top)
+
+    # 4.1 ESTRIBOS DENTRO DO PILAR: DE FRENTE (Estribo fechado face menor)
+    x_st_bb_l = xc_corte - larg_estribo_menor / 2.0
+    x_st_bb_r = xc_corte + larg_estribo_menor / 2.0
+    _desenhar_estribo_corte(x_st_bb_l, x_st_bb_r, cor_st=2)
+
+    # 4.2 ESTRIBOS FORA DO PILAR: DE LADO (Formato bastão nas colunas)
+    pts_bb_esq = [pilar_bb_x1 - (cota_y + k * espaco_linhas) for k in range(num_linhas)]
+    pts_bb_dir = [pilar_bb_x2 + (cota_y + k * espaco_linhas) for k in range(num_linhas)]
+
+    for xf in pts_bb_esq:
+        _desenhar_bastao(xf)
+
+    for xf in pts_bb_dir:
+        _desenhar_bastao(xf)
+
+    # Bolinhas ao longo da laje além dos trilhos
+    x_step = espaco_linhas if espaco_linhas > 0 else 13.0
+    x_ult_esq = min(pts_bb_esq) if pts_bb_esq else pilar_bb_x1
+    x_curr = x_ult_esq - x_step
+    while x_curr >= x_corte_bb_esq + 3.5:
+        _desenhar_dot_par(x_curr)
+        x_curr -= x_step
+
+    x_ult_dir = max(pts_bb_dir) if pts_bb_dir else pilar_bb_x2
+    x_curr = x_ult_dir + x_step
+    while x_curr <= x_corte_bb_dir - 3.5:
+        _desenhar_dot_par(x_curr)
+        x_curr += x_step
+
+    # ==========================================================================
+    # 5. CHAMADAS DE TEXTO: FERRAGEM NEGATIVA & FERRAGEM POSITIVA
+    # ==========================================================================
+    draw.level = 241
+    draw.color = 3  # Verde
+    draw.style = 0
+
+    x_pt_sup = x_corte_bb_esq + 6.5
+    y_pt_sup = y_bar_top
+    x_knee_sup = x_pt_sup + 9.0
+    y_knee_sup = y_corte_topo_bb + 8.0
+    x_shelf_sup = min(x_knee_sup + 52.0, pilar_bb_x1 - 3.0)
+    draw.Line(x_pt_sup, y_pt_sup, x_knee_sup, y_knee_sup)
+    draw.Line(x_knee_sup, y_knee_sup, x_shelf_sup, y_knee_sup)
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 2.8, y_pt_sup + 1.4)
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 1.4, y_pt_sup + 2.8)
+    draw.Text(x_knee_sup + 1.0, y_knee_sup + 1.2, 4.2, 0.0, "FERRAGEM NEGATIVA")
+
+    x_pt_inf = x_corte_bb_esq + 6.5
+    y_pt_inf = y_bar_bot
+    x_knee_inf = x_pt_inf + 7.5
+    y_knee_inf = y_corte_base_bb - 14.0
+    x_shelf_inf = min(x_knee_inf + 52.0, pilar_bb_x1 - 3.0)
+    draw.Line(x_pt_inf, y_pt_inf, x_knee_inf, y_knee_inf)
+    draw.Line(x_knee_inf, y_knee_inf, x_shelf_inf, y_knee_inf)
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 2.4, y_pt_inf - 2.0)
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 0.8, y_pt_inf - 3.0)
+    draw.Text(x_knee_inf + 1.0, y_knee_inf + 1.2, 4.2, 0.0, "FERRAGEM POSITIVA")
+
+    # ==========================================================================
+    # 6. COTA VERTICAL DA ESPESSURA HD DA LAJE (Direita)
+    # ==========================================================================
+    x_cota_hd = x_corte_bb_dir + 10.0
+    draw.Line(x_corte_bb_dir + 2.0, y_corte_base_bb, x_cota_hd + 3.5, y_corte_base_bb)
+    draw.Line(x_corte_bb_dir + 2.0, y_corte_topo_bb, x_cota_hd + 3.5, y_corte_topo_bb)
+    draw.Line(x_cota_hd, y_corte_base_bb - 3.5, x_cota_hd, y_corte_topo_bb + 3.5)
+    draw.Line(x_cota_hd - 1.2, y_corte_base_bb - 1.2, x_cota_hd + 1.2, y_corte_base_bb + 1.2)
+    draw.Line(x_cota_hd - 1.2, y_corte_topo_bb - 1.2, x_cota_hd + 1.2, y_corte_topo_bb + 1.2)
+    txt_hd = f"{int(hd) if hd.is_integer() else hd}"
+    larg_hd = len(txt_hd) * 3.5
+    draw.Text(x_cota_hd - 1.8, (y_corte_base_bb + y_corte_topo_bb) / 2.0 - larg_hd / 2.0, 4.8, 90.0, txt_hd)
+
+    # ==========================================================================
+    # 7. TÍTULO CORTE B-B
+    # ==========================================================================
+    draw.level = 245
+    draw.color = 2  # Amarelo
+    draw.Text(xc_corte - 20.0, y_col_inf_bb - 16.0, 8.5, 0.0, "CORTE  B-B")
 
 
 # ==============================================================================
@@ -2129,6 +2359,15 @@ def colar_desenho_fidedigno(dwg, x_alvo, y_alvo, pilar, config):
     # 8. CORTE ESQUEMÁTICO NA PARTE DE BAIXO E SÍMBOLOS DE CORTE A-A
     try:
         desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=rebar_obj)
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+    # 9. CORTE ESQUEMÁTICO B-B (ABAIXO DO CORTE A-A) E SÍMBOLOS DE CORTE B-B
+    try:
+        desenhar_corte_bb(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=rebar_obj)
     except Exception as e:
         try:
             TQSUtil.ShowException(e)
