@@ -1633,31 +1633,31 @@ def desenhar_corte_aa(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     draw.color = 3  # Verde
     draw.style = 0
 
-    # Chamada Superior (apontando para a barra ciano superior à esquerda dos estribos)
-    x_pt_sup = x_corte_esq + 6.5
+    # Chamada Superior (apontando para a barra ciano superior, prateleira voltada para a esquerda)
+    x_pt_sup = x_corte_esq + 5.0
     y_pt_sup = y_bar_top
-    x_knee_sup = x_pt_sup + 9.0
+    x_knee_sup = x_pt_sup - 7.0
     y_knee_sup = y_corte_topo + 8.0
-    x_shelf_sup = min(x_knee_sup + 52.0, px_min - 3.0)
+    x_shelf_sup = x_knee_sup - 52.0
     draw.Line(x_pt_sup, y_pt_sup, x_knee_sup, y_knee_sup)
-    draw.Line(x_knee_sup, y_knee_sup, x_shelf_sup, y_knee_sup)
+    draw.Line(x_shelf_sup, y_knee_sup, x_knee_sup, y_knee_sup)
     # Seta na ponta da chamada superior
-    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 2.8, y_pt_sup + 1.4)
-    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 1.4, y_pt_sup + 2.8)
-    draw.Text(x_knee_sup + 1.0, y_knee_sup + 1.2, 4.2, 0.0, "FERRAGEM NEGATIVA")
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup - 2.8, y_pt_sup + 1.4)
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup - 1.4, y_pt_sup + 2.8)
+    draw.Text(x_shelf_sup + 1.0, y_knee_sup + 1.2, 4.2, 0.0, "FERRAGEM NEGATIVA")
 
-    # Chamada Inferior (apontando para a barra ciano inferior à esquerda dos estribos)
-    x_pt_inf = x_corte_esq + 6.5
+    # Chamada Inferior (apontando para a barra ciano inferior, prateleira voltada para a esquerda)
+    x_pt_inf = x_corte_esq + 5.0
     y_pt_inf = y_bar_bot
-    x_knee_inf = x_pt_inf + 7.5
-    y_knee_inf = y_corte_base - 14.0
-    x_shelf_inf = min(x_knee_inf + 52.0, px_min - 3.0)
+    x_knee_inf = x_pt_inf - 7.0
+    y_knee_inf = y_corte_base - 10.0
+    x_shelf_inf = x_knee_inf - 52.0
     draw.Line(x_pt_inf, y_pt_inf, x_knee_inf, y_knee_inf)
-    draw.Line(x_knee_inf, y_knee_inf, x_shelf_inf, y_knee_inf)
+    draw.Line(x_shelf_inf, y_knee_inf, x_knee_inf, y_knee_inf)
     # Seta na ponta da chamada inferior
-    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 2.4, y_pt_inf - 2.0)
-    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 0.8, y_pt_inf - 3.0)
-    draw.Text(x_knee_inf + 1.0, y_knee_inf + 1.2, 4.2, 0.0, "FERRAGEM POSITIVA")
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf - 2.8, y_pt_inf - 1.4)
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf - 1.4, y_pt_inf - 2.8)
+    draw.Text(x_shelf_inf + 1.0, y_knee_inf + 1.2, 4.2, 0.0, "FERRAGEM POSITIVA")
 
     # ==========================================================================
     # 7. COTA VERTICAL DA ESPESSURA HD DA LAJE (Direita)
@@ -1723,7 +1723,7 @@ def desenhar_corte_bb(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     comp_trilho_bb = cota_y + max(0, num_linhas - 1) * espaco_linhas
 
     # ==========================================================================
-    # 1. SÍMBOLOS DE CORTE B-B NA PLANTA (Topo e Base da laje - Visão para Esquerda)
+    # 1. SÍMBOLOS DE CORTE B-B NA PLANTA (Topo e Base da laje - Visão para a Direita ►)
     # ==========================================================================
     px_corte_planta = (px_min + px_max) / 2.0
 
@@ -1735,44 +1735,39 @@ def desenhar_corte_bb(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     alt_seta = 6.0
     alt_txt = 6.5
     larg_txt = 4.5
-    gap_seta_txt = 3.5
-    ext_linha = 5.5
+    comp_lin = 20.0
 
-    def _desenhar_seta_solida_esq(x_ponta, y_c):
-        """Desenha triângulo amarelo sólido apontando para a ESQUERDA (◄)."""
-        x_base = x_ponta + alt_seta
-        draw.Line(x_ponta, y_c, x_base, y_c - larg_seta / 2.0)
-        draw.Line(x_ponta, y_c, x_base, y_c + larg_seta / 2.0)
-        draw.Line(x_base, y_c - larg_seta / 2.0, x_base, y_c + larg_seta / 2.0)
+    def _desenhar_seta_solida_dir(x_base, y_c):
+        """Desenha triângulo amarelo sólido com base vertical apontando para a DIREITA (►)."""
+        x_ponta = x_base + alt_seta
+        y_b1 = y_c - larg_seta / 2.0
+        y_b2 = y_c + larg_seta / 2.0
+        draw.Line(x_base, y_b1, x_base, y_b2)
+        draw.Line(x_base, y_b1, x_ponta, y_c)
+        draw.Line(x_base, y_b2, x_ponta, y_c)
         n_passos = int(alt_seta / 0.20)
         for i in range(1, n_passos):
             dx = i * 0.20
-            x_curr = x_ponta + dx
-            t = dx / alt_seta
+            x_curr = x_base + dx
+            t = (alt_seta - dx) / alt_seta
             h_h = (larg_seta / 2.0) * t
             draw.Line(x_curr, y_c - h_h, x_curr, y_c + h_h)
 
-    # Posições no topo e na base da planta - coladas no quadrado da área
-    y_mark_sup = box_y2 + 5.5
-    y_mark_inf = box_y1 - 5.5
+    # 1.1 Símbolo Superior: Linha vertical saindo de box_y2 + [ B ] ao lado + [ ► ] na ponta
+    y_lin_sup_fim = box_y2 + comp_lin
+    draw.Line(px_corte_planta, box_y2, px_corte_planta, y_lin_sup_fim)
+    y_c_tri_sup = y_lin_sup_fim - larg_seta / 2.0
+    _desenhar_seta_solida_dir(px_corte_planta, y_c_tri_sup)
+    y_txt_sup = box_y2 + (comp_lin - larg_seta - larg_txt) / 2.0
+    draw.Text(px_corte_planta + alt_txt + 1.5, y_txt_sup, alt_txt, 90.0, "B")
 
-    # 1.1 Símbolo Superior: [ ◄ ]  [ B ] + Linha na base
-    x_ponta_sup = px_corte_planta - alt_seta / 2.0
-    _desenhar_seta_solida_esq(x_ponta_sup, y_mark_sup)
-    x_txt_sup = px_corte_planta + alt_seta / 2.0 + gap_seta_txt
-    draw.Text(x_txt_sup, y_mark_sup - alt_txt / 2.0, alt_txt, 0.0, "B")
-    # Linha horizontal na base
-    y_lin_sup = y_mark_sup - larg_seta / 2.0
-    draw.Line(x_ponta_sup - ext_linha, y_lin_sup, x_txt_sup + larg_txt + ext_linha, y_lin_sup)
-
-    # 1.2 Símbolo Inferior: [ ◄ ]  [ B ] + Linha na base
-    x_ponta_inf = px_corte_planta - alt_seta / 2.0
-    _desenhar_seta_solida_esq(x_ponta_inf, y_mark_inf)
-    x_txt_inf = px_corte_planta + alt_seta / 2.0 + gap_seta_txt
-    draw.Text(x_txt_inf, y_mark_inf - alt_txt / 2.0, alt_txt, 0.0, "B")
-    # Linha horizontal na base
-    y_lin_inf = y_mark_inf - larg_seta / 2.0
-    draw.Line(x_ponta_inf - ext_linha, y_lin_inf, x_txt_inf + larg_txt + ext_linha, y_lin_inf)
+    # 1.2 Símbolo Inferior: Linha vertical saindo de box_y1 + [ B ] ao lado + [ ► ] na ponta
+    y_lin_inf_fim = box_y1 - comp_lin
+    draw.Line(px_corte_planta, box_y1, px_corte_planta, y_lin_inf_fim)
+    y_c_tri_inf = y_lin_inf_fim + larg_seta / 2.0
+    _desenhar_seta_solida_dir(px_corte_planta, y_c_tri_inf)
+    y_txt_inf = y_lin_inf_fim + larg_seta + (comp_lin - larg_seta - larg_txt) / 2.0
+    draw.Text(px_corte_planta + alt_txt + 1.5, y_txt_inf, alt_txt, 90.0, "B")
 
     # ==========================================================================
     # 2. POSICIONAMENTO E GEOMETRIA DO CONCRETO NO CORTE B-B (ABAIXO DO CORTE A-A)
@@ -1923,27 +1918,31 @@ def desenhar_corte_bb(dwg, x_alvo, y_alvo, pilar, config, rebar_estribo=None):
     draw.color = 3  # Verde
     draw.style = 0
 
-    x_pt_sup = x_corte_bb_esq + 6.5
+    # Chamada Superior (apontando para a barra ciano superior, prateleira voltada para a esquerda)
+    x_pt_sup = x_corte_bb_esq + 5.0
     y_pt_sup = y_bar_top
-    x_knee_sup = x_pt_sup + 9.0
+    x_knee_sup = x_pt_sup - 7.0
     y_knee_sup = y_corte_topo_bb + 8.0
-    x_shelf_sup = min(x_knee_sup + 52.0, pilar_bb_x1 - 3.0)
+    x_shelf_sup = x_knee_sup - 52.0
     draw.Line(x_pt_sup, y_pt_sup, x_knee_sup, y_knee_sup)
-    draw.Line(x_knee_sup, y_knee_sup, x_shelf_sup, y_knee_sup)
-    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 2.8, y_pt_sup + 1.4)
-    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup + 1.4, y_pt_sup + 2.8)
-    draw.Text(x_knee_sup + 1.0, y_knee_sup + 1.2, 4.2, 0.0, "FERRAGEM NEGATIVA")
+    draw.Line(x_shelf_sup, y_knee_sup, x_knee_sup, y_knee_sup)
+    # Seta na ponta da chamada superior
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup - 2.8, y_pt_sup + 1.4)
+    draw.Line(x_pt_sup, y_pt_sup, x_pt_sup - 1.4, y_pt_sup + 2.8)
+    draw.Text(x_shelf_sup + 1.0, y_knee_sup + 1.2, 4.2, 0.0, "FERRAGEM NEGATIVA")
 
-    x_pt_inf = x_corte_bb_esq + 6.5
+    # Chamada Inferior (apontando para a barra ciano inferior, prateleira voltada para a esquerda)
+    x_pt_inf = x_corte_bb_esq + 5.0
     y_pt_inf = y_bar_bot
-    x_knee_inf = x_pt_inf + 7.5
-    y_knee_inf = y_corte_base_bb - 14.0
-    x_shelf_inf = min(x_knee_inf + 52.0, pilar_bb_x1 - 3.0)
+    x_knee_inf = x_pt_inf - 7.0
+    y_knee_inf = y_corte_base_bb - 10.0
+    x_shelf_inf = x_knee_inf - 52.0
     draw.Line(x_pt_inf, y_pt_inf, x_knee_inf, y_knee_inf)
-    draw.Line(x_knee_inf, y_knee_inf, x_shelf_inf, y_knee_inf)
-    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 2.4, y_pt_inf - 2.0)
-    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf + 0.8, y_pt_inf - 3.0)
-    draw.Text(x_knee_inf + 1.0, y_knee_inf + 1.2, 4.2, 0.0, "FERRAGEM POSITIVA")
+    draw.Line(x_shelf_inf, y_knee_inf, x_knee_inf, y_knee_inf)
+    # Seta na ponta da chamada inferior
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf - 2.8, y_pt_inf - 1.4)
+    draw.Line(x_pt_inf, y_pt_inf, x_pt_inf - 1.4, y_pt_inf - 2.8)
+    draw.Text(x_shelf_inf + 1.0, y_knee_inf + 1.2, 4.2, 0.0, "FERRAGEM POSITIVA")
 
     # ==========================================================================
     # 6. COTA VERTICAL DA ESPESSURA HD DA LAJE (Direita)
