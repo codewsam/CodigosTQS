@@ -107,9 +107,14 @@ def _agrupar_furos_com_subfuros(furos_individuais, tol=50.0):
 
 def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
     """
-    Localiza todos os furos no Nível 237 dentro da janela selecionada.
+    Localiza todos os furos no Nível 237 dentro ou adjacentes à janela selecionada.
+    Utiliza margem de busca para garantir a captura completa de todos os lados de cada furo,
+    mesmo que a janela de seleção clique ligeiramente para dentro das bordas.
+    Também expande automaticamente para incluir furos contíguos/vizinhos (<= DIST_MAX_UNIR),
+    impedindo que um furo seja armado de forma isolada cortando furos adjacentes.
     Retorna uma lista de dicts: [{'box': (xmin, ymin, xmax, ymax), 'subfuros': [...]}, ...]
     """
+    margem_busca = 80.0
     segs = []
     try:
         dwg.iterator.Begin()
@@ -125,8 +130,8 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
             if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
                 lx1, ly1 = dwg.iterator.x1, dwg.iterator.y1
                 lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
-                if (max(lx1, lx2) >= xmin_sel - 5.0 and min(lx1, lx2) <= xmax_sel + 5.0 and
-                    max(ly1, ly2) >= ymin_sel - 5.0 and min(ly1, ly2) <= ymax_sel + 5.0):
+                if (max(lx1, lx2) >= xmin_sel - margem_busca and min(lx1, lx2) <= xmax_sel + margem_busca and
+                    max(ly1, ly2) >= ymin_sel - margem_busca and min(ly1, ly2) <= ymax_sel + margem_busca):
                     segs.append((min(lx1, lx2), min(ly1, ly2), max(lx1, lx2), max(ly1, ly2)))
 
             elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 3), getattr(TQSDwg, "DWGTYPE_CURVE", 8)):
@@ -135,8 +140,8 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
                     pxs = [p[0] for p in pts]
                     pys = [p[1] for p in pts]
-                    if (max(pxs) >= xmin_sel - 5.0 and min(pxs) <= xmax_sel + 5.0 and
-                        max(pys) >= ymin_sel - 5.0 and min(pys) <= ymax_sel + 5.0):
+                    if (max(pxs) >= xmin_sel - margem_busca and min(pxs) <= xmax_sel + margem_busca and
+                        max(pys) >= ymin_sel - margem_busca and min(pys) <= ymax_sel + margem_busca):
                         segs.append((min(pxs), min(pys), max(pxs), max(pys)))
                 except Exception:
                     pass
@@ -146,16 +151,52 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
     if segs:
         # 1. Agrupa os traços individuais para obter os contornos de cada furo individualmente
         caixas_furos = _unir_caixas(segs, tol=2.5)
-        furos_validos = []
-        for c in caixas_furos:
-            larg = c[2] - c[0]
-            alt = c[3] - c[1]
-            if larg >= 3.0 and alt >= 3.0:
-                furos_validos.append((c[0], c[1], c[2], c[3]))
 
+        # 2. Fusão de linhas horizontais paralelas do mesmo furo caso linhas verticais de topo/fechamento faltem
+        linhas_soltas = [c for c in caixas_furos if (c[3] - c[1]) < 3.0 and (c[2] - c[0]) >= 3.0]
+        caixas_ok = [c for c in caixas_furos if (c[3] - c[1]) >= 3.0 and (c[2] - c[0]) >= 3.0]
+        while len(linhas_soltas) >= 2:
+            l1 = linhas_soltas.pop(0)
+            achou = False
+            for idx, l2 in enumerate(linhas_soltas):
+                # Se coincidem em X (dx < 6 cm) e a distância em Y é compatível com furo (dy <= 40 cm)
+                if abs(l1[0] - l2[0]) <= 6.0 and abs(l1[2] - l2[2]) <= 6.0 and 3.0 <= abs(l1[1] - l2[1]) <= 40.0:
+                    caixas_ok.append((min(l1[0], l2[0]), min(l1[1], l2[1]), max(l1[2], l2[2]), max(l1[3], l2[3])))
+                    linhas_soltas.pop(idx)
+                    achou = True
+                    break
+
+        furos_validos = caixas_ok
         if furos_validos:
-            # 2. Agrupa furos próximos (<= DIST_MAX_UNIR) mantendo a lista de subfuros
-            return _agrupar_furos_com_subfuros(furos_validos, tol=DIST_MAX_UNIR)
+            # 3. Identifica quais furos foram interceptados pela janela de seleção do usuário
+            furos_selecionados = []
+            for c in furos_validos:
+                if (c[0] <= xmax_sel + 10.0 and c[2] >= xmin_sel - 10.0 and
+                    c[1] <= ymax_sel + 10.0 and c[3] >= ymin_sel - 10.0):
+                    furos_selecionados.append(c)
+
+            # Se nenhum furo tocou diretamente o centro da seleção, usa os furos válidos mais próximos
+            if not furos_selecionados:
+                furos_selecionados = furos_validos[:]
+
+            # 4. Expansão inteligente: inclui furos vizinhos que estejam a <= DIST_MAX_UNIR (50 cm)
+            # para evitar que um furo seja armado isolado cortando furos contíguos
+            mudou = True
+            while mudou:
+                mudou = False
+                for f in furos_validos:
+                    if f not in furos_selecionados:
+                        for s in furos_selecionados:
+                            if (f[0] - DIST_MAX_UNIR <= s[2] and s[0] - DIST_MAX_UNIR <= f[2] and
+                                f[1] - DIST_MAX_UNIR <= s[3] and s[1] - DIST_MAX_UNIR <= f[3]):
+                                furos_selecionados.append(f)
+                                mudou = True
+                                break
+                        if mudou:
+                            break
+
+            # 5. Agrupa o conjunto mantendo a lista de subfuros para alocação dos ferros intermediários
+            return _agrupar_furos_com_subfuros(furos_selecionados, tol=DIST_MAX_UNIR)
 
     box_padrao = (xmin_sel, ymin_sel, xmax_sel, ymax_sel)
     return [{'box': box_padrao, 'subfuros': [box_padrao]}]
