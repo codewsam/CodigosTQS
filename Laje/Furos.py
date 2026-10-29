@@ -12,29 +12,30 @@ Características:
   - Símbolo oficial da bitola (Phi) renderizado perfeitamente pela fonte TQS.
   - Integrados à tabela de ferros e quantitativos do projeto.
   - Nível 220, Cor 4 (Ciano).
+- Detecção e Tratamento de Obstáculos / Pilares (Cor 1 Vermelha / Nível 227):
+  - Identifica automaticamente linhas vermelhas de pilar próximas ao furo.
+  - NÃO invade o pilar: as barras horizontais param antes do pilar com cobrimento
+    respeitado (ex: 3 cm antes da face do pilar).
+  - Aloca os 2 ferros verticais no espaço de concreto entre o furo e a face do pilar.
+  - Ajusta o comprimento real (C=...) e o posicionamento das chamadas.
 - Tratamento de Furos Próximos (distância <= 50 cm):
-  - Unifica a armadura horizontal em ferros grandes e contínuos de ponta a ponta.
+  - Unifica a armadura horizontal em ferros contínuos de ponta a ponta.
   - Insere exatamente 2 ferros verticais em cada espaço/nervo entre os furos.
-  - Mantém 2 ferros verticais na extremidade esquerda e 2 na direita.
-  - Notação atualizada proporcionalmente (ex: 3x2 P... para 2 furos geminados).
+  - Mantém 2 ferros verticais nas extremidades externas.
+  - Notação atualizada proporcionalmente (ex: 3x2, 4x2...).
 - Notação com chamadas limpas e organizadas ao lado dos ferros:
-  - 1 chamada com seta para as barras horizontais (ao lado direito, além do fim do ferro).
-  - 1 chamada com seta para as barras verticais (no topo, além da ponta do ferro).
+  - 1 chamada com seta para as barras horizontais.
+  - 1 chamada com seta para as barras verticais.
 - Cotagem de Transpasse (60 cm):
-  - 1 cota de 60 na horizontal indicando a extensão do ferro além do furo.
-  - 1 cota de 60 na vertical indicando a extensão do ferro além do furo.
+  - Cota de 60 na horizontal e na vertical nas faces livres.
   - Padrão TQS com ticks inclinados e linhas no Nível 221.
-- Parâmetros predefinidos:
-  - Cobrimento: 3.0 cm da face do furo.
-  - Transpasse (passar): 60.0 cm dos dois lados.
-  - Bitola: 10.0 mm.
-  - Espaçamento entre as barras paralelas: 5.0 cm.
 ================================================================================
 """
+import math
 from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
 
 
-COBRIMENTO = 3.0          # Cobrimento de 3 cm da face do furo
+COBRIMENTO = 3.0          # Cobrimento de 3 cm da face do furo e do pilar
 PASSAR = 60.0             # O ferro passa 60 cm dos dois lados do furo
 BITOLA = 10.0             # Bitola padrão de 10.0 mm
 ESPAC_BARRAS = 5.0        # Espaçamento de 5 cm entre os 2 ferros paralelos
@@ -45,10 +46,11 @@ NIVEL_COTA = 221          # Nível TQS oficial para linhas e textos de cotagem
 DIST_MAX_UNIR = 50.0      # Furos a até 50 cm são agrupados como um conjunto contínuo
 
 
-def _unir_caixas(lista_segs, tol=12.0):
+def _unir_caixas(lista_segs, tol=2.5):
     """
-    Agrupa segmentos ou caixas conectadas dentro de uma tolerância (tol cm).
-    Elementos do mesmo furo se agrupam; furos separados mantêm-se individuais.
+    Agrupa segmentos ou caixas conectadas dentro de uma tolerância pequena (tol cm).
+    Elementos do mesmo furo (linhas e diagonais do retângulo) se agrupam;
+    furos separados (mesmo que próximos, com espaçamento >= 4 cm) mantêm-se individuais.
     """
     caixas = []
     for s in lista_segs:
@@ -142,8 +144,8 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
         pass
 
     if segs:
-        # 1. Agrupa os traços individuais para obter os contornos dos furos
-        caixas_furos = _unir_caixas(segs, tol=10.0)
+        # 1. Agrupa os traços individuais para obter os contornos de cada furo individualmente
+        caixas_furos = _unir_caixas(segs, tol=2.5)
         furos_validos = []
         for c in caixas_furos:
             larg = c[2] - c[0]
@@ -157,6 +159,85 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
 
     box_padrao = (xmin_sel, ymin_sel, xmax_sel, ymax_sel)
     return [{'box': box_padrao, 'subfuros': [box_padrao]}]
+
+
+def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
+    """
+    Identifica se há contornos de pilar (linhas vermelhas / Cor 1 ou Nível 227)
+    nas proximidades do furo (dentro do alcance de transpasse de 60-80 cm).
+    Retorna dict com as coordenadas limites: {'dir': x, 'esq': x, 'top': y, 'bot': y}
+    """
+    lim_dir = None
+    lim_esq = None
+    lim_top = None
+    lim_bot = None
+
+    try:
+        dwg.iterator.Begin()
+        while True:
+            itipo = dwg.iterator.Next()
+            if itipo == 0 or itipo is None or itipo == getattr(TQSDwg, "DWGTYPE_EOF", 0):
+                break
+
+            nivel = getattr(dwg.iterator, "level", 0)
+            cor = getattr(dwg.iterator, "color", -1)
+
+            # Elementos de pilar: cor 1 (vermelho), nível 227, ou nível 201 vermelho
+            eh_pilar = (cor == 1) or (nivel == 227) or (cor in (-1, 0, 1) and nivel == 201)
+            if not eh_pilar:
+                continue
+
+            segs = []
+            if itipo == getattr(TQSDwg, "DWGTYPE_LINE", 1):
+                segs.append((dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2))
+            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 3), getattr(TQSDwg, "DWGTYPE_CURVE", 8)):
+                try:
+                    npts = dwg.iterator.xySize
+                    pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
+                    for i in range(len(pts) - 1):
+                        segs.append((pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1]))
+                    if len(pts) >= 3:
+                        segs.append((pts[-1][0], pts[-1][1], pts[0][0], pts[0][1]))
+                except Exception:
+                    pass
+
+            for x1, y1, x2, y2 in segs:
+                dx = abs(x2 - x1)
+                dy = abs(y2 - y1)
+                min_x, max_x = min(x1, x2), max(x1, x2)
+                min_y, max_y = min(y1, y2), max(y1, y2)
+
+                # Segmento vertical (face esquerda ou direita de pilar)
+                if dx <= 5.0 and dy >= 5.0:
+                    x_seg = (x1 + x2) / 2.0
+                    # Verifica se o segmento intercepta a faixa vertical do furo
+                    if max_y >= ymin - 15.0 and min_y <= ymax + 15.0:
+                        # Pilar à direita
+                        if xmax - 5.0 <= x_seg <= xmax + margem:
+                            if lim_dir is None or x_seg < lim_dir:
+                                lim_dir = x_seg
+                        # Pilar à esquerda
+                        elif xmin - margem <= x_seg <= xmin + 5.0:
+                            if lim_esq is None or x_seg > lim_esq:
+                                lim_esq = x_seg
+
+                # Segmento horizontal (face superior ou inferior de pilar)
+                elif dy <= 5.0 and dx >= 5.0:
+                    y_seg = (y1 + y2) / 2.0
+                    # Verifica se o segmento intercepta a faixa horizontal do furo
+                    if max_x >= xmin - 15.0 and min_x <= xmax + 15.0:
+                        # Pilar acima
+                        if ymax - 5.0 <= y_seg <= ymax + margem:
+                            if lim_top is None or y_seg < lim_top:
+                                lim_top = y_seg
+                        # Pilar abaixo
+                        elif ymin - margem <= y_seg <= ymin + 5.0:
+                            if lim_bot is None or y_seg > lim_bot:
+                                lim_bot = y_seg
+    except Exception:
+        pass
+
+    return {'dir': lim_dir, 'esq': lim_esq, 'top': lim_top, 'bot': lim_bot}
 
 
 def desenhar_cota_horizontal(draw, x1, x2, y_cota, witness_y_start, valor_txt="60", h=4.2):
@@ -224,44 +305,100 @@ def desenhar_cota_vertical(draw, y1, y2, x_cota, witness_x_start, valor_txt="60"
 def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=None):
     """
     Cria ferros nativos do TQS (SmartRebar / IPOFER) para armar o furo ou conjunto de furos:
+    - Se houver pilar (linha vermelha), interrompe a armadura antes da face com cobrimento.
     - Barras horizontais contínuas em Ciano (2 topo + 2 base cobrindo toda a extensão).
     - Barras verticais em Ciano: 2 na borda esquerda, 2 na borda direita E exatamente
       2 barras verticais em cada espaço/nervo intermediário entre furos próximos.
     - Chamadas automáticas posicionadas ao lado dos ferros, sem colisões.
-    - Cotas de 60 cm na horizontal e na vertical indicando o transpasse.
+    - Cotas de 60 cm na horizontal e na vertical indicando o transpasse nas faces livres.
     """
     draw = dwg.draw
-    larg_conjunto = xmax - xmin
-    alt_conjunto = ymax - ymin
 
-    comp_h = int(round(larg_conjunto + (2.0 * PASSAR)))
-    comp_v = int(round(alt_conjunto + (2.0 * PASSAR)))
+    # 1. Detecta se há pilares vermelhos vizinhos limitando a passagem das barras
+    obs = detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax)
 
-    # Coordenadas X para barras horizontais
+    # Limites X para barras horizontais
     x_h_ini = xmin - PASSAR
-    x_h_fim = xmax + PASSAR
+    if obs['esq'] is not None:
+        x_h_ini = max(x_h_ini, obs['esq'] + COBRIMENTO)
 
-    # Coordenadas Y para barras verticais
+    x_h_fim = xmax + PASSAR
+    if obs['dir'] is not None:
+        x_h_fim = min(x_h_fim, obs['dir'] - COBRIMENTO)
+
+    # Limites Y para barras verticais
     y_v_ini = ymin - PASSAR
+    if obs['bot'] is not None:
+        y_v_ini = max(y_v_ini, obs['bot'] + COBRIMENTO)
+
     y_v_fim = ymax + PASSAR
+    if obs['top'] is not None:
+        y_v_fim = min(y_v_fim, obs['top'] - COBRIMENTO)
+
+    # Comprimentos efetivos
+    comp_h = int(round(x_h_fim - x_h_ini))
+    comp_v = int(round(y_v_fim - y_v_ini))
 
     # Linhas horizontais (Y) de contorno externo
-    y_top_inner = ymax + COBRIMENTO
-    y_top_outer = ymax + COBRIMENTO + ESPAC_BARRAS
-    y_bot_inner = ymin - COBRIMENTO
-    y_bot_outer = ymin - COBRIMENTO - ESPAC_BARRAS
+    tem_horizontal_top = True
+    if obs['top'] is not None:
+        gap_t = obs['top'] - ymax
+        if gap_t < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
+            tem_horizontal_top = False
+            y_top_outer = y_top_inner = ymax + COBRIMENTO
+        else:
+            y_top_outer = min(ymax + COBRIMENTO + ESPAC_BARRAS, obs['top'] - COBRIMENTO)
+            y_top_inner = ymax + COBRIMENTO
+    else:
+        y_top_inner = ymax + COBRIMENTO
+        y_top_outer = ymax + COBRIMENTO + ESPAC_BARRAS
+
+    tem_horizontal_bot = True
+    if obs['bot'] is not None:
+        gap_b = ymin - obs['bot']
+        if gap_b < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
+            tem_horizontal_bot = False
+            y_bot_outer = y_bot_inner = ymin - COBRIMENTO
+        else:
+            y_bot_outer = max(ymin - COBRIMENTO - ESPAC_BARRAS, obs['bot'] + COBRIMENTO)
+            y_bot_inner = ymin - COBRIMENTO
+    else:
+        y_bot_inner = ymin - COBRIMENTO
+        y_bot_outer = ymin - COBRIMENTO - ESPAC_BARRAS
 
     # Linhas verticais (X) de contorno externo
-    x_dir_inner = xmax + COBRIMENTO
-    x_dir_outer = xmax + COBRIMENTO + ESPAC_BARRAS
-    x_esq_inner = xmin - COBRIMENTO
-    x_esq_outer = xmin - COBRIMENTO - ESPAC_BARRAS
+    tem_vertical_dir = True
+    if obs['dir'] is not None:
+        gap_d = obs['dir'] - xmax
+        # Se a face do pilar está encostada ou muito próxima (gap < 13 cm),
+        # NÃO gera ferros dentro do pilar nem no vão minúsculo
+        if gap_d < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
+            tem_vertical_dir = False
+            x_dir_outer = x_dir_inner = xmax + COBRIMENTO
+        else:
+            x_dir_outer = min(xmax + COBRIMENTO + ESPAC_BARRAS, obs['dir'] - COBRIMENTO)
+            x_dir_inner = xmax + COBRIMENTO
+    else:
+        x_dir_inner = xmax + COBRIMENTO
+        x_dir_outer = xmax + COBRIMENTO + ESPAC_BARRAS
 
-    # Identifica vãos intermediários em X (furos lado a lado)
+    tem_vertical_esq = True
+    if obs['esq'] is not None:
+        gap_e = xmin - obs['esq']
+        if gap_e < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
+            tem_vertical_esq = False
+            x_esq_outer = x_esq_inner = xmin - COBRIMENTO
+        else:
+            x_esq_outer = max(xmin - COBRIMENTO - ESPAC_BARRAS, obs['esq'] + COBRIMENTO)
+            x_esq_inner = xmin - COBRIMENTO
+    else:
+        x_esq_inner = xmin - COBRIMENTO
+        x_esq_outer = xmin - COBRIMENTO - ESPAC_BARRAS
+
+    # Identifica vãos intermediários em X (furos lado a lado) e em Y (furos empilhados)
     gaps_x = []
     gaps_y = []
     if subfuros and len(subfuros) > 1:
-        # Gaps horizontais
         sub_x = sorted(subfuros, key=lambda f: f[0])
         for i in range(len(sub_x) - 1):
             x1_gap = sub_x[i][2]
@@ -269,7 +406,6 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
             if (x2_gap - x1_gap) >= 2.0:
                 gaps_x.append((x1_gap + x2_gap) / 2.0)
 
-        # Gaps verticais
         sub_y = sorted(subfuros, key=lambda f: f[1])
         for j in range(len(sub_y) - 1):
             y1_gap = sub_y[j][3]
@@ -278,12 +414,13 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
                 gaps_y.append((y1_gap + y2_gap) / 2.0)
 
     # -------------------------------------------------------------------------
-    # 1. FERRO HORIZONTAL (SMARTREBAR)
+    # 2. FERRO HORIZONTAL (SMARTREBAR)
     # -------------------------------------------------------------------------
-    num_pares_h = 2 + len(gaps_y)
+    num_pares_h = (1 if tem_horizontal_top else 0) + len(gaps_y) + (1 if tem_horizontal_bot else 0)
+    num_pares_h = max(1, num_pares_h)
     sr_h = TQSDwg.SmartRebar(dwg)
     sr_h.type = getattr(TQSDwg, "ICPFRT", 1)  # Ferro reto
-    sr_h.multiplier = num_pares_h             # 2 faces (topo e base) + intermediárias
+    sr_h.multiplier = num_pares_h
     sr_h.quantity = 2                         # 2 barras por par
     sr_h.diameter = BITOLA
     sr_h.straightBarMainLength = float(comp_h)
@@ -292,43 +429,70 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
     sr_h.leaderLine = 1
     sr_h.leaderLineDistance = 0.1
 
-    # Insere as barras horizontais externas em CIANO (cor 4) no Nível 220
-    sr_h.RebarLine(x_h_ini, y_top_outer, 0.0, 1.0, 1, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-    sr_h.RebarLine(x_h_ini, y_top_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-    sr_h.RebarLine(x_h_ini, y_bot_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-    sr_h.RebarLine(x_h_ini, y_bot_outer, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    # Insere as barras horizontais em CIANO (cor 4) no Nível 220
+    first_h = True
+    if tem_horizontal_top:
+        sr_h.RebarLine(x_h_ini, y_top_outer, 0.0, 1.0, 1 if first_h else 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        first_h = False
+        sr_h.RebarLine(x_h_ini, y_top_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
 
-    # Se houver furos empilhados verticalmente, insere 2 ferros horizontais no vão intermediário
     for ym in gaps_y:
         y_mid1 = ym + (ESPAC_BARRAS / 2.0)
         y_mid2 = ym - (ESPAC_BARRAS / 2.0)
-        sr_h.RebarLine(x_h_ini, y_mid1, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        sr_h.RebarLine(x_h_ini, y_mid1, 0.0, 1.0, 1 if first_h else 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        first_h = False
         sr_h.RebarLine(x_h_ini, y_mid2, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
 
-    # Formatação do texto: '2x2 N... Phi 10 C=...'
-    sr_h.RebarTextDisplaySelection(
-        1, 1, 1, 0, 1,
-        getattr(TQSDwg, "ICPCENTR_ESQUERD", 1),
-        getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
-    )
-    x_txt_h = x_h_fim + 15.0
-    y_txt_h = y_top_outer + 12.0
-    try:
-        sr_h.RebarTextDisplayPosition(
-            x_txt_h, y_txt_h, 4.5, 0.0, 0,
+    if tem_horizontal_bot:
+        sr_h.RebarLine(x_h_ini, y_bot_inner, 0.0, 1.0, 1 if first_h else 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        first_h = False
+        sr_h.RebarLine(x_h_ini, y_bot_outer, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+
+    # Formatação do texto do ferro horizontal
+    if obs['dir'] is not None:
+        sr_h.RebarTextDisplaySelection(
+            1, 1, 1, 0, 1,
+            getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+            getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+        )
+        x_txt_h = (x_h_ini + x_h_fim) / 2.0
+        if obs['dir'] is not None:
+            x_txt_h = min(x_txt_h, obs['dir'] - 30.0)
+        y_txt_h = y_top_outer + 25.0
+        try:
+            sr_h.RebarTextDisplayPosition(
+                x_txt_h, y_txt_h, 4.5, 0.0, 0,
+                getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+                getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+            )
+        except Exception:
+            pass
+    else:
+        # Espaço livre à direita: texto após a ponta direita da barra
+        sr_h.RebarTextDisplaySelection(
+            1, 1, 1, 0, 1,
             getattr(TQSDwg, "ICPCENTR_ESQUERD", 1),
             getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
         )
-    except Exception:
-        pass
+        x_txt_h = x_h_fim + 15.0
+        y_txt_h = y_top_outer + 12.0
+        try:
+            sr_h.RebarTextDisplayPosition(
+                x_txt_h, y_txt_h, 4.5, 0.0, 0,
+                getattr(TQSDwg, "ICPCENTR_ESQUERD", 1),
+                getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+            )
+        except Exception:
+            pass
 
     # -------------------------------------------------------------------------
-    # 2. FERRO VERTICAL (SMARTREBAR)
+    # 3. FERRO VERTICAL (SMARTREBAR)
     # -------------------------------------------------------------------------
-    num_pares_v = 2 + len(gaps_x)
+    num_pares_v = (1 if tem_vertical_esq else 0) + len(gaps_x) + (1 if tem_vertical_dir else 0)
+    num_pares_v = max(1, num_pares_v)
     sr_v = TQSDwg.SmartRebar(dwg)
     sr_v.type = getattr(TQSDwg, "ICPFRT", 1)  # Ferro reto
-    sr_v.multiplier = num_pares_v             # Borda esq + borda dir + vão(s) intermediário(s)
+    sr_v.multiplier = num_pares_v             # Borda esq + vão(s) intermediário(s) + borda dir
     sr_v.quantity = 2                         # 2 barras por par
     sr_v.diameter = BITOLA
     sr_v.straightBarMainLength = float(comp_v)
@@ -337,26 +501,50 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
     sr_v.leaderLine = 1
     sr_v.leaderLineDistance = 0.1
 
-    # Insere as barras verticais externas
-    sr_v.RebarLine(x_dir_outer, y_v_ini, 90.0, 1.0, 1, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-    sr_v.RebarLine(x_dir_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-    sr_v.RebarLine(x_esq_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-    sr_v.RebarLine(x_esq_outer, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    # Insere as barras verticais e determina qual recebe a linha de chamada (lLeader)
+    first_v = True
+    x_v_lead = None
 
-    # INSERE EXATAMENTE 2 FERROS NO ESPAÇO ENTRE OS FUROS PRÓXIMOS
-    for xm in gaps_x:
-        x_mid1 = xm - (ESPAC_BARRAS / 2.0)
+    if tem_vertical_dir:
+        sr_v.RebarLine(x_dir_outer, y_v_ini, 90.0, 1.0, 1 if first_v else 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        if first_v:
+            x_v_lead = x_dir_outer
+            first_v = False
+        sr_v.RebarLine(x_dir_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+
+    # Insere exatamente 2 ferros verticais em cada vão intermediário entre furos próximos
+    for xm in reversed(gaps_x):
         x_mid2 = xm + (ESPAC_BARRAS / 2.0)
+        x_mid1 = xm - (ESPAC_BARRAS / 2.0)
+        sr_v.RebarLine(x_mid2, y_v_ini, 90.0, 1.0, 1 if first_v else 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        if first_v:
+            x_v_lead = x_mid2
+            first_v = False
         sr_v.RebarLine(x_mid1, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
-        sr_v.RebarLine(x_mid2, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
 
-    # Formatação do texto: '(num)x2 N... Phi 10 C=...'
+    if tem_vertical_esq:
+        sr_v.RebarLine(x_esq_inner, y_v_ini, 90.0, 1.0, 1 if first_v else 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        if first_v:
+            x_v_lead = x_esq_inner
+            first_v = False
+        sr_v.RebarLine(x_esq_outer, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+
+    if x_v_lead is None:
+        x_v_lead = (xmin + xmax) / 2.0
+
+    # Formatação do texto do ferro vertical
     sr_v.RebarTextDisplaySelection(
         1, 1, 1, 0, 1,
         getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
         getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
     )
-    x_txt_v = x_dir_outer + 30.0
+    if tem_vertical_dir and obs['dir'] is None:
+        x_txt_v = x_v_lead + 30.0
+    elif obs['dir'] is not None:
+        x_txt_v = min(x_v_lead + 10.0, obs['dir'] - 30.0)
+    else:
+        x_txt_v = x_v_lead + 20.0
+
     y_txt_v = y_v_fim + 20.0
     try:
         sr_v.RebarTextDisplayPosition(
@@ -368,31 +556,27 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
         pass
 
     # -------------------------------------------------------------------------
-    # 3. COTAS DE TRANSPASSE (60 cm)
+    # 4. COTAS DE TRANSPASSE (60 cm)
     # -------------------------------------------------------------------------
     txt_cota = f"{int(PASSAR)}"
 
-    # 3.1 Cota Horizontal (à esquerda, abaixo das barras horizontais inferiores)
-    y_cota_h = y_bot_outer - 15.0
-    desenhar_cota_horizontal(
-        draw,
-        x_h_ini, xmin,
-        y_cota_h,
-        witness_y_start=y_bot_outer,
-        valor_txt=txt_cota,
-        h=4.2
-    )
+    # 4.1 Cota Horizontal: posicionada na face que possui o transpasse livre de 60 cm
+    ref_y_witness = y_bot_outer if tem_horizontal_bot else (ymin - COBRIMENTO)
+    if obs['esq'] is None:
+        y_cota_h = ref_y_witness - 15.0
+        desenhar_cota_horizontal(draw, x_h_ini, xmin, y_cota_h, ref_y_witness, txt_cota, h=4.2)
+    elif obs['dir'] is None:
+        y_cota_h = ref_y_witness - 15.0
+        desenhar_cota_horizontal(draw, xmax, x_h_fim, y_cota_h, ref_y_witness, txt_cota, h=4.2)
 
-    # 3.2 Cota Vertical (na base, à esquerda das barras verticais)
-    x_cota_v = x_esq_outer - 15.0
-    desenhar_cota_vertical(
-        draw,
-        y_v_ini, ymin,
-        x_cota_v,
-        witness_x_start=x_esq_outer,
-        valor_txt=txt_cota,
-        h=4.2
-    )
+    # 4.2 Cota Vertical: posicionada na face que possui o transpasse livre de 60 cm
+    ref_x_witness = x_esq_outer if tem_vertical_esq else (xmin - COBRIMENTO)
+    if obs['bot'] is None:
+        x_cota_v = ref_x_witness - 15.0
+        desenhar_cota_vertical(draw, y_v_ini, ymin, x_cota_v, ref_x_witness, txt_cota, h=4.2)
+    elif obs['top'] is None:
+        x_cota_v = ref_x_witness - 15.0
+        desenhar_cota_vertical(draw, ymax, y_v_fim, x_cota_v, ref_x_witness, txt_cota, h=4.2)
 
 
 def meucmd(eag, tqsjan):
@@ -443,20 +627,24 @@ def meucmd(eag, tqsjan):
                 dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel
             )
 
-            # Arma cada grupo de furos com ferros nativos
+            # Arma cada grupo de furos com ferros nativos e respeito a pilares
             for g in grupos:
                 xmin_f, ymin_f, xmax_f, ymax_f = g['box']
                 subfuros_g = g['subfuros']
 
-                larg_f = xmax_f - xmin_f
-                alt_f = ymax_f - ymin_f
-                comp_h_int = int(round(larg_f + 2.0 * PASSAR))
-                comp_v_int = int(round(alt_f + 2.0 * PASSAR))
+                # Verifica se há pilar para estimar o comprimento real da barra
+                obs = detectar_obstaculos_pilar(dwg, xmin_f, ymin_f, xmax_f, ymax_f)
+                x_ini_ef = xmin_f - PASSAR if obs['esq'] is None else max(xmin_f - PASSAR, obs['esq'] + COBRIMENTO)
+                x_fim_ef = xmax_f + PASSAR if obs['dir'] is None else min(xmax_f + PASSAR, obs['dir'] - COBRIMENTO)
+                y_ini_ef = ymin_f - PASSAR if obs['bot'] is None else max(ymin_f - PASSAR, obs['bot'] + COBRIMENTO)
+                y_fim_ef = ymax_f + PASSAR if obs['top'] is None else min(ymax_f + PASSAR, obs['top'] - COBRIMENTO)
+
+                comp_h_int = int(round(x_fim_ef - x_ini_ef))
+                comp_v_int = int(round(y_fim_ef - y_ini_ef))
 
                 chave_h = (comp_h_int, BITOLA)
                 marca_h = _obter_marca(chave_h)
 
-                # Se a marca vertical for nova e coincidir com a horizontal, assegura numeração sequencial distinta
                 chave_v = (comp_v_int, BITOLA)
                 marca_v = _obter_marca(chave_v)
                 if marca_v == marca_h and comp_v_int != comp_h_int:
