@@ -4,10 +4,11 @@
 G3 PLUGINS - ARMAÇÃO DE FUROS EM LAJE (TQS EAG)
 ================================================================================
 Este módulo implementa o reforço de furos soltos em lajes de concreto.
-- O usuário abre uma janela de seleção cobrindo o furo no EAG.
-- O plugin detecta automaticamente os limites do furo no Nível 237.
-- Insere 2 ferros horizontais no topo e 2 ferros horizontais na base.
-- Insere 2 ferros verticais à esquerda e 2 ferros verticais à direita.
+- O usuário abre uma janela de seleção cobrindo um ou mais furos no EAG.
+- O plugin detecta automaticamente cada furo individual no Nível 237.
+- Se houver múltiplos furos distantes na seleção, arma cada um separadamente.
+- Insere 2 ferros horizontais no topo e 2 ferros horizontais na base de cada furo.
+- Insere 2 ferros verticais à esquerda e 2 ferros verticais à direita de cada furo.
 - Cobrimento: 3 cm da face do furo.
 - Extensão: o ferro passa 60 cm de cada lado do furo.
 - Cor da Armadura: Ciano (cor 4) no Nível 220.
@@ -26,13 +27,34 @@ COR_ARMADURA = 4          # Ciano (cor 4 do TQS)
 NIVEL_FURO = 237          # Nível TQS oficial para contorno de furo
 
 
-def detectar_furo(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
+def _unir_caixas(lista_segs, tol=12.0):
     """
-    Localiza o contorno do furo no Nível 237 dentro da janela selecionada pelo usuário.
-    Retorna (xmin, ymin, xmax, ymax).
+    Agrupa segmentos ou caixas conectadas dentro de uma tolerância (tol cm).
+    Elementos do mesmo furo se agrupam; furos separados mantêm-se individuais.
     """
-    xs = []
-    ys = []
+    caixas = []
+    for s in lista_segs:
+        caixa = list(s)
+        mudou = True
+        while mudou:
+            mudou = False
+            for c in caixas[:]:
+                if (caixa[0] - tol <= c[2] and c[0] - tol <= caixa[2] and
+                    caixa[1] - tol <= c[3] and c[1] - tol <= caixa[3]):
+                    caixa = [min(caixa[0], c[0]), min(caixa[1], c[1]),
+                             max(caixa[2], c[2]), max(caixa[3], c[3])]
+                    caixas.remove(c)
+                    mudou = True
+        caixas.append(caixa)
+    return [tuple(c) for c in caixas]
+
+
+def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
+    """
+    Localiza todos os furos distintos no Nível 237 dentro da janela selecionada.
+    Retorna uma lista de tuplas: [(xmin, ymin, xmax, ymax), ...]
+    """
+    segs = []
     try:
         dwg.iterator.Begin()
         while True:
@@ -49,8 +71,7 @@ def detectar_furo(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
                 lx2, ly2 = dwg.iterator.x2, dwg.iterator.y2
                 if (max(lx1, lx2) >= xmin_sel - 5.0 and min(lx1, lx2) <= xmax_sel + 5.0 and
                     max(ly1, ly2) >= ymin_sel - 5.0 and min(ly1, ly2) <= ymax_sel + 5.0):
-                    xs.extend([lx1, lx2])
-                    ys.extend([ly1, ly2])
+                    segs.append((min(lx1, lx2), min(ly1, ly2), max(lx1, lx2), max(ly1, ly2)))
 
             elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
                 try:
@@ -60,24 +81,26 @@ def detectar_furo(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
                     pys = [p[1] for p in pts]
                     if (max(pxs) >= xmin_sel - 5.0 and min(pxs) <= xmax_sel + 5.0 and
                         max(pys) >= ymin_sel - 5.0 and min(pys) <= ymax_sel + 5.0):
-                        xs.extend(pxs)
-                        ys.extend(pys)
+                        segs.append((min(pxs), min(pys), max(pxs), max(pys)))
                 except Exception:
                     pass
     except Exception:
         pass
 
-    if xs and ys:
-        xmin = min(xs)
-        xmax = max(xs)
-        ymin = min(ys)
-        ymax = max(ys)
-        larg = xmax - xmin
-        alt = ymax - ymin
-        if larg >= 3.0 and alt >= 3.0:
-            return xmin, ymin, xmax, ymax
+    if segs:
+        # Agrupa segmentos conectados para formar cada furo individual
+        caixas_furos = _unir_caixas(segs, tol=12.0)
+        furos_validos = []
+        for c in caixas_furos:
+            larg = c[2] - c[0]
+            alt = c[3] - c[1]
+            if larg >= 3.0 and alt >= 3.0:
+                furos_validos.append((c[0], c[1], c[2], c[3]))
 
-    return xmin_sel, ymin_sel, xmax_sel, ymax_sel
+        if furos_validos:
+            return furos_validos
+
+    return [(xmin_sel, ymin_sel, xmax_sel, ymax_sel)]
 
 
 def desenhar_barra(draw, x1, y1, x2, y2):
@@ -90,7 +113,7 @@ def desenhar_barra(draw, x1, y1, x2, y2):
 
 def armar_furo_solto(dwg, xmin, ymin, xmax, ymax):
     """
-    Posiciona exatamente 2 ferros em cada um dos 4 lados do furo em CIANO:
+    Posiciona exatamente 2 ferros em cada um dos 4 lados de um furo em CIANO:
     - 2 ferros horizontais no topo
     - 2 ferros horizontais na base
     - 2 ferros verticais à esquerda
@@ -136,19 +159,19 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax):
 def meucmd(eag, tqsjan):
     """
     Entry point do plugin 'Furos' chamado pelo menu do TQS EAG.
-    Abre janela sobre o furo para armá-lo diretamente com as barras em ciano.
+    Abre janela cobrindo um ou mais furos e arma cada um separadamente.
     """
     try:
         dwg = tqsjan.dwg
         janela_idx = 1
 
         while True:
-            prompt1 = f"Abra a janela sobre o {janela_idx}º furo [Botão Direito ou Esc para ENCERRAR]:"
+            prompt1 = f"Abra a janela sobre o(s) furo(s) [Botão Direito ou Esc para ENCERRAR]:"
             icod1, x1, y1 = eag.locate.GetPoint(tqsjan, prompt1)
             if icod1 != 1:
                 break
 
-            prompt2 = f"Clique o canto oposto (arraste o retângulo cobrindo o furo):"
+            prompt2 = f"Clique o canto oposto (arraste o retângulo cobrindo o(s) furo(s)):"
             icod2, x2, y2 = eag.locate.GetSecondPoint(
                 tqsjan, x1, y1,
                 TQSEag.EAG_RUBRETANG,
@@ -166,13 +189,14 @@ def meucmd(eag, tqsjan):
             if (xmax_sel - xmin_sel) < 5.0 or (ymax_sel - ymin_sel) < 5.0:
                 continue
 
-            # Detecta o furo no Nível 237 dentro da janela
-            xmin_f, ymin_f, xmax_f, ymax_f = detectar_furo(
+            # Detecta todos os furos distintos no Nível 237 dentro da janela
+            furos = detectar_furos(
                 dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel
             )
 
-            # Desenha apenas as barras dos ferros em ciano
-            armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f)
+            # Arma cada furo individualmente
+            for xmin_f, ymin_f, xmax_f, ymax_f in furos:
+                armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f)
 
             tqsjan.Regen()
             janela_idx += 1
