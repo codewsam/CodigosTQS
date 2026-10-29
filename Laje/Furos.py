@@ -161,16 +161,32 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
     return [{'box': box_padrao, 'subfuros': [box_padrao]}]
 
 
+def _linhas_distintas(valores, tol=3.0):
+    """Retorna lista ordenada de coordenadas distintas (filtrando duplicatas a menos de tol cm)."""
+    if not valores:
+        return []
+    val_ord = sorted(valores)
+    linhas = [val_ord[0]]
+    for v in val_ord[1:]:
+        if abs(v - linhas[-1]) > tol:
+            linhas.append(v)
+    return linhas
+
+
 def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
     """
     Identifica se há contornos de pilar (linhas vermelhas / Cor 1 ou Nível 227)
     nas proximidades do furo (dentro do alcance de transpasse de 60-80 cm).
-    Retorna dict com as coordenadas limites: {'dir': x, 'esq': x, 'top': y, 'bot': y}
+    Retorna dict com as coordenadas limites e flags de colado:
+    {'dir': x, 'esq': x, 'top': y, 'bot': y, 'colado_dir': bool, ...}
+    Se o furo estiver colado a uma linha externa de pilar/capitel e houver uma
+    segunda linha interna (face real do pilar), o ferro horizontal avança até
+    ancorar na SEGUNDA linha!
     """
-    lim_dir = None
-    lim_esq = None
-    lim_top = None
-    lim_bot = None
+    segs_dir = []
+    segs_esq = []
+    segs_top = []
+    segs_bot = []
 
     try:
         dwg.iterator.Begin()
@@ -214,12 +230,10 @@ def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
                     if max_y >= ymin - 15.0 and min_y <= ymax + 15.0:
                         # Pilar à direita
                         if xmax - 5.0 <= x_seg <= xmax + margem:
-                            if lim_dir is None or x_seg < lim_dir:
-                                lim_dir = x_seg
+                            segs_dir.append(x_seg)
                         # Pilar à esquerda
                         elif xmin - margem <= x_seg <= xmin + 5.0:
-                            if lim_esq is None or x_seg > lim_esq:
-                                lim_esq = x_seg
+                            segs_esq.append(x_seg)
 
                 # Segmento horizontal (face superior ou inferior de pilar)
                 elif dy <= 5.0 and dx >= 5.0:
@@ -228,16 +242,75 @@ def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
                     if max_x >= xmin - 15.0 and min_x <= xmax + 15.0:
                         # Pilar acima
                         if ymax - 5.0 <= y_seg <= ymax + margem:
-                            if lim_top is None or y_seg < lim_top:
-                                lim_top = y_seg
+                            segs_top.append(y_seg)
                         # Pilar abaixo
                         elif ymin - margem <= y_seg <= ymin + 5.0:
-                            if lim_bot is None or y_seg > lim_bot:
-                                lim_bot = y_seg
+                            segs_bot.append(y_seg)
     except Exception:
         pass
 
-    return {'dir': lim_dir, 'esq': lim_esq, 'top': lim_top, 'bot': lim_bot}
+    # Análise das linhas à direita
+    lim_dir = None
+    colado_dir = False
+    linhas_dir = _linhas_distintas(segs_dir)
+    if linhas_dir:
+        if linhas_dir[0] <= xmax + 8.0:
+            colado_dir = True
+            # Se colado e há uma segunda linha (face interna do pilar), ancora na SEGUNDA linha!
+            if len(linhas_dir) >= 2:
+                lim_dir = linhas_dir[1]
+            else:
+                lim_dir = linhas_dir[0]
+        else:
+            lim_dir = linhas_dir[0]
+
+    # Análise das linhas à esquerda
+    lim_esq = None
+    colado_esq = False
+    linhas_esq = sorted(_linhas_distintas(segs_esq), reverse=True)
+    if linhas_esq:
+        if linhas_esq[0] >= xmin - 8.0:
+            colado_esq = True
+            if len(linhas_esq) >= 2:
+                lim_esq = linhas_esq[1]
+            else:
+                lim_esq = linhas_esq[0]
+        else:
+            lim_esq = linhas_esq[0]
+
+    # Análise das linhas acima
+    lim_top = None
+    colado_top = False
+    linhas_top = _linhas_distintas(segs_top)
+    if linhas_top:
+        if linhas_top[0] <= ymax + 8.0:
+            colado_top = True
+            if len(linhas_top) >= 2:
+                lim_top = linhas_top[1]
+            else:
+                lim_top = linhas_top[0]
+        else:
+            lim_top = linhas_top[0]
+
+    # Análise das linhas abaixo
+    lim_bot = None
+    colado_bot = False
+    linhas_bot = sorted(_linhas_distintas(segs_bot), reverse=True)
+    if linhas_bot:
+        if linhas_bot[0] >= ymin - 8.0:
+            colado_bot = True
+            if len(linhas_bot) >= 2:
+                lim_bot = linhas_bot[1]
+            else:
+                lim_bot = linhas_bot[0]
+        else:
+            lim_bot = linhas_bot[0]
+
+    return {
+        'dir': lim_dir, 'esq': lim_esq, 'top': lim_top, 'bot': lim_bot,
+        'colado_dir': colado_dir, 'colado_esq': colado_esq,
+        'colado_top': colado_top, 'colado_bot': colado_bot
+    }
 
 
 def desenhar_cota_horizontal(draw, x1, x2, y_cota, witness_y_start, valor_txt="60", h=4.2):
@@ -341,7 +414,10 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
 
     # Linhas horizontais (Y) de contorno externo
     tem_horizontal_top = True
-    if obs['top'] is not None:
+    if obs.get('colado_top', False):
+        tem_horizontal_top = False
+        y_top_outer = y_top_inner = ymax + COBRIMENTO
+    elif obs['top'] is not None:
         gap_t = obs['top'] - ymax
         if gap_t < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
             tem_horizontal_top = False
@@ -354,7 +430,10 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
         y_top_outer = ymax + COBRIMENTO + ESPAC_BARRAS
 
     tem_horizontal_bot = True
-    if obs['bot'] is not None:
+    if obs.get('colado_bot', False):
+        tem_horizontal_bot = False
+        y_bot_outer = y_bot_inner = ymin - COBRIMENTO
+    elif obs['bot'] is not None:
         gap_b = ymin - obs['bot']
         if gap_b < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
             tem_horizontal_bot = False
@@ -368,7 +447,10 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
 
     # Linhas verticais (X) de contorno externo
     tem_vertical_dir = True
-    if obs['dir'] is not None:
+    if obs.get('colado_dir', False):
+        tem_vertical_dir = False
+        x_dir_outer = x_dir_inner = xmax + COBRIMENTO
+    elif obs['dir'] is not None:
         gap_d = obs['dir'] - xmax
         # Se a face do pilar está encostada ou muito próxima (gap < 13 cm),
         # NÃO gera ferros dentro do pilar nem no vão minúsculo
@@ -383,7 +465,10 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=Non
         x_dir_outer = xmax + COBRIMENTO + ESPAC_BARRAS
 
     tem_vertical_esq = True
-    if obs['esq'] is not None:
+    if obs.get('colado_esq', False):
+        tem_vertical_esq = False
+        x_esq_outer = x_esq_inner = xmin - COBRIMENTO
+    elif obs['esq'] is not None:
         gap_e = xmin - obs['esq']
         if gap_e < (2.0 * COBRIMENTO + ESPAC_BARRAS + 2.0):
             tem_vertical_esq = False
