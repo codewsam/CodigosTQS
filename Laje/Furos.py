@@ -12,7 +12,9 @@ Este módulo implementa o reforço de furos soltos em lajes de concreto.
 - Cobrimento: 3 cm da face do furo.
 - Extensão: o ferro passa 60 cm de cada lado do furo.
 - Cor da Armadura: Ciano (cor 4) no Nível 220.
-- Apenas as barras dos ferros (sem textos informativos).
+- Linha de chamada com seta (estilo profissional):
+  - 1 chamada com seta apontando para os 2 ferros horizontais: "2x2 N... %% 10 C=..."
+  - 1 chamada com seta apontando para os 2 ferros verticais: "2x2 N... %% 10 C=..."
 ================================================================================
 """
 import math
@@ -21,6 +23,7 @@ from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
 
 COBRIMENTO = 3.0          # Cobrimento de 3 cm da face do furo
 PASSAR = 60.0             # O ferro passa 60 cm dos dois lados do furo
+BITOLA = 10.0             # Bitola padrão de 10.0 mm
 ESPAC_BARRAS = 5.0        # Espaçamento de 5 cm entre os 2 ferros paralelos
 NIVEL_ARMADURA = 220      # Nível TQS oficial para armaduras
 COR_ARMADURA = 4          # Ciano (cor 4 do TQS)
@@ -88,7 +91,6 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
         pass
 
     if segs:
-        # Agrupa segmentos conectados para formar cada furo individual
         caixas_furos = _unir_caixas(segs, tol=12.0)
         furos_validos = []
         for c in caixas_furos:
@@ -111,7 +113,52 @@ def desenhar_barra(draw, x1, y1, x2, y2):
     draw.Line(x1, y1, x2, y2)
 
 
-def armar_furo_solto(dwg, xmin, ymin, xmax, ymax):
+def desenhar_chamada_com_seta(draw, x_pt, y_pt, x_knee, y_knee, texto, tam=5.5):
+    """
+    Desenha uma linha de chamada profissional com seta apontando para as barras,
+    prateleira horizontal e o texto de identificação (ex: 2x2 N1 %% 10 C=...).
+    """
+    draw.level = NIVEL_ARMADURA
+    draw.color = 3  # Verde (cor oficial TQS para linhas de chamada)
+    draw.style = 0
+
+    # 1. Linha inclinada do ponto alvo até o joelho (knee)
+    draw.Line(x_pt, y_pt, x_knee, y_knee)
+
+    # 2. Prateleira horizontal
+    larg_txt = len(texto) * (tam * 0.70)
+    if x_knee >= x_pt:
+        x_shelf = x_knee + larg_txt + 4.0
+        draw.Line(x_knee, y_knee, x_shelf, y_knee)
+        x_txt = x_knee + 2.0
+    else:
+        x_shelf = x_knee - (larg_txt + 4.0)
+        draw.Line(x_shelf, y_knee, x_knee, y_knee)
+        x_txt = x_shelf + 2.0
+
+    # 3. Seta triangular na ponta (x_pt, y_pt) apontando para o ferro
+    dx = x_pt - x_knee
+    dy = y_pt - y_knee
+    dist = math.hypot(dx, dy)
+    if dist > 0.1:
+        ux, uy = dx / dist, dy / dist
+        px, py = -uy, ux
+        seta_len = 4.5
+        seta_w = 1.8
+        bx = x_pt - ux * seta_len
+        by = y_pt - uy * seta_len
+        w1_x, w1_y = bx + px * seta_w, by + py * seta_w
+        w2_x, w2_y = bx - px * seta_w, by - py * seta_w
+        draw.Line(x_pt, y_pt, w1_x, w1_y)
+        draw.Line(x_pt, y_pt, w2_x, w2_y)
+        draw.Line(w1_x, w1_y, w2_x, w2_y)
+
+    # 4. Texto em Amarelo descansando sobre a prateleira horizontal
+    draw.color = 2  # Amarelo
+    draw.Text(x_txt, y_knee + 1.2, tam, 0.0, texto)
+
+
+def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     """
     Posiciona exatamente 2 ferros em cada um dos 4 lados de um furo em CIANO:
     - 2 ferros horizontais no topo
@@ -119,9 +166,18 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax):
     - 2 ferros verticais à esquerda
     - 2 ferros verticais à direita
     Passando 60 cm dos dois lados do furo com cobrimento de 3 cm da face.
-    Sem nenhum texto informativo.
+    Linhas de chamada com seta:
+    - 1 chamada puxando para os 2 horizontais com formato '2x2 N... %% 10 C=...'
+    - 1 chamada puxando para os 2 verticais com formato '2x2 N... %% 10 C=...'
     """
     draw = dwg.draw
+
+    larg_furo = xmax - xmin
+    alt_furo = ymax - ymin
+
+    # Comprimentos das barras
+    comp_h = int(round(larg_furo + (2.0 * PASSAR)))
+    comp_v = int(round(alt_furo + (2.0 * PASSAR)))
 
     # Coordenadas X para barras horizontais
     x_h_ini = xmin - PASSAR
@@ -155,6 +211,26 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax):
     desenhar_barra(draw, x_dir_inner, y_v_ini, x_dir_inner, y_v_fim)
     desenhar_barra(draw, x_dir_outer, y_v_ini, x_dir_outer, y_v_fim)
 
+    # -------------------------------------------------------------------------
+    # LINHAS DE CHAMADA COM SETA (2x2)
+    # -------------------------------------------------------------------------
+    txt_h = f"2x2 N{marca_h} %% {BITOLA:g} C={comp_h}"
+    txt_v = f"2x2 N{marca_v} %% {BITOLA:g} C={comp_v}"
+
+    # Chamada Horizontal: seta apontando para a barra superior
+    x_pt_h = (xmin + xmax) / 2.0
+    y_pt_h = y_top_outer
+    x_knee_h = x_pt_h + 18.0
+    y_knee_h = y_pt_h + 15.0
+    desenhar_chamada_com_seta(draw, x_pt_h, y_pt_h, x_knee_h, y_knee_h, txt_h, tam=5.5)
+
+    # Chamada Vertical: seta apontando para a barra vertical direita
+    x_pt_v = x_dir_outer
+    y_pt_v = (ymin + ymax) / 2.0
+    x_knee_v = x_pt_v + 18.0
+    y_knee_v = y_pt_v + 14.0
+    desenhar_chamada_com_seta(draw, x_pt_v, y_pt_v, x_knee_v, y_knee_v, txt_v, tam=5.5)
+
 
 def meucmd(eag, tqsjan):
     """
@@ -164,6 +240,7 @@ def meucmd(eag, tqsjan):
     try:
         dwg = tqsjan.dwg
         janela_idx = 1
+        marcas_globais = {}
 
         while True:
             prompt1 = f"Abra a janela sobre o(s) furo(s) [Botão Direito ou Esc para ENCERRAR]:"
@@ -196,7 +273,22 @@ def meucmd(eag, tqsjan):
 
             # Arma cada furo individualmente
             for xmin_f, ymin_f, xmax_f, ymax_f in furos:
-                armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f)
+                larg_f = xmax_f - xmin_f
+                alt_f = ymax_f - ymin_f
+                comp_h_int = int(round(larg_f + 2.0 * PASSAR))
+                comp_v_int = int(round(alt_f + 2.0 * PASSAR))
+
+                chave_h = (comp_h_int, BITOLA)
+                if chave_h not in marcas_globais:
+                    marcas_globais[chave_h] = len(marcas_globais) + 1
+                marca_h = marcas_globais[chave_h]
+
+                chave_v = (comp_v_int, BITOLA)
+                if chave_v not in marcas_globais:
+                    marcas_globais[chave_v] = len(marcas_globais) + 1
+                marca_v = marcas_globais[chave_v]
+
+                armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f, marca_h, marca_v)
 
             tqsjan.Regen()
             janela_idx += 1
