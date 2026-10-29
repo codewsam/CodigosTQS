@@ -20,8 +20,11 @@ Características:
   - 1 cota de 60 na horizontal indicando a extensão do ferro além do furo.
   - 1 cota de 60 na vertical indicando a extensão do ferro além do furo.
   - Padrão TQS com ticks inclinados e linhas no Nível 221.
-- Detecção inteligente no Nível 237:
-  - Reconhece múltiplos furos distantes na mesma seleção e arma cada um separadamente.
+- Detecção Inteligente e Agrupamento de Furos Próximos:
+  - Furos muito próximos (distância <= 50 cm) são automaticamente tratados como
+    um único furo maior: cria-se uma armadura contínua única e NÃO se inserem
+    ferros no espaço estreito entre eles.
+  - Furos distantes mantêm-se individuais, cada um com sua própria armação.
 - Parâmetros predefinidos:
   - Cobrimento: 3.0 cm da face do furo.
   - Transpasse (passar): 60.0 cm dos dois lados.
@@ -40,6 +43,7 @@ NIVEL_ARMADURA = 220      # Nível TQS oficial para armaduras
 COR_ARMADURA = 4          # Ciano (cor 4 do TQS)
 NIVEL_FURO = 237          # Nível TQS oficial para contorno de furo
 NIVEL_COTA = 221          # Nível TQS oficial para linhas e textos de cotagem
+DIST_MAX_UNIR = 50.0      # Furos a até 50 cm são agrupados como um único furo maior
 
 
 def _unir_caixas(lista_segs, tol=12.0):
@@ -66,7 +70,11 @@ def _unir_caixas(lista_segs, tol=12.0):
 
 def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
     """
-    Localiza todos os furos distintos no Nível 237 dentro da janela selecionada.
+    Localiza todos os furos no Nível 237 dentro da janela selecionada.
+    - Furos individuais são identificados inicialmente.
+    - Se houver furos muito próximos (distância <= DIST_MAX_UNIR), unifica-os
+      em um único furo maior para criar o ferro contínuo sem barras no miolo.
+    - Furos distantes permanecem separados.
     Retorna uma lista de tuplas: [(xmin, ymin, xmax, ymax), ...]
     """
     segs = []
@@ -103,7 +111,8 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
         pass
 
     if segs:
-        caixas_furos = _unir_caixas(segs, tol=12.0)
+        # 1. Agrupa os traços individuais para obter os furos geométricos
+        caixas_furos = _unir_caixas(segs, tol=10.0)
         furos_validos = []
         for c in caixas_furos:
             larg = c[2] - c[0]
@@ -112,7 +121,9 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
                 furos_validos.append((c[0], c[1], c[2], c[3]))
 
         if furos_validos:
-            return furos_validos
+            # 2. Unifica furos muito próximos em um único furo maior contínuo
+            furos_finais = _unir_caixas(furos_validos, tol=DIST_MAX_UNIR)
+            return furos_finais
 
     return [(xmin_sel, ymin_sel, xmax_sel, ymax_sel)]
 
@@ -363,12 +374,12 @@ def meucmd(eag, tqsjan):
             if (xmax_sel - xmin_sel) < 5.0 or (ymax_sel - ymin_sel) < 5.0:
                 continue
 
-            # Detecta todos os furos distintos no Nível 237 dentro da janela
+            # Detecta os furos no Nível 237 (unindo furos próximos em um único contorno)
             furos = detectar_furos(
                 dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel
             )
 
-            # Arma cada furo individualmente com ferros nativos
+            # Arma cada furo (ou grupo de furos próximos) com ferros nativos
             for xmin_f, ymin_f, xmax_f, ymax_f in furos:
                 larg_f = xmax_f - xmin_f
                 alt_f = ymax_f - ymin_f
