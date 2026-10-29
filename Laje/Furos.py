@@ -216,13 +216,12 @@ def _linhas_distintas(valores, tol=3.0):
 
 def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
     """
-    Identifica se há contornos de pilar (linhas vermelhas / Cor 1 ou Nível 227)
+    Identifica contornos de forma (pilares vermelhos ou vigas/bordas brancas)
     nas proximidades do furo (dentro do alcance de transpasse de 60-80 cm).
     Retorna dict com as coordenadas limites e flags de colado:
     {'dir': x, 'esq': x, 'top': y, 'bot': y, 'colado_dir': bool, ...}
-    Se o furo estiver colado a uma linha externa de pilar/capitel e houver uma
-    segunda linha interna (face real do pilar), o ferro horizontal avança até
-    ancorar na SEGUNDA linha!
+    Se houver duas linhas (ex: faces de uma viga ou contorno + face de pilar),
+    o ferro avança até parar na SEGUNDA linha!
     """
     segs_dir = []
     segs_esq = []
@@ -239,9 +238,10 @@ def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
             nivel = getattr(dwg.iterator, "level", 0)
             cor = getattr(dwg.iterator, "color", -1)
 
-            # Elementos de pilar: cor 1 (vermelho), nível 227, ou nível 201 vermelho
-            eh_pilar = (cor == 1) or (nivel == 227) or (cor in (-1, 0, 1) and nivel == 201)
-            if not eh_pilar:
+            # Ignora armaduras (220/ciano), cotas/textos (221/amarelo/verde) e furos (237/magenta)
+            if nivel in (NIVEL_ARMADURA, NIVEL_COTA, NIVEL_FURO):
+                continue
+            if cor in (COR_ARMADURA, 2, 3, 6):
                 continue
 
             segs = []
@@ -264,88 +264,79 @@ def detectar_obstaculos_pilar(dwg, xmin, ymin, xmax, ymax, margem=80.0):
                 min_x, max_x = min(x1, x2), max(x1, x2)
                 min_y, max_y = min(y1, y2), max(y1, y2)
 
-                # Segmento vertical (face esquerda ou direita de pilar)
+                # Segmento vertical (face esquerda ou direita de pilar/viga)
                 if dx <= 5.0 and dy >= 5.0:
                     x_seg = (x1 + x2) / 2.0
                     # Verifica se o segmento intercepta a faixa vertical do furo
                     if max_y >= ymin - 15.0 and min_y <= ymax + 15.0:
-                        # Pilar à direita
+                        # Obstáculo à direita
                         if xmax - 5.0 <= x_seg <= xmax + margem:
                             segs_dir.append(x_seg)
-                        # Pilar à esquerda
+                        # Obstáculo à esquerda
                         elif xmin - margem <= x_seg <= xmin + 5.0:
                             segs_esq.append(x_seg)
 
-                # Segmento horizontal (face superior ou inferior de pilar)
+                # Segmento horizontal (face superior ou inferior de pilar/viga)
                 elif dy <= 5.0 and dx >= 5.0:
                     y_seg = (y1 + y2) / 2.0
                     # Verifica se o segmento intercepta a faixa horizontal do furo
                     if max_x >= xmin - 15.0 and min_x <= xmax + 15.0:
-                        # Pilar acima
+                        # Obstáculo acima
                         if ymax - 5.0 <= y_seg <= ymax + margem:
                             segs_top.append(y_seg)
-                        # Pilar abaixo
+                        # Obstáculo abaixo
                         elif ymin - margem <= y_seg <= ymin + 5.0:
                             segs_bot.append(y_seg)
     except Exception:
         pass
 
-    # Análise das linhas à direita
+    # Análise das linhas à direita: se houver duas linhas (ex: 2 faces de viga), ancora na SEGUNDA!
     lim_dir = None
     colado_dir = False
     linhas_dir = _linhas_distintas(segs_dir)
     if linhas_dir:
-        if linhas_dir[0] <= xmax + 8.0:
-            colado_dir = True
-            # Se colado e há uma segunda linha (face interna do pilar), ancora na SEGUNDA linha!
-            if len(linhas_dir) >= 2:
-                lim_dir = linhas_dir[1]
-            else:
-                lim_dir = linhas_dir[0]
+        if len(linhas_dir) >= 2:
+            lim_dir = linhas_dir[1]
         else:
             lim_dir = linhas_dir[0]
+        if linhas_dir[0] <= xmax + 8.0:
+            colado_dir = True
 
-    # Análise das linhas à esquerda
+    # Análise das linhas à esquerda: se houver duas linhas, ancora na SEGUNDA!
     lim_esq = None
     colado_esq = False
     linhas_esq = sorted(_linhas_distintas(segs_esq), reverse=True)
     if linhas_esq:
-        if linhas_esq[0] >= xmin - 8.0:
-            colado_esq = True
-            if len(linhas_esq) >= 2:
-                lim_esq = linhas_esq[1]
-            else:
-                lim_esq = linhas_esq[0]
+        if len(linhas_esq) >= 2:
+            lim_esq = linhas_esq[1]
         else:
             lim_esq = linhas_esq[0]
+        if linhas_esq[0] >= xmin - 8.0:
+            colado_esq = True
 
-    # Análise das linhas acima
+    # Análise das linhas acima: se houver duas linhas, ancora na SEGUNDA!
     lim_top = None
     colado_top = False
     linhas_top = _linhas_distintas(segs_top)
     if linhas_top:
-        if linhas_top[0] <= ymax + 8.0:
-            colado_top = True
-            if len(linhas_top) >= 2:
-                lim_top = linhas_top[1]
-            else:
-                lim_top = linhas_top[0]
+        if len(linhas_top) >= 2:
+            lim_top = linhas_top[1]
         else:
             lim_top = linhas_top[0]
+        if linhas_top[0] <= ymax + 8.0:
+            colado_top = True
 
-    # Análise das linhas abaixo
+    # Análise das linhas abaixo: se houver duas linhas, ancora na SEGUNDA!
     lim_bot = None
     colado_bot = False
     linhas_bot = sorted(_linhas_distintas(segs_bot), reverse=True)
     if linhas_bot:
-        if linhas_bot[0] >= ymin - 8.0:
-            colado_bot = True
-            if len(linhas_bot) >= 2:
-                lim_bot = linhas_bot[1]
-            else:
-                lim_bot = linhas_bot[0]
+        if len(linhas_bot) >= 2:
+            lim_bot = linhas_bot[1]
         else:
             lim_bot = linhas_bot[0]
+        if linhas_bot[0] >= ymin - 8.0:
+            colado_bot = True
 
     return {
         'dir': lim_dir, 'esq': lim_esq, 'top': lim_top, 'bot': lim_bot,
