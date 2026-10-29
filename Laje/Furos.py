@@ -12,19 +12,18 @@ Características:
   - Símbolo oficial da bitola (Phi) renderizado perfeitamente pela fonte TQS.
   - Integrados à tabela de ferros e quantitativos do projeto.
   - Nível 220, Cor 4 (Ciano).
-- Notação 2x2 com chamadas limpas e organizadas ao lado dos ferros:
-  - 1 chamada com seta para as 4 barras horizontais (ao lado direito, além do fim do ferro).
-  - 1 chamada com seta para as 4 barras verticais (no topo, além da ponta do ferro).
-  - Textos nunca sobrepõem as barras de armadura nem o contorno do furo.
+- Tratamento de Furos Próximos (distância <= 50 cm):
+  - Unifica a armadura horizontal em ferros grandes e contínuos de ponta a ponta.
+  - Insere exatamente 2 ferros verticais em cada espaço/nervo entre os furos.
+  - Mantém 2 ferros verticais na extremidade esquerda e 2 na direita.
+  - Notação atualizada proporcionalmente (ex: 3x2 P... para 2 furos geminados).
+- Notação com chamadas limpas e organizadas ao lado dos ferros:
+  - 1 chamada com seta para as barras horizontais (ao lado direito, além do fim do ferro).
+  - 1 chamada com seta para as barras verticais (no topo, além da ponta do ferro).
 - Cotagem de Transpasse (60 cm):
   - 1 cota de 60 na horizontal indicando a extensão do ferro além do furo.
   - 1 cota de 60 na vertical indicando a extensão do ferro além do furo.
   - Padrão TQS com ticks inclinados e linhas no Nível 221.
-- Detecção Inteligente e Agrupamento de Furos Próximos:
-  - Furos muito próximos (distância <= 50 cm) são automaticamente tratados como
-    um único furo maior: cria-se uma armadura contínua única e NÃO se inserem
-    ferros no espaço estreito entre eles.
-  - Furos distantes mantêm-se individuais, cada um com sua própria armação.
 - Parâmetros predefinidos:
   - Cobrimento: 3.0 cm da face do furo.
   - Transpasse (passar): 60.0 cm dos dois lados.
@@ -43,7 +42,7 @@ NIVEL_ARMADURA = 220      # Nível TQS oficial para armaduras
 COR_ARMADURA = 4          # Ciano (cor 4 do TQS)
 NIVEL_FURO = 237          # Nível TQS oficial para contorno de furo
 NIVEL_COTA = 221          # Nível TQS oficial para linhas e textos de cotagem
-DIST_MAX_UNIR = 50.0      # Furos a até 50 cm são agrupados como um único furo maior
+DIST_MAX_UNIR = 50.0      # Furos a até 50 cm são agrupados como um conjunto contínuo
 
 
 def _unir_caixas(lista_segs, tol=12.0):
@@ -68,14 +67,46 @@ def _unir_caixas(lista_segs, tol=12.0):
     return [tuple(c) for c in caixas]
 
 
+def _agrupar_furos_com_subfuros(furos_individuais, tol=50.0):
+    """
+    Agrupa furos individuais próximos (distância <= tol) mantendo a lista
+    de subfuros internos para posicionamento das barras intermediárias.
+    Retorna lista de dicts: [{'box': (xmin, ymin, xmax, ymax), 'subfuros': [...]}, ...]
+    """
+    grupos = [{'box': list(f), 'subfuros': [tuple(f)]} for f in furos_individuais]
+    mudou = True
+    while mudou:
+        mudou = False
+        for i in range(len(grupos)):
+            for j in range(i + 1, len(grupos)):
+                b1 = grupos[i]['box']
+                b2 = grupos[j]['box']
+                if (b1[0] - tol <= b2[2] and b2[0] - tol <= b1[2] and
+                    b1[1] - tol <= b2[3] and b2[1] - tol <= b1[3]):
+                    b1[0] = min(b1[0], b2[0])
+                    b1[1] = min(b1[1], b2[1])
+                    b1[2] = max(b1[2], b2[2])
+                    b1[3] = max(b1[3], b2[3])
+                    grupos[i]['subfuros'].extend(grupos[j]['subfuros'])
+                    grupos.pop(j)
+                    mudou = True
+                    break
+            if mudou:
+                break
+
+    resultado = []
+    for g in grupos:
+        resultado.append({
+            'box': tuple(g['box']),
+            'subfuros': sorted(g['subfuros'], key=lambda s: (s[0], s[1]))
+        })
+    return resultado
+
+
 def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
     """
     Localiza todos os furos no Nível 237 dentro da janela selecionada.
-    - Furos individuais são identificados inicialmente.
-    - Se houver furos muito próximos (distância <= DIST_MAX_UNIR), unifica-os
-      em um único furo maior para criar o ferro contínuo sem barras no miolo.
-    - Furos distantes permanecem separados.
-    Retorna uma lista de tuplas: [(xmin, ymin, xmax, ymax), ...]
+    Retorna uma lista de dicts: [{'box': (xmin, ymin, xmax, ymax), 'subfuros': [...]}, ...]
     """
     segs = []
     try:
@@ -111,7 +142,7 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
         pass
 
     if segs:
-        # 1. Agrupa os traços individuais para obter os furos geométricos
+        # 1. Agrupa os traços individuais para obter os contornos dos furos
         caixas_furos = _unir_caixas(segs, tol=10.0)
         furos_validos = []
         for c in caixas_furos:
@@ -121,11 +152,11 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
                 furos_validos.append((c[0], c[1], c[2], c[3]))
 
         if furos_validos:
-            # 2. Unifica furos muito próximos em um único furo maior contínuo
-            furos_finais = _unir_caixas(furos_validos, tol=DIST_MAX_UNIR)
-            return furos_finais
+            # 2. Agrupa furos próximos (<= DIST_MAX_UNIR) mantendo a lista de subfuros
+            return _agrupar_furos_com_subfuros(furos_validos, tol=DIST_MAX_UNIR)
 
-    return [(xmin_sel, ymin_sel, xmax_sel, ymax_sel)]
+    box_padrao = (xmin_sel, ymin_sel, xmax_sel, ymax_sel)
+    return [{'box': box_padrao, 'subfuros': [box_padrao]}]
 
 
 def desenhar_cota_horizontal(draw, x1, x2, y_cota, witness_y_start, valor_txt="60", h=4.2):
@@ -190,20 +221,21 @@ def desenhar_cota_vertical(draw, y1, y2, x_cota, witness_x_start, valor_txt="60"
     draw.Text(x_cota - 1.5, ym - larg_txt / 2.0, h, 90.0, str(valor_txt))
 
 
-def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
+def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v, subfuros=None):
     """
-    Cria ferros nativos do TQS (SmartRebar / IPOFER) para armar o furo:
-    - 4 barras horizontais em Ciano (2 topo + 2 base), representadas por 1 SmartRebar (2x2).
-    - 4 barras verticais em Ciano (2 esq + 2 dir), representadas por 1 SmartRebar (2x2).
+    Cria ferros nativos do TQS (SmartRebar / IPOFER) para armar o furo ou conjunto de furos:
+    - Barras horizontais contínuas em Ciano (2 topo + 2 base cobrindo toda a extensão).
+    - Barras verticais em Ciano: 2 na borda esquerda, 2 na borda direita E exatamente
+      2 barras verticais em cada espaço/nervo intermediário entre furos próximos.
     - Chamadas automáticas posicionadas ao lado dos ferros, sem colisões.
     - Cotas de 60 cm na horizontal e na vertical indicando o transpasse.
     """
     draw = dwg.draw
-    larg_furo = xmax - xmin
-    alt_furo = ymax - ymin
+    larg_conjunto = xmax - xmin
+    alt_conjunto = ymax - ymin
 
-    comp_h = int(round(larg_furo + (2.0 * PASSAR)))
-    comp_v = int(round(alt_furo + (2.0 * PASSAR)))
+    comp_h = int(round(larg_conjunto + (2.0 * PASSAR)))
+    comp_v = int(round(alt_conjunto + (2.0 * PASSAR)))
 
     # Coordenadas X para barras horizontais
     x_h_ini = xmin - PASSAR
@@ -213,25 +245,46 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     y_v_ini = ymin - PASSAR
     y_v_fim = ymax + PASSAR
 
-    # Linhas horizontais (Y)
+    # Linhas horizontais (Y) de contorno externo
     y_top_inner = ymax + COBRIMENTO
     y_top_outer = ymax + COBRIMENTO + ESPAC_BARRAS
     y_bot_inner = ymin - COBRIMENTO
     y_bot_outer = ymin - COBRIMENTO - ESPAC_BARRAS
 
-    # Linhas verticais (X)
+    # Linhas verticais (X) de contorno externo
     x_dir_inner = xmax + COBRIMENTO
     x_dir_outer = xmax + COBRIMENTO + ESPAC_BARRAS
     x_esq_inner = xmin - COBRIMENTO
     x_esq_outer = xmin - COBRIMENTO - ESPAC_BARRAS
 
+    # Identifica vãos intermediários em X (furos lado a lado)
+    gaps_x = []
+    gaps_y = []
+    if subfuros and len(subfuros) > 1:
+        # Gaps horizontais
+        sub_x = sorted(subfuros, key=lambda f: f[0])
+        for i in range(len(sub_x) - 1):
+            x1_gap = sub_x[i][2]
+            x2_gap = sub_x[i+1][0]
+            if (x2_gap - x1_gap) >= 2.0:
+                gaps_x.append((x1_gap + x2_gap) / 2.0)
+
+        # Gaps verticais
+        sub_y = sorted(subfuros, key=lambda f: f[1])
+        for j in range(len(sub_y) - 1):
+            y1_gap = sub_y[j][3]
+            y2_gap = sub_y[j+1][1]
+            if (y2_gap - y1_gap) >= 2.0:
+                gaps_y.append((y1_gap + y2_gap) / 2.0)
+
     # -------------------------------------------------------------------------
-    # 1. FERRO HORIZONTAL (SMARTREBAR - 2x2)
+    # 1. FERRO HORIZONTAL (SMARTREBAR)
     # -------------------------------------------------------------------------
+    num_pares_h = 2 + len(gaps_y)
     sr_h = TQSDwg.SmartRebar(dwg)
     sr_h.type = getattr(TQSDwg, "ICPFRT", 1)  # Ferro reto
-    sr_h.multiplier = 2                       # 2 faces (topo e base)
-    sr_h.quantity = 2                         # 2 barras por face (total 4)
+    sr_h.multiplier = num_pares_h             # 2 faces (topo e base) + intermediárias
+    sr_h.quantity = 2                         # 2 barras por par
     sr_h.diameter = BITOLA
     sr_h.straightBarMainLength = float(comp_h)
     sr_h.mark = int(marca_h)
@@ -239,14 +292,20 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     sr_h.leaderLine = 1
     sr_h.leaderLineDistance = 0.1
 
-    # Insere as 4 barras da posição horizontal em CIANO (cor 4) no Nível 220
+    # Insere as barras horizontais externas em CIANO (cor 4) no Nível 220
     sr_h.RebarLine(x_h_ini, y_top_outer, 0.0, 1.0, 1, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
     sr_h.RebarLine(x_h_ini, y_top_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
     sr_h.RebarLine(x_h_ini, y_bot_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
     sr_h.RebarLine(x_h_ini, y_bot_outer, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
 
+    # Se houver furos empilhados verticalmente, insere 2 ferros horizontais no vão intermediário
+    for ym in gaps_y:
+        y_mid1 = ym + (ESPAC_BARRAS / 2.0)
+        y_mid2 = ym - (ESPAC_BARRAS / 2.0)
+        sr_h.RebarLine(x_h_ini, y_mid1, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        sr_h.RebarLine(x_h_ini, y_mid2, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+
     # Formatação do texto: '2x2 N... Phi 10 C=...'
-    # Alinhamento à esquerda posicionado além da ponta direita da barra (x_h_fim + 15 cm)
     sr_h.RebarTextDisplaySelection(
         1, 1, 1, 0, 1,
         getattr(TQSDwg, "ICPCENTR_ESQUERD", 1),
@@ -264,12 +323,13 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
         pass
 
     # -------------------------------------------------------------------------
-    # 2. FERRO VERTICAL (SMARTREBAR - 2x2)
+    # 2. FERRO VERTICAL (SMARTREBAR)
     # -------------------------------------------------------------------------
+    num_pares_v = 2 + len(gaps_x)
     sr_v = TQSDwg.SmartRebar(dwg)
     sr_v.type = getattr(TQSDwg, "ICPFRT", 1)  # Ferro reto
-    sr_v.multiplier = 2                       # 2 faces (direita e esquerda)
-    sr_v.quantity = 2                         # 2 barras por face (total 4)
+    sr_v.multiplier = num_pares_v             # Borda esq + borda dir + vão(s) intermediário(s)
+    sr_v.quantity = 2                         # 2 barras por par
     sr_v.diameter = BITOLA
     sr_v.straightBarMainLength = float(comp_v)
     sr_v.mark = int(marca_v)
@@ -277,14 +337,20 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     sr_v.leaderLine = 1
     sr_v.leaderLineDistance = 0.1
 
-    # Insere as 4 barras da posição vertical a 90 graus em CIANO (cor 4) no Nível 220
+    # Insere as barras verticais externas
     sr_v.RebarLine(x_dir_outer, y_v_ini, 90.0, 1.0, 1, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
     sr_v.RebarLine(x_dir_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
     sr_v.RebarLine(x_esq_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
     sr_v.RebarLine(x_esq_outer, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
 
-    # Formatação do texto: '2x2 N... Phi 10 C=...'
-    # Posicionado acima do topo da armadura vertical (y_v_fim + 20 cm) e à direita
+    # INSERE EXATAMENTE 2 FERROS NO ESPAÇO ENTRE OS FUROS PRÓXIMOS
+    for xm in gaps_x:
+        x_mid1 = xm - (ESPAC_BARRAS / 2.0)
+        x_mid2 = xm + (ESPAC_BARRAS / 2.0)
+        sr_v.RebarLine(x_mid1, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+        sr_v.RebarLine(x_mid2, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+
+    # Formatação do texto: '(num)x2 N... Phi 10 C=...'
     sr_v.RebarTextDisplaySelection(
         1, 1, 1, 0, 1,
         getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
@@ -307,7 +373,6 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     txt_cota = f"{int(PASSAR)}"
 
     # 3.1 Cota Horizontal (à esquerda, abaixo das barras horizontais inferiores)
-    # Mede a extensão de 60 cm entre a ponta da barra (x_h_ini) e a face do furo (xmin)
     y_cota_h = y_bot_outer - 15.0
     desenhar_cota_horizontal(
         draw,
@@ -319,7 +384,6 @@ def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     )
 
     # 3.2 Cota Vertical (na base, à esquerda das barras verticais)
-    # Mede a extensão de 60 cm entre a ponta inferior da barra (y_v_ini) e a face do furo (ymin)
     x_cota_v = x_esq_outer - 15.0
     desenhar_cota_vertical(
         draw,
@@ -374,13 +438,16 @@ def meucmd(eag, tqsjan):
             if (xmax_sel - xmin_sel) < 5.0 or (ymax_sel - ymin_sel) < 5.0:
                 continue
 
-            # Detecta os furos no Nível 237 (unindo furos próximos em um único contorno)
-            furos = detectar_furos(
+            # Detecta os furos no Nível 237 com agrupamento de furos próximos
+            grupos = detectar_furos(
                 dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel
             )
 
-            # Arma cada furo (ou grupo de furos próximos) com ferros nativos
-            for xmin_f, ymin_f, xmax_f, ymax_f in furos:
+            # Arma cada grupo de furos com ferros nativos
+            for g in grupos:
+                xmin_f, ymin_f, xmax_f, ymax_f = g['box']
+                subfuros_g = g['subfuros']
+
                 larg_f = xmax_f - xmin_f
                 alt_f = ymax_f - ymin_f
                 comp_h_int = int(round(larg_f + 2.0 * PASSAR))
@@ -396,7 +463,7 @@ def meucmd(eag, tqsjan):
                     marca_v = marca_h + 1
                     marcas_globais[chave_v] = marca_v
 
-                armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f, marca_h, marca_v)
+                armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f, marca_h, marca_v, subfuros=subfuros_g)
 
             tqsjan.Regen()
             janela_idx += 1
