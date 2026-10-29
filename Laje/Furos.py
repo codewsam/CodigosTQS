@@ -3,21 +3,27 @@
 ================================================================================
 G3 PLUGINS - ARMAÇÃO DE FUROS EM LAJE (TQS EAG)
 ================================================================================
-Este módulo implementa o reforço de furos soltos em lajes de concreto.
-- O usuário abre uma janela de seleção cobrindo um ou mais furos no EAG.
-- O plugin detecta automaticamente cada furo individual no Nível 237.
-- Se houver múltiplos furos distantes na seleção, arma cada um separadamente.
-- Insere 2 ferros horizontais no topo e 2 ferros horizontais na base de cada furo.
-- Insere 2 ferros verticais à esquerda e 2 ferros verticais à direita de cada furo.
-- Cobrimento: 3 cm da face do furo.
-- Extensão: o ferro passa 60 cm de cada lado do furo.
-- Cor da Armadura: Ciano (cor 4) no Nível 220.
-- Linha de chamada com seta (estilo profissional):
-  - 1 chamada com seta apontando para os 2 ferros horizontais: "2x2 N... %% 10 C=..."
-  - 1 chamada com seta apontando para os 2 ferros verticais: "2x2 N... %% 10 C=..."
+Este módulo implementa o reforço automático de furos soltos em lajes de concreto
+utilizando elementos nativos de armadura do TQS (SmartRebar / IPOFER).
+
+Características:
+- Criação de ferros reais (SmartRebar):
+  - Reconhecidos nativamente pelo EAG como IPOFER.
+  - Símbolo oficial da bitola (Phi) renderizado perfeitamente pela fonte TQS.
+  - Integrados à tabela de ferros e quantitativos do projeto.
+  - Nível 220, Cor 4 (Ciano).
+- Notação 2x2 com uma única chamada por direção:
+  - 1 chamada com seta para as 4 barras horizontais (2 topo + 2 base).
+  - 1 chamada com seta para as 4 barras verticais (2 esquerda + 2 direita).
+- Detecção inteligente no Nível 237:
+  - Reconhece múltiplos furos distantes na mesma seleção e arma cada um separadamente.
+- Parâmetros predefinidos:
+  - Cobrimento: 3.0 cm da face do furo.
+  - Transpasse (passar): 60.0 cm dos dois lados.
+  - Bitola: 10.0 mm.
+  - Espaçamento entre as barras paralelas: 5.0 cm.
 ================================================================================
 """
-import math
 from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
 
 
@@ -76,7 +82,7 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
                     max(ly1, ly2) >= ymin_sel - 5.0 and min(ly1, ly2) <= ymax_sel + 5.0):
                     segs.append((min(lx1, lx2), min(ly1, ly2), max(lx1, lx2), max(ly1, ly2)))
 
-            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 6), getattr(TQSDwg, "DWGTYPE_CURVE", 2)):
+            elif itipo in (getattr(TQSDwg, "DWGTYPE_POLYLINE", 3), getattr(TQSDwg, "DWGTYPE_CURVE", 8)):
                 try:
                     npts = dwg.iterator.xySize
                     pts = [dwg.iterator.GetPolylinePt(i) for i in range(npts)]
@@ -105,137 +111,119 @@ def detectar_furos(dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel):
     return [(xmin_sel, ymin_sel, xmax_sel, ymax_sel)]
 
 
-def desenhar_barra(draw, x1, y1, x2, y2):
-    """Desenha a linha do ferro em Ciano (cor 4) no Nível 220."""
-    draw.level = NIVEL_ARMADURA
-    draw.color = COR_ARMADURA  # Ciano (cor 4)
-    draw.style = 0
-    draw.Line(x1, y1, x2, y2)
-
-
-def desenhar_chamada_com_seta(draw, x_pt, y_pt, x_knee, y_knee, texto, tam=5.5):
-    """
-    Desenha uma linha de chamada profissional com seta apontando para as barras,
-    prateleira horizontal e o texto de identificação (ex: 2x2 N1 %% 10 C=...).
-    """
-    draw.level = NIVEL_ARMADURA
-    draw.color = 3  # Verde (cor oficial TQS para linhas de chamada)
-    draw.style = 0
-
-    # 1. Linha inclinada do ponto alvo até o joelho (knee)
-    draw.Line(x_pt, y_pt, x_knee, y_knee)
-
-    # 2. Prateleira horizontal
-    larg_txt = len(texto) * (tam * 0.70)
-    if x_knee >= x_pt:
-        x_shelf = x_knee + larg_txt + 4.0
-        draw.Line(x_knee, y_knee, x_shelf, y_knee)
-        x_txt = x_knee + 2.0
-    else:
-        x_shelf = x_knee - (larg_txt + 4.0)
-        draw.Line(x_shelf, y_knee, x_knee, y_knee)
-        x_txt = x_shelf + 2.0
-
-    # 3. Seta triangular na ponta (x_pt, y_pt) apontando para o ferro
-    dx = x_pt - x_knee
-    dy = y_pt - y_knee
-    dist = math.hypot(dx, dy)
-    if dist > 0.1:
-        ux, uy = dx / dist, dy / dist
-        px, py = -uy, ux
-        seta_len = 4.5
-        seta_w = 1.8
-        bx = x_pt - ux * seta_len
-        by = y_pt - uy * seta_len
-        w1_x, w1_y = bx + px * seta_w, by + py * seta_w
-        w2_x, w2_y = bx - px * seta_w, by - py * seta_w
-        draw.Line(x_pt, y_pt, w1_x, w1_y)
-        draw.Line(x_pt, y_pt, w2_x, w2_y)
-        draw.Line(w1_x, w1_y, w2_x, w2_y)
-
-    # 4. Texto em Amarelo descansando sobre a prateleira horizontal
-    draw.color = 2  # Amarelo
-    draw.Text(x_txt, y_knee + 1.2, tam, 0.0, texto)
-
-
 def armar_furo_solto(dwg, xmin, ymin, xmax, ymax, marca_h, marca_v):
     """
-    Posiciona exatamente 2 ferros em cada um dos 4 lados de um furo em CIANO:
-    - 2 ferros horizontais no topo
-    - 2 ferros horizontais na base
-    - 2 ferros verticais à esquerda
-    - 2 ferros verticais à direita
-    Passando 60 cm dos dois lados do furo com cobrimento de 3 cm da face.
-    Linhas de chamada com seta:
-    - 1 chamada puxando para os 2 horizontais com formato '2x2 N... %% 10 C=...'
-    - 1 chamada puxando para os 2 verticais com formato '2x2 N... %% 10 C=...'
+    Cria ferros nativos do TQS (SmartRebar / IPOFER) para armar o furo:
+    - 4 barras horizontais em Ciano (2 topo + 2 base), representadas por 1 SmartRebar (2x2).
+    - 4 barras verticais em Ciano (2 esq + 2 dir), representadas por 1 SmartRebar (2x2).
+    - Chamadas automáticas com seta nativas do TQS exibindo o símbolo correto da bitola.
     """
-    draw = dwg.draw
-
     larg_furo = xmax - xmin
     alt_furo = ymax - ymin
 
-    # Comprimentos das barras
     comp_h = int(round(larg_furo + (2.0 * PASSAR)))
     comp_v = int(round(alt_furo + (2.0 * PASSAR)))
 
     # Coordenadas X para barras horizontais
     x_h_ini = xmin - PASSAR
-    x_h_fim = xmax + PASSAR
-
     # Coordenadas Y para barras verticais
     y_v_ini = ymin - PASSAR
-    y_v_fim = ymax + PASSAR
 
-    # 1. Topo (2 ferros horizontais)
+    # Linhas horizontais (Y)
     y_top_inner = ymax + COBRIMENTO
     y_top_outer = ymax + COBRIMENTO + ESPAC_BARRAS
-    desenhar_barra(draw, x_h_ini, y_top_inner, x_h_fim, y_top_inner)
-    desenhar_barra(draw, x_h_ini, y_top_outer, x_h_fim, y_top_outer)
-
-    # 2. Base (2 ferros horizontais)
     y_bot_inner = ymin - COBRIMENTO
     y_bot_outer = ymin - COBRIMENTO - ESPAC_BARRAS
-    desenhar_barra(draw, x_h_ini, y_bot_inner, x_h_fim, y_bot_inner)
-    desenhar_barra(draw, x_h_ini, y_bot_outer, x_h_fim, y_bot_outer)
 
-    # 3. Esquerda (2 ferros verticais)
-    x_esq_inner = xmin - COBRIMENTO
-    x_esq_outer = xmin - COBRIMENTO - ESPAC_BARRAS
-    desenhar_barra(draw, x_esq_inner, y_v_ini, x_esq_inner, y_v_fim)
-    desenhar_barra(draw, x_esq_outer, y_v_ini, x_esq_outer, y_v_fim)
-
-    # 4. Direita (2 ferros verticais)
+    # Linhas verticais (X)
     x_dir_inner = xmax + COBRIMENTO
     x_dir_outer = xmax + COBRIMENTO + ESPAC_BARRAS
-    desenhar_barra(draw, x_dir_inner, y_v_ini, x_dir_inner, y_v_fim)
-    desenhar_barra(draw, x_dir_outer, y_v_ini, x_dir_outer, y_v_fim)
+    x_esq_inner = xmin - COBRIMENTO
+    x_esq_outer = xmin - COBRIMENTO - ESPAC_BARRAS
 
     # -------------------------------------------------------------------------
-    # LINHAS DE CHAMADA COM SETA (2x2)
+    # 1. FERRO HORIZONTAL (SMARTREBAR - 2x2)
     # -------------------------------------------------------------------------
-    txt_h = f"2x2 N{marca_h} %% {BITOLA:g} C={comp_h}"
-    txt_v = f"2x2 N{marca_v} %% {BITOLA:g} C={comp_v}"
+    sr_h = TQSDwg.SmartRebar(dwg)
+    sr_h.type = getattr(TQSDwg, "ICPFRT", 1)  # Ferro reto
+    sr_h.multiplier = 2                       # 2 faces (topo e base)
+    sr_h.quantity = 2                         # 2 barras por face (total 4)
+    sr_h.diameter = BITOLA
+    sr_h.straightBarMainLength = float(comp_h)
+    sr_h.mark = int(marca_h)
+    sr_h.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
+    sr_h.leaderLine = 1
+    sr_h.leaderLineDistance = 0.1
 
-    # Chamada Horizontal: seta apontando para a barra superior
-    x_pt_h = (xmin + xmax) / 2.0
-    y_pt_h = y_top_outer
-    x_knee_h = x_pt_h + 18.0
-    y_knee_h = y_pt_h + 15.0
-    desenhar_chamada_com_seta(draw, x_pt_h, y_pt_h, x_knee_h, y_knee_h, txt_h, tam=5.5)
+    # Insere as 4 barras da posição horizontal em CIANO (cor 4) no Nível 220
+    # Apenas a barra externa do topo recebe identify=1 para gerar a chamada com seta
+    sr_h.RebarLine(x_h_ini, y_top_outer, 0.0, 1.0, 1, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    sr_h.RebarLine(x_h_ini, y_top_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    sr_h.RebarLine(x_h_ini, y_bot_inner, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    sr_h.RebarLine(x_h_ini, y_bot_outer, 0.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
 
-    # Chamada Vertical: seta apontando para a barra vertical direita
-    x_pt_v = x_dir_outer
-    y_pt_v = (ymin + ymax) / 2.0
-    x_knee_v = x_pt_v + 18.0
-    y_knee_v = y_pt_v + 14.0
-    desenhar_chamada_com_seta(draw, x_pt_v, y_pt_v, x_knee_v, y_knee_v, txt_v, tam=5.5)
+    # Formatação do texto: '2x2 N... Phi 10 C=...'
+    sr_h.RebarTextDisplaySelection(
+        1, 1, 1, 0, 1,
+        getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+        getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+    )
+    # Posiciona o texto acima do furo com prateleira e seta descendo para as barras
+    x_txt_h = (xmin + xmax) / 2.0
+    y_txt_h = y_top_outer + 18.0
+    try:
+        sr_h.RebarTextDisplayPosition(
+            x_txt_h, y_txt_h, 4.5, 0.0, 0,
+            getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+            getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+        )
+    except Exception:
+        pass
+
+    # -------------------------------------------------------------------------
+    # 2. FERRO VERTICAL (SMARTREBAR - 2x2)
+    # -------------------------------------------------------------------------
+    sr_v = TQSDwg.SmartRebar(dwg)
+    sr_v.type = getattr(TQSDwg, "ICPFRT", 1)  # Ferro reto
+    sr_v.multiplier = 2                       # 2 faces (direita e esquerda)
+    sr_v.quantity = 2                         # 2 barras por face (total 4)
+    sr_v.diameter = BITOLA
+    sr_v.straightBarMainLength = float(comp_v)
+    sr_v.mark = int(marca_v)
+    sr_v.straightBarZone = getattr(TQSDwg, "ICPPOS", 0)
+    sr_v.leaderLine = 1
+    sr_v.leaderLineDistance = 0.1
+
+    # Insere as 4 barras da posição vertical a 90 graus em CIANO (cor 4) no Nível 220
+    # Apenas a barra externa da direita recebe identify=1 para gerar a chamada com seta
+    sr_v.RebarLine(x_dir_outer, y_v_ini, 90.0, 1.0, 1, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    sr_v.RebarLine(x_dir_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    sr_v.RebarLine(x_esq_inner, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+    sr_v.RebarLine(x_esq_outer, y_v_ini, 90.0, 1.0, 0, 0, 0, 0, NIVEL_ARMADURA, -1, COR_ARMADURA)
+
+    # Formatação do texto: '2x2 N... Phi 10 C=...'
+    sr_v.RebarTextDisplaySelection(
+        1, 1, 1, 0, 1,
+        getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+        getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+    )
+    # Posiciona o texto à direita do furo com prateleira horizontal e seta apontando para as barras
+    x_txt_v = x_dir_outer + 25.0
+    y_txt_v = (ymin + ymax) / 2.0
+    try:
+        sr_v.RebarTextDisplayPosition(
+            x_txt_v, y_txt_v, 4.5, 0.0, 0,
+            getattr(TQSDwg, "ICPCENTR_CENTRAD", 0),
+            getattr(TQSDwg, "ICPQUEBR_SEMQUEBRA", 0)
+        )
+    except Exception:
+        pass
 
 
 def meucmd(eag, tqsjan):
     """
     Entry point do plugin 'Furos' chamado pelo menu do TQS EAG.
-    Abre janela cobrindo um ou mais furos e arma cada um separadamente.
+    Abre janela cobrindo um ou mais furos e arma cada um separadamente com ferros reais.
     """
     try:
         dwg = tqsjan.dwg
@@ -271,7 +259,7 @@ def meucmd(eag, tqsjan):
                 dwg, xmin_sel, ymin_sel, xmax_sel, ymax_sel
             )
 
-            # Arma cada furo individualmente
+            # Arma cada furo individualmente com ferros nativos
             for xmin_f, ymin_f, xmax_f, ymax_f in furos:
                 larg_f = xmax_f - xmin_f
                 alt_f = ymax_f - ymin_f
@@ -280,12 +268,20 @@ def meucmd(eag, tqsjan):
 
                 chave_h = (comp_h_int, BITOLA)
                 if chave_h not in marcas_globais:
-                    marcas_globais[chave_h] = len(marcas_globais) + 1
+                    try:
+                        f_m = dwg.globalrebar.FreeMark()
+                        marcas_globais[chave_h] = f_m if f_m > 0 else (len(marcas_globais) + 1)
+                    except Exception:
+                        marcas_globais[chave_h] = len(marcas_globais) + 1
                 marca_h = marcas_globais[chave_h]
 
                 chave_v = (comp_v_int, BITOLA)
                 if chave_v not in marcas_globais:
-                    marcas_globais[chave_v] = len(marcas_globais) + 1
+                    try:
+                        f_m = dwg.globalrebar.FreeMark()
+                        marcas_globais[chave_v] = f_m if f_m > 0 else (len(marcas_globais) + 1)
+                    except Exception:
+                        marcas_globais[chave_v] = len(marcas_globais) + 1
                 marca_v = marcas_globais[chave_v]
 
                 armar_furo_solto(dwg, xmin_f, ymin_f, xmax_f, ymax_f, marca_h, marca_v)
