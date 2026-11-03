@@ -1829,8 +1829,14 @@ def desenhar_ferros_tracejados_planta(dwg, geo_planta, dados_ferros):
     espelho_padrao = float(dados_ferros.get("espelho_planta", 17.5))
     if espelho_padrao <= 0:
         espelho_padrao = 17.5
+    piso_padrao = float(dados_ferros.get("piso_planta", dados_ferros.get("piso", 28.0)))
+    if piso_padrao <= 0:
+        piso_padrao = 28.0
 
     for idx_l, l in enumerate(lances):
+        piso = float(l.get("piso", piso_padrao))
+        if piso <= 0:
+            piso = piso_padrao
         if l.get("orientacao") == "VERTICAL":
             y_ini_l_raw = l.get("y_ini", 0.0)
             y_fim_l_raw = l.get("y_fim", 0.0)
@@ -2569,4 +2575,3 @@ def meucmd(eag, tqsjan):
         desenhar_distribuicao_escada_plissada(tqsjan.dwg, geo_plissada, dados_ferros)
         tqsjan.Regen()
         return
-
