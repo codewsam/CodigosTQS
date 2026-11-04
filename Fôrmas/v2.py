@@ -5,8 +5,8 @@ G3 PLUGINS - FORMAS (TQS EAG)
 ================================================================================
 Modulo dedicado a ferramentas e automatizacoes de formas estruturais.
 Funcoes:
-  1. Linha de Corte (criacao automatica de linha Nivel 200 entre marcas de corte)
-  2. Inversoes (transforma bolinhas de desnivel em VIGA INVERTIDA / LAJE REBAIXADA,
+  1. Linha de Corte (criacao automatica de linha Nivel 205, Cor 2, Estilo -1)
+  2. Inversoes (identifica bolinhas pelo Nivel: Nivel 11 = Viga, Nivel 13 = Laje,
      agrupando bolinhas da mesma viga e organizando textos sem sobreposicao)
 ================================================================================
 """
@@ -75,6 +75,7 @@ def encontrar_pares_de_corte(dwg):
 def cmd_linha_de_corte(eag, tqsjan):
     """
     Cria automaticamente as linhas de corte conectando as marcas existentes ($CORTEA).
+    Propriedades definidas: Nivel 205, Cor 2 (Amarelo), Estilo de linha -1 (Por nivel).
     Se nao encontrar marcadores automaticos, oferece selecao manual por 2 pontos.
     """
     try:
@@ -84,10 +85,10 @@ def cmd_linha_de_corte(eag, tqsjan):
         linhas_criadas = 0
 
         if pares:
-            # Configura propriedades da linha de corte: Nivel 200, Cor 2 (Amarelo), Estilo 2 (Traco-Ponto)
-            dwg.draw.level = 200
+            # Configura propriedades da linha de corte: Nivel 205, Cor 2 (Amarelo), Estilo -1 (Por nivel)
+            dwg.draw.level = 205
             dwg.draw.color = 2
-            dwg.draw.style = 2
+            dwg.draw.style = -1
 
             for pt1, pt2, direcao in pares:
                 dwg.draw.Line(pt1[0], pt1[1], pt2[0], pt2[1])
@@ -112,9 +113,9 @@ def cmd_linha_de_corte(eag, tqsjan):
             if icod2 != 1:
                 return
 
-            dwg.draw.level = 200
+            dwg.draw.level = 205
             dwg.draw.color = 2
-            dwg.draw.style = 2
+            dwg.draw.style = -1
             dwg.draw.Line(x1, y1, x2, y2)
             tqsjan.Regen()
             eag.msg.Print("G3 Plugins: Linha de corte manual desenhada com sucesso!")
@@ -190,7 +191,7 @@ def _boxes_colidem(b1, b2, margem=4.0):
 def coletar_contexto_inversoes(dwg):
     """
     Varre o DWG coletando:
-      - Bolinhas de inversao/rebaixo (Circulo + Texto numerico)
+      - Bolinhas de viga (Nivel 11 - Dimensoes de vigas) e de laje (Nivel 13 - Dimensoes de lajes)
       - Titulos de vigas (Nivel 8, 'V...') e secoes de vigas (Nivel 11, 'b/h')
       - Titulos de lajes (Nivel 10, 'L...') e espessuras de lajes (Nivel 13, 'h=...')
       - Obstaculos (outros textos, pilares, linhas de corte e linhas de concreto)
@@ -242,7 +243,7 @@ def coletar_contexto_inversoes(dwg):
                     elif abs(y1 - y2) < 1.0 and abs(x1 - x2) > 20.0:
                         linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
 
-        elif tipo == TQSDwg.DWGTYPE_LINE and nivel == 200:
+        elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (200, 205):
             xmin = min(dwg.iterator.x1, dwg.iterator.x2) - 2.0
             xmax = max(dwg.iterator.x1, dwg.iterator.x2) + 2.0
             ymin = min(dwg.iterator.y1, dwg.iterator.y2) - 2.0
@@ -250,7 +251,8 @@ def coletar_contexto_inversoes(dwg):
             obstaculos.append({"tipo": "corte_linha", "bbox": (xmin, ymin, xmax, ymax)})
 
         elif tipo == TQSDwg.DWGTYPE_CIRCLE:
-            if nivel in (28, 29):
+            # Identifica exclusivamente pelos niveis 11 (Vigas) e 13 (Lajes)
+            if nivel not in (11, 13):
                 continue
             circulos.append({
                 "addr": addr,
@@ -336,9 +338,9 @@ def coletar_contexto_inversoes(dwg):
                     laje_atual["esp"] = esp_obj
                 continue
 
-            # 5. Texto numerico (possivel interior de bolinha)
+            # 5. Texto numerico nos niveis 11 (Vigas) ou 13 (Lajes)
             val = _parse_valor_bolinha(txt_raw)
-            if val is not None:
+            if val is not None and nivel in (11, 13):
                 textos_numericos.append({
                     "addr": addr,
                     "xc": xc, "yc": yc,
@@ -358,7 +360,7 @@ def coletar_contexto_inversoes(dwg):
                     "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
                 })
 
-    # Emparelha cada circulo com seu texto numerico interno
+    # Emparelha cada circulo (Nivel 11 ou 13) com seu texto numerico interno de mesmo nivel
     bolinhas = []
     textos_usados = set()
 
@@ -393,7 +395,7 @@ def coletar_contexto_inversoes(dwg):
                 "yc": tx_obj["yc"],
                 "h": tx_obj["h"],
                 "ang": tx_obj["ang"],
-                "level": tx_obj["level"],
+                "level": c["level"],  # Nivel 11 = Viga, Nivel 13 = Laje
                 "viga_ref": tx_obj["viga_ref"],
                 "laje_ref": tx_obj["laje_ref"],
             })
@@ -408,24 +410,24 @@ def coletar_contexto_inversoes(dwg):
     }
 
 
-def _agrupar_bolinhas_vigas(bolinhas_positivas, vigas):
+def _agrupar_bolinhas_vigas(bolinhas_viga, vigas):
     """
-    Agrupa bolinhas positivas que pertencem a mesma viga (para escrever apenas 1 vez por viga).
+    Agrupa bolinhas de Nivel 11 que pertencem a mesma viga (para escrever apenas 1 vez por viga).
     Usa tanto a referencia sequencial da viga no DWG quanto a colinearidade geometrica.
     """
     grupos = []
     usadas = set()
 
-    for i, b1 in enumerate(bolinhas_positivas):
+    for i, b1 in enumerate(bolinhas_viga):
         if i in usadas:
             continue
         grupo = [b1]
         usadas.add(i)
 
-        for j in range(i + 1, len(bolinhas_positivas)):
+        for j in range(i + 1, len(bolinhas_viga)):
             if j in usadas:
                 continue
-            b2 = bolinhas_positivas[j]
+            b2 = bolinhas_viga[j]
 
             mesma_viga_ref = (
                 b1["viga_ref"] is not None and
@@ -465,9 +467,9 @@ def _agrupar_bolinhas_vigas(bolinhas_positivas, vigas):
 
 def cmd_inversoes(eag, tqsjan):
     """
-    Transforma as bolinhas de inversao/rebaixo nos textos correspondentes:
-      - Positivo (+x): 'VIGA INVERTIDA xCM' (apenas 1 por viga, alinhado ao titulo/secao da viga)
-      - Negativo (-x): 'LAJE REBAIXADA' / 'xCM' (organizado sem sobreposicao com vigas ou cortes)
+    Identifica as bolinhas pelo seu NIVEL:
+      - Nivel 11 (Dimensoes de vigas): 'VIGA INVERTIDA xCM' (1 unico texto por viga)
+      - Nivel 13 (Dimensoes de lajes): 'LAJE REBAIXADA' / 'xCM' (organizado sem sobreposicao)
     """
     try:
         dwg = tqsjan.dwg
@@ -475,21 +477,23 @@ def cmd_inversoes(eag, tqsjan):
         bolinhas = ctx["bolinhas"]
 
         if not bolinhas:
-            eag.msg.Print("G3 Plugins: Nenhuma bolinha de inversao/rebaixo encontrada no desenho.")
-            eag.msg.PrintStatus("Nenhuma bolinha de inversao encontrada.")
+            eag.msg.Print("G3 Plugins: Nenhuma bolinha nos niveis 11 (vigas) ou 13 (lajes) encontrada.")
+            eag.msg.PrintStatus("Nenhuma bolinha de viga/laje encontrada.")
             return
 
         obstaculos = ctx["obstaculos"]
-        bolinhas_pos = [b for b in bolinhas if b["val"] > 0]
-        bolinhas_neg = [b for b in bolinhas if b["val"] < 0]
+        # Identificacao estritamente pelo Nivel do TQS:
+        # Nivel 11 = Dimensoes de vigas | Nivel 13 = Dimensoes de lajes
+        bolinhas_viga = [b for b in bolinhas if b["level"] == 11]
+        bolinhas_laje = [b for b in bolinhas if b["level"] == 13]
 
         textos_criados = 0
         bolinhas_apagadas = 0
 
         # ---------------------------------------------------------------------
-        # 1. PROCESSA VIGAS INVERTIDAS (POSITIVAS) - 1 UNICO TEXTO POR VIGA
+        # 1. PROCESSA VIGAS (NIVEL 11) - 1 UNICO TEXTO POR VIGA
         # ---------------------------------------------------------------------
-        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_pos, ctx["vigas"])
+        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"])
 
         for viga, grupo in grupos_vigas:
             # Apaga TODAS as bolinhas dessa mesma viga
@@ -503,7 +507,7 @@ def cmd_inversoes(eag, tqsjan):
             novo_texto = "VIGA INVERTIDA %sCM" % val_str
             h_txt = b_ref["h"]
             ang_txt = b_ref["ang"]
-            nivel_txt = b_ref["level"]
+            nivel_txt = 11
 
             x_dest = b_ref["xc"]
             y_dest = b_ref["yc"]
@@ -565,16 +569,16 @@ def cmd_inversoes(eag, tqsjan):
             })
 
         # ---------------------------------------------------------------------
-        # 2. PROCESSA LAJES REBAIXADAS (NEGATIVAS) - SEM SOBREPOSICAO
+        # 2. PROCESSA LAJES (NIVEL 13) - SEM SOBREPOSICAO
         # ---------------------------------------------------------------------
-        for b in bolinhas_neg:
+        for b in bolinhas_laje:
             dwg.edit.Erase(b["addr_circulo"])
             dwg.edit.Erase(b["addr_texto"])
             bolinhas_apagadas += 1
 
             val_str = _formatar_valor_cm(b["val"])
             ang_txt = b["ang"]
-            nivel_txt = b["level"]
+            nivel_txt = 13
             h_reb = 10.0 if abs(b["h"] - 12.0) < 1.0 else round(b["h"] * 0.85, 1)
 
             lin1 = "LAJE REBAIXADA"
@@ -648,7 +652,7 @@ def cmd_inversoes(eag, tqsjan):
                 dwg.draw.Text(x_base, y_escolhido + dy_lin2, h_reb, 0.0, lin2)
                 textos_criados += 1
             else:
-                # Fallback caso a bolinha negativa nao esteja associada a um par L.../h=...
+                # Fallback caso a bolinha de laje nao esteja associada a um par L.../h=...
                 dwg.draw.level = nivel_txt
                 dwg.draw.color = -1
                 dwg.draw.style = 0
