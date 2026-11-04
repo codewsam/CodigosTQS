@@ -4,7 +4,9 @@
 G3 PLUGINS - FORMAS (TQS EAG)
 ================================================================================
 Modulo dedicado a ferramentas e automatizacoes de formas estruturais.
-Funcao: Linha de Corte (criacao automatica de linha Nivel 200 entre marcas de corte)
+Funcoes:
+  1. Linha de Corte (criacao automatica de linha Nivel 200 entre marcas de corte)
+  2. Inversoes (transforma bolinhas de desnivel em VIGA INVERTIDA / LAJE REBAIXADA)
 ================================================================================
 """
 import math
@@ -115,6 +117,167 @@ def cmd_linha_de_corte(eag, tqsjan):
             dwg.draw.Line(x1, y1, x2, y2)
             tqsjan.Regen()
             eag.msg.Print("G3 Plugins: Linha de corte manual desenhada com sucesso!")
+
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+
+def _parse_valor_bolinha(texto_str):
+    """
+    Tenta extrair um valor numerico de desnivel/inversao do texto da bolinha (ex: '15', '-15', '+15').
+    Retorna float ou None se nao for numero valido.
+    """
+    if not texto_str:
+        return None
+    limpo = texto_str.strip().replace(",", ".")
+    try:
+        val = float(limpo)
+        if abs(val) < 1e-4:
+            return None
+        return val
+    except ValueError:
+        return None
+
+
+def _formatar_valor_cm(val):
+    """Formata o valor absoluto sem casas decimais desnecessarias."""
+    val_abs = abs(val)
+    if abs(val_abs - round(val_abs)) < 1e-4:
+        return str(int(round(val_abs)))
+    return ("%g" % val_abs).replace(".", ",")
+
+
+def encontrar_bolinhas_inversao(dwg):
+    """
+    Localiza todas as bolinhas de inversao/rebaixo na forma (Circulo + Texto numerico interno).
+    Ignora circulos de eixos (niveis 28 e 29) e elementos dentro de blocos.
+    """
+    circulos = []
+    textos = []
+
+    dwg.iterator.Begin()
+    while True:
+        tipo = dwg.iterator.Next()
+        if tipo == TQSDwg.DWGTYPE_EOF:
+            break
+        if dwg.iterator.inBlock != 0:
+            continue
+
+        if tipo == TQSDwg.DWGTYPE_CIRCLE:
+            nivel = dwg.iterator.level
+            if nivel in (28, 29):
+                continue
+            circulos.append({
+                "addr": dwg.iterator.GetElementReadPosition(),
+                "xc": dwg.iterator.xc,
+                "yc": dwg.iterator.yc,
+                "r": dwg.iterator.radius,
+                "level": nivel,
+            })
+        elif tipo == TQSDwg.DWGTYPE_TEXT:
+            nivel = dwg.iterator.level
+            if nivel in (28, 29):
+                continue
+            txt_raw = dwg.iterator.text.strip()
+            val = _parse_valor_bolinha(txt_raw)
+            if val is not None:
+                textos.append({
+                    "addr": dwg.iterator.GetElementReadPosition(),
+                    "xc": dwg.iterator.xc,
+                    "yc": dwg.iterator.yc,
+                    "x1": dwg.iterator.x1,
+                    "y1": dwg.iterator.y1,
+                    "x2": dwg.iterator.x2,
+                    "y2": dwg.iterator.y2,
+                    "text": txt_raw,
+                    "val": val,
+                    "h": dwg.iterator.textHeight,
+                    "ang": dwg.iterator.textAngle,
+                    "level": nivel,
+                })
+
+    bolinhas = []
+    textos_usados = set()
+
+    for c in circulos:
+        melhor_tx = None
+        menor_dist = float("inf")
+
+        for idx, tx in enumerate(textos):
+            if idx in textos_usados:
+                continue
+            if tx["level"] != c["level"]:
+                continue
+
+            mx = 0.5 * (tx["x1"] + tx["x2"])
+            my = 0.5 * (tx["y1"] + tx["y2"])
+            dist_mid = math.hypot(c["xc"] - mx, c["yc"] - my)
+            dist_orig = math.hypot(c["xc"] - tx["xc"], c["yc"] - tx["yc"])
+
+            if dist_mid <= c["r"] * 1.25 or dist_orig <= c["r"] * 1.35:
+                if dist_mid < menor_dist:
+                    menor_dist = dist_mid
+                    melhor_tx = (idx, tx)
+
+        if melhor_tx is not None:
+            idx_tx, tx_obj = melhor_tx
+            textos_usados.add(idx_tx)
+            bolinhas.append({
+                "addr_circulo": c["addr"],
+                "addr_texto": tx_obj["addr"],
+                "val": tx_obj["val"],
+                "xc": tx_obj["xc"],
+                "yc": tx_obj["yc"],
+                "h": tx_obj["h"],
+                "ang": round(tx_obj["ang"], 2),
+                "level": tx_obj["level"],
+            })
+
+    return bolinhas
+
+
+def cmd_inversoes(eag, tqsjan):
+    """
+    Transforma as bolinhas de inversao/rebaixo nos textos correspondentes:
+      - Positivo (+x): 'VIGA INVERTIDA xCM'
+      - Negativo (-x): 'LAJE REBAIXADA xCM'
+    Mantendo a orientacao (angulo), altura e nivel original (Cor por nivel, Estilo 0).
+    """
+    try:
+        dwg = tqsjan.dwg
+        bolinhas = encontrar_bolinhas_inversao(dwg)
+
+        if not bolinhas:
+            eag.msg.Print("G3 Plugins: Nenhuma bolinha de inversao/rebaixo encontrada no desenho.")
+            eag.msg.PrintStatus("Nenhuma bolinha de inversao encontrada.")
+            return
+
+        convertidas = 0
+        for b in bolinhas:
+            val = b["val"]
+            val_str = _formatar_valor_cm(val)
+            if val > 0:
+                novo_texto = "VIGA INVERTIDA %sCM" % val_str
+            else:
+                novo_texto = "LAJE REBAIXADA %sCM" % val_str
+
+            # Apaga a bolinha (circulo + numero interno)
+            dwg.edit.Erase(b["addr_circulo"])
+            dwg.edit.Erase(b["addr_texto"])
+
+            # Desenha o novo texto no mesmo nivel, cor por nivel (-1), estilo 0 e mesma orientacao
+            dwg.draw.level = b["level"]
+            dwg.draw.color = -1
+            dwg.draw.style = 0
+            dwg.draw.Text(b["xc"], b["yc"], b["h"], b["ang"], novo_texto)
+            convertidas += 1
+
+        tqsjan.Regen()
+        eag.msg.Print("G3 Plugins: %d bolinha(s) transformada(s) em texto de inversao/rebaixo!" % convertidas)
+        eag.msg.PrintStatus("%d inversao(oes) aplicada(s) com sucesso!" % convertidas)
 
     except Exception as e:
         try:
