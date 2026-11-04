@@ -188,6 +188,39 @@ def _boxes_colidem(b1, b2, margem=4.0):
     )
 
 
+def _resolver_nivel_bolinha(nivel_circulo, nivel_texto, xc_tx, yc_tx, lajes):
+    """
+    Determina o nivel efetivo da bolinha (11 = Viga, 13 = Laje):
+      - Se Circulo e Texto estao no mesmo nivel, usa esse nivel.
+      - Se o usuario alterou apenas o Circulo (ou apenas o Texto) no EAG para testar:
+        - Se algum dos dois foi mudado para fora de (11, 13), retorna esse nivel (sera ignorado).
+        - Se um e 11 e o outro e 13, verifica o contexto original (abaixo de titulo de laje L...
+          era originalmente 13, logo foi mudado para 11; caso contrario era 11 e foi mudado para 13).
+    """
+    if nivel_circulo == nivel_texto:
+        return nivel_circulo
+
+    # Se um deles foi alterado para um nivel diferente de 11 e 13 (ex: nivel 0, 200, etc.)
+    if nivel_circulo not in (11, 13):
+        return nivel_circulo
+    if nivel_texto not in (11, 13):
+        return nivel_texto
+
+    # Um e 11 e o outro e 13: descobre qual era o nivel original pela posicao (laje vs viga)
+    estava_em_laje = False
+    for lj in lajes:
+        if abs(lj["xc"] - xc_tx) <= 35.0 and 0.0 <= (lj["yc"] - yc_tx) <= 85.0:
+            estava_em_laje = True
+            break
+
+    if estava_em_laje:
+        # Originalmente era 13 (Laje); se um dos dois agora e 11, o usuario trocou para 11 (Viga)
+        return 11
+    else:
+        # Originalmente era 11 (Viga); se um dos dois agora e 13, o usuario trocou para 13 (Laje)
+        return 13
+
+
 def coletar_contexto_inversoes(dwg):
     """
     Varre o DWG coletando:
@@ -251,8 +284,7 @@ def coletar_contexto_inversoes(dwg):
             obstaculos.append({"tipo": "corte_linha", "bbox": (xmin, ymin, xmax, ymax)})
 
         elif tipo == TQSDwg.DWGTYPE_CIRCLE:
-            # Identifica exclusivamente pelos niveis 11 (Vigas) e 13 (Lajes)
-            if nivel not in (11, 13):
+            if nivel in (28, 29):
                 continue
             circulos.append({
                 "addr": addr,
@@ -284,8 +316,8 @@ def coletar_contexto_inversoes(dwg):
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                     "h": h, "ang": ang,
                     "secao": None,
-                    "bolinhas": []
                 }
+                laje_atual = None
                 vigas.append(viga_atual)
                 obstaculos.append({
                     "tipo": "viga_titulo",
@@ -322,6 +354,7 @@ def coletar_contexto_inversoes(dwg):
                     "h": h, "ang": ang,
                     "esp": None,
                 }
+                viga_atual = None
                 lajes.append(laje_atual)
                 continue
 
@@ -338,9 +371,9 @@ def coletar_contexto_inversoes(dwg):
                     laje_atual["esp"] = esp_obj
                 continue
 
-            # 5. Texto numerico nos niveis 11 (Vigas) ou 13 (Lajes)
+            # 5. Texto numerico (possivel interior de bolinha)
             val = _parse_valor_bolinha(txt_raw)
-            if val is not None and nivel in (11, 13):
+            if val is not None:
                 textos_numericos.append({
                     "addr": addr,
                     "xc": xc, "yc": yc,
@@ -349,8 +382,6 @@ def coletar_contexto_inversoes(dwg):
                     "val": val,
                     "h": h, "ang": ang,
                     "level": nivel,
-                    "viga_ref": viga_atual if nivel == 11 else None,
-                    "laje_ref": laje_atual if nivel == 13 else None,
                 })
             else:
                 # Outros textos (ex: P1, 25/25, etc.) sao obstaculos
@@ -360,7 +391,8 @@ def coletar_contexto_inversoes(dwg):
                     "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
                 })
 
-    # Emparelha cada circulo (Nivel 11 ou 13) com seu texto numerico interno de mesmo nivel
+    # Emparelha geometricamente cada circulo com seu texto numerico interno
+    # e verifica se o nivel efetivo da bolinha e 11 (Viga) ou 13 (Laje)
     bolinhas = []
     textos_usados = set()
 
@@ -370,8 +402,6 @@ def coletar_contexto_inversoes(dwg):
 
         for idx, tx in enumerate(textos_numericos):
             if idx in textos_usados:
-                continue
-            if tx["level"] != c["level"]:
                 continue
 
             mx = 0.5 * (tx["x1"] + tx["x2"])
@@ -387,6 +417,14 @@ def coletar_contexto_inversoes(dwg):
         if melhor_tx is not None:
             idx_tx, tx_obj = melhor_tx
             textos_usados.add(idx_tx)
+
+            nivel_efetivo = _resolver_nivel_bolinha(
+                c["level"], tx_obj["level"], tx_obj["xc"], tx_obj["yc"], lajes
+            )
+            # So processa bolinhas cujo nivel efetivo seja 11 (Viga) ou 13 (Laje)
+            if nivel_efetivo not in (11, 13):
+                continue
+
             bolinhas.append({
                 "addr_circulo": c["addr"],
                 "addr_texto": tx_obj["addr"],
@@ -395,9 +433,7 @@ def coletar_contexto_inversoes(dwg):
                 "yc": tx_obj["yc"],
                 "h": tx_obj["h"],
                 "ang": tx_obj["ang"],
-                "level": c["level"],  # Nivel 11 = Viga, Nivel 13 = Laje
-                "viga_ref": tx_obj["viga_ref"],
-                "laje_ref": tx_obj["laje_ref"],
+                "level": nivel_efetivo,  # 11 = Viga, 13 = Laje
             })
 
     return {
@@ -412,8 +448,8 @@ def coletar_contexto_inversoes(dwg):
 
 def _agrupar_bolinhas_vigas(bolinhas_viga, vigas):
     """
-    Agrupa bolinhas de Nivel 11 que pertencem a mesma viga (para escrever apenas 1 vez por viga).
-    Usa tanto a referencia sequencial da viga no DWG quanto a colinearidade geometrica.
+    Agrupa bolinhas de Nivel 11 que pertencem geometricamente ao mesmo eixo de viga
+    (mesma orientacao e mesma faixa X ou Y, com mesmo valor) para escrever apenas 1 vez por viga.
     """
     grupos = []
     usadas = set()
@@ -429,36 +465,31 @@ def _agrupar_bolinhas_vigas(bolinhas_viga, vigas):
                 continue
             b2 = bolinhas_viga[j]
 
-            mesma_viga_ref = (
-                b1["viga_ref"] is not None and
-                b1["viga_ref"] is b2["viga_ref"]
-            )
             mesmo_eixo_horiz = (
                 b1["ang"] == 0.0 and b2["ang"] == 0.0 and
-                abs(b1["yc"] - b2["yc"]) <= 45.0 and
+                abs(b1["yc"] - b2["yc"]) <= 40.0 and
                 abs(b1["val"] - b2["val"]) < 1e-3
             )
             mesmo_eixo_vert = (
                 b1["ang"] == 90.0 and b2["ang"] == 90.0 and
-                abs(b1["xc"] - b2["xc"]) <= 45.0 and
+                abs(b1["xc"] - b2["xc"]) <= 40.0 and
                 abs(b1["val"] - b2["val"]) < 1e-3
             )
 
-            if mesma_viga_ref or mesmo_eixo_horiz or mesmo_eixo_vert:
+            if mesmo_eixo_horiz or mesmo_eixo_vert:
                 grupo.append(b2)
                 usadas.add(j)
 
-        # Associa a viga mais proxima se viga_ref nao estiver definida
-        viga_assoc = grupo[0]["viga_ref"]
-        if viga_assoc is None:
-            for v in vigas:
-                if v["ang"] == grupo[0]["ang"]:
-                    if v["ang"] == 0.0 and abs(v["yc"] - grupo[0]["yc"]) <= 45.0:
-                        viga_assoc = v
-                        break
-                    elif v["ang"] == 90.0 and abs(v["xc"] - grupo[0]["xc"]) <= 45.0:
-                        viga_assoc = v
-                        break
+        # Associa ao cabecalho da viga (V... + b/h) se estiver na mesma faixa geometrica
+        viga_assoc = None
+        for v in vigas:
+            if v["ang"] == grupo[0]["ang"]:
+                if v["ang"] == 0.0 and any(abs(v["yc"] - b["yc"]) <= 40.0 for b in grupo):
+                    viga_assoc = v
+                    break
+                elif v["ang"] == 90.0 and any(abs(v["xc"] - b["xc"]) <= 40.0 for b in grupo):
+                    viga_assoc = v
+                    break
 
         grupos.append((viga_assoc, grupo))
 
@@ -467,7 +498,7 @@ def _agrupar_bolinhas_vigas(bolinhas_viga, vigas):
 
 def cmd_inversoes(eag, tqsjan):
     """
-    Identifica as bolinhas pelo seu NIVEL:
+    Identifica as bolinhas estritamente pelo seu NIVEL:
       - Nivel 11 (Dimensoes de vigas): 'VIGA INVERTIDA xCM' (1 unico texto por viga)
       - Nivel 13 (Dimensoes de lajes): 'LAJE REBAIXADA' / 'xCM' (organizado sem sobreposicao)
     """
@@ -496,7 +527,7 @@ def cmd_inversoes(eag, tqsjan):
         grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"])
 
         for viga, grupo in grupos_vigas:
-            # Apaga TODAS as bolinhas dessa mesma viga
+            # Apaga TODAS as bolinhas de Nivel 11 dessa mesma viga
             for b in grupo:
                 dwg.edit.Erase(b["addr_circulo"])
                 dwg.edit.Erase(b["addr_texto"])
@@ -584,15 +615,12 @@ def cmd_inversoes(eag, tqsjan):
             lin1 = "LAJE REBAIXADA"
             lin2 = "%sCM" % val_str
 
-            laje = b["laje_ref"]
-            if laje is None:
-                # Procura a laje mais proxima
-                menor_d = float("inf")
-                for lj in ctx["lajes"]:
-                    d = math.hypot(lj["xc"] - b["xc"], lj["yc"] - b["yc"])
-                    if d < menor_d and d < 150.0:
-                        menor_d = d
-                        laje = lj
+            # Associa ao cabecalho da laje (L... / h=...) somente se a bolinha estiver logo abaixo dele
+            laje = None
+            for lj in ctx["lajes"]:
+                if abs(lj["xc"] - b["xc"]) <= 35.0 and 0.0 <= (lj["yc"] - b["yc"]) <= 85.0:
+                    laje = lj
+                    break
 
             if laje is not None and laje["esp"] is not None and ang_txt == 0.0:
                 esp = laje["esp"]
@@ -652,7 +680,8 @@ def cmd_inversoes(eag, tqsjan):
                 dwg.draw.Text(x_base, y_escolhido + dy_lin2, h_reb, 0.0, lin2)
                 textos_criados += 1
             else:
-                # Fallback caso a bolinha de laje nao esteja associada a um par L.../h=...
+                # Bolinha de Nivel 13 avulsa (ex: trocada pelo usuario para teste):
+                # escreve LAJE REBAIXADA xCM direto na posicao e orientacao da bolinha
                 dwg.draw.level = nivel_txt
                 dwg.draw.color = -1
                 dwg.draw.style = 0
