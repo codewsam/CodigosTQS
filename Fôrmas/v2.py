@@ -1,1845 +1,781 @@
-# -*- coding: utf-8 -*- 
-import os
-import json
+# -*- coding: utf-8 -*-
+"""
+================================================================================
+G3 PLUGINS - FORMAS (TQS EAG)
+================================================================================
+Modulo dedicado a ferramentas e automatizacoes de formas estruturais.
+Funcoes:
+  1. Linha de Corte (criacao automatica de linha Nivel 205, Cor 2, Estilo -1)
+  2. Inversoes (identifica bolinhas pelo Nivel: Nivel 11 = Viga, Nivel 13 = Laje,
+     agrupando bolinhas da mesma viga e organizando textos sem sobreposicao)
+  3. Criar Cotas (cotagem automatica completa de formas em camadas usando cotas_helper)
+  4. Corrigir Vazios (substitui elementos em X de vazios do Nivel 241 para o Nivel 210)
+================================================================================
+"""
 import math
-import subprocess
-from TQS import TQSUtil, TQSGeo
+from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
+import cotas_helper
 
 
-def pedir_dados_janela_windows():
-    """Gera uma janela nativa do Windows independente do Python para coletar os dados."""
-    caminho_script = os.path.dirname(os.path.abspath(__file__))
-    hta_path = os.path.join(caminho_script, "dialogo_escada.hta")
-    json_path = os.path.join(caminho_script, "dados_temp.json")
-    img_path = os.path.join(caminho_script, "diagrama_escada.png")
-
-    if os.path.exists(json_path):
-        try:
-            os.remove(json_path)
-        except:
-            pass
-
-    json_js = json_path.replace('\\', '\\\\')
-    img_html = "file:///" + img_path.replace('\\', '/')
-
-    hta_content = f"""<!DOCTYPE html>
-    <html>
-    <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-        <meta http-equiv="x-ua-compatible" content="ie=edge" />
-        <title>Dados da Escada - Plugin TQS</title>
-        <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="EscadaTQS" BORDER="dialog" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
-        <style>
-            * {{ box-sizing: border-box; }}
-
-            body {{
-                font-family: 'Segoe UI', Tahoma, sans-serif;
-                background: #eef1f5;
-                margin: 0;
-                padding: 0;
-                font-size: 13px;
-                color: #2b2f36;
-            }}
-
-            .topbar {{
-                background: linear-gradient(135deg, #0056b3 0%, #003d80 100%);
-                color: #fff;
-                padding: 12px 20px;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-            }}
-
-            .topbar .icon {{
-                width: 26px;
-                height: 26px;
-                background: rgba(255,255,255,0.15);
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 15px;
-            }}
-
-            .topbar h1 {{
-                margin: 0;
-                font-size: 15px;
-                font-weight: 600;
-                letter-spacing: 0.2px;
-            }}
-
-            .topbar p {{
-                margin: 1px 0 0 0;
-                font-size: 11px;
-                color: #d7e6fb;
-                font-weight: 400;
-            }}
-
-            .container {{
-                display: flex;
-                gap: 16px;
-                padding: 14px 18px 12px 18px;
-            }}
-
-            .img-box {{
-                background: #ffffff;
-                padding: 10px;
-                border: 1px solid #dbe1e8;
-                border-radius: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-            }}
-
-            .img-box img {{ max-width: 360px; max-height: 480px; }}
-
-            .form-cols {{
-                display: flex;
-                gap: 12px;
-                flex: 1;
-            }}
-
-            .col-form {{
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                flex: 1;
-                min-width: 250px;
-            }}
-
-            .card {{
-                background: #ffffff;
-                border: 1px solid #dbe1e8;
-                border-radius: 8px;
-                padding: 10px 14px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-            }}
-
-            .card h3 {{
-                margin: 0 0 8px 0;
-                color: #0056b3;
-                font-size: 12.5px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.4px;
-                border-bottom: 1px solid #e7ebf0;
-                padding-bottom: 6px;
-            }}
-
-            .campo {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 6px;
-            }}
-
-            .campo:last-child {{ margin-bottom: 0; }}
-
-            label {{
-                font-weight: 500;
-                color: #45505c;
-            }}
-
-            input, select {{
-                width: 90px;
-                padding: 4px 6px;
-                text-align: right;
-                border: 1px solid #c3cbd4;
-                border-radius: 4px;
-                background: #fbfcfd;
-                transition: border-color 0.15s, box-shadow 0.15s;
-            }}
-
-            input:focus, select:focus {{
-                outline: none;
-                border-color: #0056b3;
-                box-shadow: 0 0 0 2px rgba(0,86,179,0.15);
-                background: #fff;
-            }}
-
-            select {{ text-align: left; width: 130px; }}
-
-            input[type="checkbox"] {{
-                width: auto;
-                text-align: left;
-                accent-color: #0056b3;
-                transform: scale(1.1);
-            }}
-
-            .sec-opcional {{
-                background: #f2f6fb;
-                padding: 8px 10px;
-                border-radius: 6px;
-                border: 1px solid #d7e4f2;
-                margin-top: 4px;
-            }}
-
-            .btns {{
-                margin-top: 2px;
-                display: flex;
-                justify-content: flex-end;
-                gap: 10px;
-                padding: 0 18px 14px 18px;
-            }}
-
-            button {{
-                padding: 7px 18px;
-                cursor: pointer;
-                border: 1px solid #c3cbd4;
-                border-radius: 5px;
-                background: #f4f5f7;
-                font-size: 12.5px;
-                font-weight: 500;
-                color: #45505c;
-                transition: background 0.15s;
-            }}
-
-            button:hover {{ background: #e6e8eb; }}
-
-            .btn-gerar {{
-                background: linear-gradient(135deg, #0056b3 0%, #003d80 100%);
-                color: #fff;
-                border: none;
-                font-weight: 600;
-                box-shadow: 0 1px 3px rgba(0,86,179,0.35);
-            }}
-
-            .btn-gerar:hover {{ background: linear-gradient(135deg, #004494 0%, #00306b 100%); }}
-        </style>
-        <script type="text/javascript">
-            function toggleExtremos() {{
-                var box = document.getElementById('box_extremos');
-                var alt = document.getElementById('alterar_extremos').checked;
-                box.style.display = alt ? "block" : "none";
-            }}
-
-            function togglePatamarPartida() {{
-                var box = document.getElementById('box_patamar_partida');
-                var tem = document.getElementById('tem_patamar_partida').checked;
-                box.style.display = tem ? "flex" : "none";
-            }}
-
-            function togglePatamarChegada() {{
-                var box = document.getElementById('box_patamar_chegada');
-                var tem = document.getElementById('tem_patamar_chegada').checked;
-                box.style.display = tem ? "flex" : "none";
-            }}
-
-            function toggleLances() {{
-                var numLances = parseInt(document.getElementById('num_lances').value);
-                var box2 = document.getElementById('box_lance2');
-                var campoPat1 = document.getElementById('campo_pat1');
-
-                if (numLances === 1) {{
-                    box2.style.display = "none";
-                    campoPat1.style.display = "none";
-                }} else if (numLances === 2) {{
-                    box2.style.display = "block";
-                    campoPat1.style.display = "flex";
-                }}
-            }}
-
-            function togglePlanta() {{
-                var desenharPlanta = document.getElementById('desenhar_planta').checked;
-                var box = document.getElementById('box_opcoes_planta');
-                if (box) {{
-                    box.style.display = desenharPlanta ? "block" : "none";
-                }}
-            }}
-
-            function toggleVao() {{
-                var temVao = document.getElementById('tem_vao_lances').checked;
-                var box = document.getElementById('box_vao_lances');
-                if (box) {{
-                    box.style.display = temVao ? "flex" : "none";
-                }}
-            }}
-
-            function toggleLancesPlanta() {{
-                var numLances = parseInt(document.getElementById('num_lances').value);
-                var box1 = document.getElementById('box_planta_1lance');
-                var boxMulti = document.getElementById('box_planta_multilance');
-                if (box1 && boxMulti) {{
-                    if (numLances === 1) {{
-                        box1.style.display = "block";
-                        boxMulti.style.display = "none";
-                    }} else {{
-                        box1.style.display = "none";
-                        boxMulti.style.display = "block";
-                    }}
-                }}
-            }}
-
-            function toggleOpcoesTabela() {{
-                var box = document.getElementById('box_opcoes_tabela');
-                var gerar = document.getElementById('gerar_tabela').checked;
-                if (box) {{
-                    box.style.display = gerar ? "block" : "none";
-                }}
-            }}
-
-            function initDialog() {{
-                try {{
-                    window.resizeTo(1140, 780);
-                    window.moveTo((screen.availWidth - 1140) / 2, (screen.availHeight - 680) / 2);
-                }} catch(e) {{}}
-                toggleVao();
-                togglePlanta();
-                toggleOpcoesTabela();
-                toggleLances();
-                toggleLancesPlanta();
-                togglePatamarPartida();
-                togglePatamarChegada();
-                toggleExtremos();
-            }}
-
-            function confirmar() {{
-                try {{
-                    var espGeral = parseFloat(document.getElementById('espelho').value.replace(',', '.'));
-                    var numLances = parseInt(document.getElementById('num_lances').value);
-                    var n_deg1 = parseInt(document.getElementById('n_degraus_1').value);
-                    var n_deg2 = numLances >= 2 ? parseInt(document.getElementById('n_degraus_2').value) : 0;
-                    var temPatPartida = document.getElementById('tem_patamar_partida').checked;
-                    var temPatChegada = document.getElementById('tem_patamar_chegada').checked;
-                    var altExtremos = document.getElementById('alterar_extremos').checked;
-
-                    var dados = {{
-                        "num_lances": numLances,
-                        "piso": parseFloat(document.getElementById('piso').value.replace(',', '.')),
-                        "espelho": espGeral,
-                        "alterar_extremos": altExtremos,
-                        "espelho_primeiro": altExtremos ? parseFloat(document.getElementById('espelho_primeiro').value.replace(',', '.')) : espGeral,
-                        "espelho_ultimo": altExtremos ? parseFloat(document.getElementById('espelho_ultimo').value.replace(',', '.')) : espGeral,
-                        "tipo_escada": document.getElementById('tipo_escada').value,
-                        "n_degraus_1": n_deg1,
-                        "n_degraus_2": n_deg2,
-                        "tem_patamar_partida": temPatPartida,
-                        "patamar_partida": temPatPartida ? parseFloat(document.getElementById('patamar_partida').value.replace(',', '.')) : 0.0,
-                        "patamar_intermediario_1": parseFloat(document.getElementById('patamar_int_1').value.replace(',', '.')),
-                        "tem_patamar_chegada": temPatChegada,
-                        "patamar_chegada": temPatChegada ? parseFloat(document.getElementById('patamar_chegada').value.replace(',', '.')) : 0.0,
-                        "espessura": parseFloat(document.getElementById('espessura').value.replace(',', '.')),
-                        "viga_largura": parseFloat(document.getElementById('viga_largura').value.replace(',', '.')),
-                        "viga_altura": parseFloat(document.getElementById('viga_altura').value.replace(',', '.')),
-                        "desenhar_planta": document.getElementById('desenhar_planta') ? document.getElementById('desenhar_planta').checked : false,
-                        "gerar_tabela": document.getElementById('gerar_tabela') ? document.getElementById('gerar_tabela').checked : true,
-                        "classe_agressividade": document.getElementById('classe_agressividade') ? document.getElementById('classe_agressividade').value : "III",
-                        "cobrimento_lajes": document.getElementById('cobrimento_lajes') ? (parseFloat(document.getElementById('cobrimento_lajes').value.replace(',', '.')) || 2.0) : 2.0,
-                        "largura_lance_1": (numLances === 1) ? (parseFloat(document.getElementById('largura_escada_1').value.replace(',', '.')) || 100.0) : (parseFloat(document.getElementById('largura_lance_1').value.replace(',', '.')) || 120.0),
-                        "largura_lance_2": (numLances >= 2) ? (parseFloat(document.getElementById('largura_lance_2').value.replace(',', '.')) || 105.5) : 0.0,
-                        "tem_vao_lances": document.getElementById('tem_vao_lances') ? document.getElementById('tem_vao_lances').checked : false,
-                        "vao_lances": (numLances >= 2 && document.getElementById('tem_vao_lances') && document.getElementById('tem_vao_lances').checked) ? (parseFloat(document.getElementById('vao_lances').value.replace(',', '.')) || 10.0) : 0.0,
-                    }};
-
-                    var fso = new ActiveXObject("Scripting.FileSystemObject");
-                    var a = fso.CreateTextFile("{json_js}", true);
-                    
-                    var jsonStr = '{{"num_lances":' + dados.num_lances + 
-                                  ',"piso":' + dados.piso + 
-                                  ',"espelho":' + dados.espelho + 
-                                  ',"alterar_extremos":' + dados.alterar_extremos + 
-                                  ',"espelho_primeiro":' + dados.espelho_primeiro + 
-                                  ',"espelho_ultimo":' + dados.espelho_ultimo + 
-                                  ',"tipo_escada":"' + dados.tipo_escada + '"' + 
-                                  ',"n_degraus_1":' + dados.n_degraus_1 + 
-                                  ',"n_degraus_2":' + dados.n_degraus_2 + 
-                                  ',"tem_patamar_partida":' + dados.tem_patamar_partida + 
-                                  ',"patamar_partida":' + dados.patamar_partida + 
-                                  ',"patamar_intermediario_1":' + dados.patamar_intermediario_1 + 
-                                  ',"tem_patamar_chegada":' + dados.tem_patamar_chegada + 
-                                  ',"patamar_chegada":' + dados.patamar_chegada + 
-                                  ',"espessura":' + dados.espessura + 
-                                  ',"viga_largura":' + dados.viga_largura + 
-                                  ',"viga_altura":' + dados.viga_altura + 
-                                  ',"desenhar_planta":' + dados.desenhar_planta + 
-                                  ',"gerar_tabela":' + dados.gerar_tabela + 
-                                  ',"classe_agressividade":"' + dados.classe_agressividade + '"' + 
-                                  ',"cobrimento_lajes":' + dados.cobrimento_lajes + 
-                                  ',"largura_lance_1":' + dados.largura_lance_1 + 
-                                  ',"largura_lance_2":' + dados.largura_lance_2 + 
-                                  ',"tem_vao_lances":' + dados.tem_vao_lances + 
-                                  ',"vao_lances":' + dados.vao_lances + '}}';
-                    
-                    a.WriteLine(jsonStr);
-                    a.Close();
-                    window.close();
-                }} catch (e) {{
-                    alert("Erro ao salvar dados: " + e.message);
-                }}
-            }}
-        </script>
-    </head>
-    <body onload="initDialog();">
-        <div class="topbar">
-            <div class="icon">📐</div>
-            <div>
-                <h1>Parâmetros da Escada</h1>
-                <p>Plugin TQS &#9679 Ediglânthio Samuel Araújo Brandão &#9679 G3 Engenharia</p>
-            </div>
-        </div>
-
-        <div class="container">
-            <div class="img-box">
-                <img src="{img_html}" alt="Diagrama da Escada" onerror="this.parentElement.innerHTML='<div style=\\'color:#888; text-align:center; padding:40px;\\'>Diagrama ilustrativo indisponível</div>'" />
-            </div>
-
-            <div class="form-cols">
-                <div class="col-form">
-                    <div class="card">
-                        <h3>Configuração Geral</h3>
-                        <div class="campo">
-                            <label>Tipo de Escada:</label>
-                            <select id="tipo_escada">
-                                <option value="CONVENCIONAL" selected>Normal</option>
-                                <option value="PLISSADA">Plissada</option>
-                            </select>
-                        </div>
-                        <div class="campo">
-                            <label>Número de Lances:</label>
-                            <select id="num_lances" onchange="toggleLances(); toggleLancesPlanta();">
-                                <option value="1">1 Lance</option>
-                                <option value="2" selected>2 Lances</option>
-                            </select>
-                        </div>
-                        <div class="campo"><label>Espessura escada (cm):</label><input type="text" id="espessura" value="15"></div>
-                        <div class="campo"><label>Piso (cm):</label><input type="text" id="piso" value="28"></div>
-                        <div class="campo"><label>Espelho Padrão (cm):</label><input type="text" id="espelho" value="17.9"></div>
-
-                        <div class="campo" style="margin-top: 8px;">
-                            <label>Alterar espelho do primeiro e último degrau?</label>
-                            <input type="checkbox" id="alterar_extremos" onchange="toggleExtremos()">
-                        </div>
-                        <div id="box_extremos" class="sec-opcional" style="display:none;">
-                            <div class="campo"><label>Espelho 1º degrau (cm):</label><input type="text" id="espelho_primeiro" value="17.9"></div>
-                            <div class="campo"><label>Espelho último degrau (cm):</label><input type="text" id="espelho_ultimo" value="17.9"></div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <h3>Degraus por Lance</h3>
-                        <div class="campo"><label>Degraus Lance 1:</label><input type="text" id="n_degraus_1" value="8"></div>
-
-                        <div id="box_lance2" class="sec-opcional">
-                            <div class="campo"><label>Degraus Lance 2:</label><input type="text" id="n_degraus_2" value="8"></div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <h3>Patamares</h3>
-                        <div class="campo">
-                            <label>Tem patamar de partida?</label>
-                            <input type="checkbox" id="tem_patamar_partida" checked onchange="togglePatamarPartida()">
-                        </div>
-                        <div class="campo" id="box_patamar_partida"><label>Patamar de Partida (cm):</label><input type="text" id="patamar_partida" value="150"></div>
-                        <div class="campo" id="campo_pat1"><label>Patamar Intermediário (cm):</label><input type="text" id="patamar_int_1" value="120"></div>
-                        <div class="campo">
-                            <label>Tem patamar de chegada?</label>
-                            <input type="checkbox" id="tem_patamar_chegada" checked onchange="togglePatamarChegada()">
-                        </div>
-                        <div class="campo" id="box_patamar_chegada"><label>Patamar de Chegada (cm):</label><input type="text" id="patamar_chegada" value="150"></div>
-                    </div>
-                </div>
-
-                <div class="col-form">
-                    <div class="card">
-                        <h3>Planta da Escada</h3>
-                        <div class="campo">
-                            <label>Desenhar Planta da Escada?</label>
-                            <input type="checkbox" id="desenhar_planta" checked onchange="togglePlanta()">
-                        </div>
-
-                        <div id="box_opcoes_planta" class="sec-opcional" style="margin-top: 6px;">
-                            <div id="box_planta_1lance" style="display:none;">
-                                <div class="campo"><label>Largura da Escada (cm):</label><input type="text" id="largura_escada_1" value="100"></div>
-                            </div>
-
-                            <div id="box_planta_multilance">
-                                <div class="campo"><label>Largura Lance 1 (cm):</label><input type="text" id="largura_lance_1" value="120"></div>
-                                <div class="campo"><label>Largura Lance 2 (cm):</label><input type="text" id="largura_lance_2" value="105.5"></div>
-                                
-                                <div class="campo" style="margin-top: 6px;">
-                                    <label>Tem vão entre lances?</label>
-                                    <input type="checkbox" id="tem_vao_lances" onchange="toggleVao()">
-                                </div>
-                                <div id="box_vao_lances" class="campo" style="display:none;">
-                                    <label>Vão entre lances (cm):</label>
-                                    <input type="text" id="vao_lances" value="10">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <h3>Vigas</h3>
-                        <div class="campo"><label>Largura da Viga (cm):</label><input type="text" id="viga_largura" value="20"></div>
-                        <div class="campo"><label>Altura da Viga (cm):</label><input type="text" id="viga_altura" value="40"></div>
-                    </div>
-
-                    <div class="card">
-                        <h3>Configurações da tabela </h3>
-                        <div class="campo">
-                            <label>Gerar Tabela de Critérios / Quantitativo?</label>
-                            <input type="checkbox" id="gerar_tabela" checked onchange="toggleOpcoesTabela()">
-                        </div>
-                        <div id="box_opcoes_tabela" class="sec-opcional" style="margin-top: 6px;">
-                            <div class="campo">
-                                <label>Classe de Agressividade (CAA):</label>
-                                <select id="classe_agressividade">
-                                    <option value="I">I - Fraca (Rural/Submerso)</option>
-                                    <option value="II">II - Moderada (Urbano)</option>
-                                    <option value="III" selected>III - Forte (Marinho)</option>
-                                    <option value="IV">IV - Muito Forte (Respingos)</option>
-                                </select>
-                            </div>
-                            <div class="campo" style="margin-top: 6px;">
-                                <label>Cobrimento Lajes (cm):</label>
-                                <input type="text" id="cobrimento_lajes" value="2.0">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="btns">
-            <button onclick="window.close()">Cancelar</button>
-            <button class="btn-gerar" onclick="confirmar()">Gerar Escada</button>
-        </div>
-    </body>
-    </html>
+def encontrar_pares_de_corte(dwg):
     """
-
-    with open(hta_path, "w", encoding="utf-8-sig") as f:
-        f.write(hta_content)
-
-    subprocess.call(["mshta", hta_path])
-
-    dados = None
-    if os.path.exists(json_path):
-        with open(json_path, "r", encoding="utf-8") as f:
-            dados = json.load(f)
-        os.remove(json_path)
-
-    if os.path.exists(hta_path):
-        try:
-            os.remove(hta_path)
-        except:
-            pass
-
-    return dados
-
-
-# ==============================================================================
-# FUNÇÕES AUXILIARES DE GEOMETRIA
-# ==============================================================================
-def obter_fundo_lance(p1x, p1y, p2x, p2y, espessura):
-    """Calcula a reta paralela da face inferior da laje inclinada."""
-    xa1, ya1, xa2, ya2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, espessura)
-    xb1, yb1, xb2, yb2 = TQSGeo.ParallelLine(p1x, p1y, p2x, p2y, -espessura)
-    ym = (p1y + p2y) / 2.0
-
-    if ((ya1 + ya2) / 2.0) < ym:
-        return xa1, ya1, xa2, ya2
-    return xb1, yb1, xb2, yb2
-
-
-def calcular_x_no_y(x1, y1, x2, y2, y_alvo):
-    """Calcula o X correspondente a um Y em uma reta (x1, y1) -> (x2, y2)."""
-    if abs(y2 - y1) > 1e-9:
-        t = (y_alvo - y1) / (y2 - y1)
-        return x1 + t * (x2 - x1)
-    return x1
-
-
-def calcular_y_no_x(x1, y1, x2, y2, x_alvo):
-    """Calcula o Y correspondente a um X em uma reta (x1, y1) -> (x2, y2)."""
-    if abs(x2 - x1) > 1e-9:
-        t = (x_alvo - x1) / (x2 - x1)
-        return y1 + t * (y2 - y1)
-    return y1
-
-
-# ==============================================================================
-# FUNÇÃO DE DESENHO DA GEOMETRIA NO TQS
-# ==============================================================================
-def desenhar_perfil_escada(dwg, x0, y0, dados):
-    num_lances = dados.get("num_lances", 2)
-    piso = float(dados["piso"])
-    espelho = float(dados["espelho"])
-    espessura = float(dados["espessura"])
-    viga_largura = float(dados["viga_largura"])
-    viga_altura = float(dados["viga_altura"])
-    largura_escada = float(dados.get("largura_escada", 100.0))
-
-    alterar_extremos = dados.get("alterar_extremos", False)
-    if isinstance(alterar_extremos, str):
-        alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
-
-    if alterar_extremos:
-        espelho_primeiro = float(dados.get("espelho_primeiro", espelho))
-        espelho_ultimo = float(dados.get("espelho_ultimo", espelho))
-    else:
-        espelho_primeiro = espelho
-        espelho_ultimo = espelho
-
-    tem_patamar_partida = dados.get("tem_patamar_partida", True)
-    if isinstance(tem_patamar_partida, str):
-        tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
-
-    tem_patamar_chegada = dados.get("tem_patamar_chegada", True)
-    if isinstance(tem_patamar_chegada, str):
-        tem_patamar_chegada = (tem_patamar_chegada.lower() in ["true", "1", "sim"])
-
-    patamar_partida = float(dados.get("patamar_partida", 150))
-    patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
-    patamar_chegada = float(dados.get("patamar_chegada", 150))
-
-    n1 = int(dados["n_degraus_1"])
-    n2 = int(dados.get("n_degraus_2", 0))
-
-    draw = dwg.draw
-
-    # --------------------------------------------------------------------------
-    # 1. LANCE 1 (NIVEL 241) - Apenas a parte de baixo (Viga Partida, Degraus e Fundo Lance 1)
-    # --------------------------------------------------------------------------
-    draw.level = 241
-    draw.color = -1
-    draw.style = -1
-
-    if num_lances == 1:
-        if n1 > 1:
-            y_topo_l1 = y0 + espelho_primeiro + (n1 - 2) * espelho + espelho_ultimo
-        else:
-            y_topo_l1 = y0 + espelho_primeiro
-    else:
-        y_topo_l1 = y0 + espelho_primeiro + (n1 - 1) * espelho
-
-    y_fundo_pat1 = y_topo_l1 - espessura
-
-    # Degraus Lance 1
-    x, y = x0, y0
-    for i in range(n1):
-        if num_lances > 1 and i == n1 - 1:
-            if y < y_fundo_pat1:
-                draw.Line(x, y, x, y_fundo_pat1)
-            y = y_topo_l1
-        else:
-            if i == 0:
-                h_esp = espelho_primeiro
-            elif num_lances == 1 and i == n1 - 1:
-                h_esp = espelho_ultimo
-            else:
-                h_esp = espelho
-
-            draw.Line(x, y, x, y + h_esp)
-            y += h_esp
-
-        if i < n1 - 1:
-            draw.Line(x, y, x + piso, y)
-            x += piso
-
-    x_inicio_l2 = x
-
-    tipo_escada = dados.get("tipo_escada", "CONVENCIONAL")
-    is_plissada = (tipo_escada == "PLISSADA")
-
-    if is_plissada:
-        # ======================================================================
-        # FUNDO PLISSADO - LANCE 1
-        # ======================================================================
-        if tem_patamar_partida:
-            x_partida = x0 - patamar_partida
-            y_partida = y0
-            draw.Line(x_partida, y_partida, x0, y0)
-
-            y_base_partida = y0 - espessura
-            draw.Line(x_partida, y_base_partida, x0 + espessura, y_base_partida)
-
-            # Viga de Partida
-            x_viga_s_ini = x_partida - viga_largura
-            x_viga_s_meio = x_partida
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-            y_viga_s_corte = y0 - espessura
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
-        else:
-            x_viga_s_ini = x0 - viga_largura
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-            draw.Line(x0, y_viga_s_base, x0, y0 - espessura)
-            draw.Line(x0, y0 - espessura, x0 + espessura, y0 - espessura)
-
-        # 1º espelho vertical do fundo plissado
-        draw.Line(x0 + espessura, y0 - espessura, x0 + espessura, y0 + espelho_primeiro - espessura)
-
-        y_curr = y0 + espelho_primeiro
-        for i in range(n1 - 1):
-            x_start = x0 + i * piso + espessura
-            x_end = x0 + (i + 1) * piso + espessura
-            draw.Line(x_start, y_curr - espessura, x_end, y_curr - espessura)
-
-            if i < n1 - 2:
-                h_next_esp = espelho
-            else:
-                h_next_esp = espelho_ultimo if num_lances == 1 else espelho
-
-            draw.Line(x_end, y_curr - espessura, x_end, y_curr + h_next_esp - espessura)
-            y_curr += h_next_esp
-
-        if num_lances == 1:
-            x_fim_pat1 = x_inicio_l2 + (patamar_chegada if tem_patamar_chegada else 0.0)
-            x_viga_p1_ext = x_fim_pat1 + viga_largura
-            if tem_patamar_chegada:
-                draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
-                draw.Line(x_inicio_l2 + espessura, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
-                draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-                draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
-            else:
-                draw.Line(x_inicio_l2, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_inicio_l2 + espessura, y_topo_l1 - viga_altura)
-                draw.Line(x_inicio_l2 + espessura, y_topo_l1 - viga_altura, x_inicio_l2 + espessura, y_fundo_pat1)
-            return
-    else:
-        # ======================================================================
-        # FUNDO CONVENCIONAL (RETO) - LANCE 1
-        # ======================================================================
-        p1x, p1y = x0 + piso, y0 + espelho_primeiro
-        p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
-        f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
-
-        if tem_patamar_partida:
-            x_partida = x0 - patamar_partida
-            y_partida = y0
-            draw.Line(x_partida, y_partida, x0, y0)
-
-            y_base_partida = y0 - espessura
-            x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
-            draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
-
-            # Viga de Partida
-            x_viga_s_ini = x_partida - viga_largura
-            x_viga_s_meio = x_partida
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-            y_viga_s_corte = y0 - espessura
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
-
-            x_fundo_l1_ini = x_base_partida_fim
-            y_fundo_l1_ini = y_base_partida
-        else:
-            x_viga_s_ini = x0 - viga_largura
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-            y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-            draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
-
-            x_fundo_l1_ini = x0
-            y_fundo_l1_ini = y_fundo_no_x0
-
-        # Linha inclinada de fundo do Lance 1 (NIVEL 241)
-        x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_pat1)
-        draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_pat1)
-
-        # Caso seja 1 lance apenas
-        if num_lances == 1:
-            x_fim_pat1 = x_inicio_l2 + (patamar_chegada if tem_patamar_chegada else 0.0)
-            x_viga_p1_ext = x_fim_pat1 + viga_largura
-            if tem_patamar_chegada:
-                draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
-                draw.Line(x_fundo_l1_fim, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
-                draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-                draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
-            else:
-                y_fundo_no_xtopo = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x_inicio_l2)
-                draw.Line(x_inicio_l2, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-                draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-                draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_inicio_l2, y_topo_l1 - viga_altura)
-                draw.Line(x_inicio_l2, y_topo_l1 - viga_altura, x_inicio_l2, y_fundo_no_xtopo)
-                draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_inicio_l2, y_fundo_no_xtopo)
-            return
-
-    # --------------------------------------------------------------------------
-    # 2. LANCE 2 (NIVEL 242) - Patamar Intermediario, Degraus Lance 2, Fundo e Chegada
-    # --------------------------------------------------------------------------
-    draw.level = 242
-    draw.color = -1
-    draw.style = -1
-
-    # Patamar Intermediario 1 e Viga Direita (NIVEL 242)
-    x_fim_pat1 = x_inicio_l2 + patamar_int_1
-    x_viga_p1_ext = x_fim_pat1 + viga_largura
-
-    draw.Line(x_inicio_l2, y_topo_l1, x_fim_pat1, y_topo_l1)
-    draw.Line(x_fim_pat1, y_topo_l1, x_viga_p1_ext, y_topo_l1)
-    draw.Line(x_viga_p1_ext, y_topo_l1, x_viga_p1_ext, y_topo_l1 - viga_altura)
-    draw.Line(x_viga_p1_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-    draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_pat1)
-
-    x, y = x_inicio_l2, y_topo_l1
-    if n2 > 1:
-        y_topo_l2 = y_topo_l1 + (n2 - 1) * espelho + espelho_ultimo
-    else:
-        y_topo_l2 = y_topo_l1 + (espelho_ultimo if n2 == 1 else 0)
-
-    # Degraus Lance 2 (topo)
-    for i in range(n2):
-        if i == n2 - 1:
-            h_esp = espelho_ultimo
-        else:
-            h_esp = espelho
-
-        draw.Line(x, y, x, y + h_esp)
-        y += h_esp
-
-        if i < n2 - 1:
-            draw.Line(x, y, x - piso, y)
-            x -= piso
-
-    x_topo_l2 = x
-
-    if is_plissada:
-        # ======================================================================
-        # FUNDO PLISSADO - LANCE 2
-        # ======================================================================
-        # Fundo do patamar intermediario conectando ao Lance 2
-        draw.Line(x_inicio_l2 - espessura, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
-
-        # 1º espelho vertical do Lance 2
-        draw.Line(x_inicio_l2 - espessura, y_topo_l1 - espessura, x_inicio_l2 - espessura, y_topo_l1 + espelho - espessura)
-
-        y_curr = y_topo_l1 + espelho
-        for j in range(n2 - 1):
-            x_start = x_inicio_l2 - j * piso - espessura
-            x_end = x_inicio_l2 - (j + 1) * piso - espessura
-            draw.Line(x_start, y_curr - espessura, x_end, y_curr - espessura)
-
-            if j < n2 - 2:
-                h_next_esp = espelho
-            else:
-                h_next_esp = espelho_ultimo
-
-            draw.Line(x_end, y_curr - espessura, x_end, y_curr + h_next_esp - espessura)
-            y_curr += h_next_esp
-
-        # Chegada Lance 2
-        y_fundo_chegada = y_topo_l2 - espessura
-        if tem_patamar_chegada:
-            x_fim_chegada = x_topo_l2 - patamar_chegada
-            draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
-            draw.Line(x_topo_l2 - espessura, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
-
-            # Viga de Chegada (Lado Esquerdo Superior)
-            x_viga_c_ext = x_fim_chegada - viga_largura
-            draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
-            draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
-        else:
-            x_viga_c_ext = x_topo_l2 - viga_largura
-            draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2 - espessura, y_topo_l2 - viga_altura)
-            draw.Line(x_topo_l2 - espessura, y_topo_l2 - viga_altura, x_topo_l2 - espessura, y_fundo_chegada)
-    else:
-        # ======================================================================
-        # FUNDO CONVENCIONAL (RETO) - LANCE 2
-        # ======================================================================
-        p2_1x, p2_1y = x_inicio_l2 - piso, y_topo_l1 + espelho
-        p2_2x, p2_2y = x_inicio_l2 - (n2 - 1) * piso, y_topo_l1 + (n2 - 1) * espelho if n2 > 1 else (p2_1x - piso, p2_1y + espelho)
-        f2_x1, f2_y1, f2_x2, f2_y2 = obter_fundo_lance(p2_1x, p2_1y, p2_2x, p2_2y, espessura)
-
-        # O Fundo do Lance 2 desce ate a cota de baixo do patamar (y_fundo_pat1)
-        x_fundo_l2_no_pat1 = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_pat1)
-
-        # Linha de BAIXO do patamar 1 (Nivel 242)
-        draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fim_pat1, y_fundo_pat1)
-
-        # ==========================================================================
-        # CASO 2 LANCES: Finaliza o Lance 2 no patamar de chegada superior a esquerda
-        # ==========================================================================
-        if tem_patamar_chegada:
-            x_fim_chegada = x_topo_l2 - patamar_chegada
-            draw.Line(x_topo_l2, y_topo_l2, x_fim_chegada, y_topo_l2)
-
-            y_fundo_chegada = y_topo_l2 - espessura
-            x_fundo_l2_fim = calcular_x_no_y(f2_x1, f2_y1, f2_x2, f2_y2, y_fundo_chegada)
-
-            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_fundo_l2_fim, y_fundo_chegada)
-            draw.Line(x_fundo_l2_fim, y_fundo_chegada, x_fim_chegada, y_fundo_chegada)
-
-            # Viga de Chegada (Lado Esquerdo Superior)
-            x_viga_c_ext = x_fim_chegada - viga_largura
-            draw.Line(x_fim_chegada, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_fim_chegada, y_topo_l2 - viga_altura)
-            draw.Line(x_fim_chegada, y_topo_l2 - viga_altura, x_fim_chegada, y_fundo_chegada)
-        else:
-            x_viga_c_ext = x_topo_l2 - viga_largura
-            y_fundo_no_xtopo2 = calcular_y_no_x(f2_x1, f2_y1, f2_x2, f2_y2, x_topo_l2)
-
-            draw.Line(x_topo_l2, y_topo_l2, x_viga_c_ext, y_topo_l2)
-            draw.Line(x_viga_c_ext, y_topo_l2, x_viga_c_ext, y_topo_l2 - viga_altura)
-            draw.Line(x_viga_c_ext, y_topo_l2 - viga_altura, x_topo_l2, y_topo_l2 - viga_altura)
-            draw.Line(x_topo_l2, y_topo_l2 - viga_altura, x_topo_l2, y_fundo_no_xtopo2)
-            draw.Line(x_fundo_l2_no_pat1, y_fundo_pat1, x_topo_l2, y_fundo_no_xtopo2)
-
-    # Indicacao do Corte de 2 lances (CORTE B-B)
-    x_rotulo_bb = x_viga_s_ini + 10.0
-    y_rotulo_bb = (y0 - viga_altura) - 120.0
-    desenhar_indicacao_corte(dwg, x_rotulo_bb, y_rotulo_bb, "CORTE B-B", "ESCALA: 1/20")
-
-
-# ==============================================================================
-# DESENHO DA PLANTA DA ESCADA
-# ==============================================================================
-def desenhar_planta_escada(dwg, x0, y0, dados):
-    """Desenha a vista em planta (forma) da escada com cotas completas, vigas e anotacoes."""
-    num_lances = dados.get("num_lances", 2)
-    piso = float(dados["piso"])
-    viga_largura = float(dados["viga_largura"])
-    viga_altura = float(dados["viga_altura"])
-
-    largura_l1 = float(dados.get("largura_lance_1", 120.0))
-    largura_l2 = float(dados.get("largura_lance_2", 105.5))
-    vao_lances = float(dados.get("vao_lances", 0.0))
-
-    tem_patamar_partida = dados.get("tem_patamar_partida", True)
-    if isinstance(tem_patamar_partida, str):
-        tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
-
-    tem_patamar_chegada = dados.get("tem_patamar_chegada", True)
-    if isinstance(tem_patamar_chegada, str):
-        tem_patamar_chegada = (tem_patamar_chegada.lower() in ["true", "1", "sim"])
-
-    patamar_partida = float(dados.get("patamar_partida", 150))
-    patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
-    patamar_chegada = float(dados.get("patamar_chegada", 150))
-
-    n1 = int(dados["n_degraus_1"])
-    n2 = int(dados.get("n_degraus_2", 0))
-
-    draw = dwg.draw
-    draw.level = 242
-    draw.color = -1
-    draw.style = -1  # Verde para forma
-
-    dist_offset = viga_altura + 370.0
-    y_planta_top = y0 - dist_offset
-
-    if num_lances == 1:
-        # ======================================================================
-        # PLANTA: 1 LANCE
-        # ======================================================================
-        y_min_int = y_planta_top - largura_l1
-        y_max_int = y_planta_top
-        y_min_ext = y_min_int - viga_largura
-        y_max_ext = y_max_int + viga_largura
-
-        x_deg_ini = x0
-        x_deg_fim = x0 + (n1 - 1) * piso
-
-        pat_esq = patamar_partida if tem_patamar_partida else 0.0
-        pat_dir = patamar_chegada if tem_patamar_chegada else 0.0
-
-        x_min_int = x_deg_ini - pat_esq
-        x_min_ext = x_min_int - viga_largura
-        x_max_int = x_deg_fim + pat_dir
-        x_max_ext = x_max_int + viga_largura
-
-        # Retangulo Externo (Caixa de Escada / Vigas)
-        draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
-        draw.Line(x_max_ext, y_min_ext, x_max_ext, y_max_ext)
-        draw.Line(x_max_ext, y_max_ext, x_min_ext, y_max_ext)
-        draw.Line(x_min_ext, y_max_ext, x_min_ext, y_min_ext)
-
-        # Retangulo Interno
-        draw.Line(x_min_int, y_min_int, x_max_int, y_min_int)
-        draw.Line(x_max_int, y_min_int, x_max_int, y_max_int)
-        draw.Line(x_max_int, y_max_int, x_min_int, y_max_int)
-        draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
-
-        # Linhas divisorias de patamares
-        if tem_patamar_partida:
-            draw.Line(x_deg_ini, y_min_int, x_deg_ini, y_max_int)
-        if tem_patamar_chegada:
-            draw.Line(x_deg_fim, y_min_int, x_deg_fim, y_max_int)
-
-        # Degraus
-        for i in range(1, n1 - 1):
-            x_deg = x_deg_ini + i * piso
-            draw.Line(x_deg, y_min_int, x_deg, y_max_int)
-
-        # Numeracao dos degraus
-        draw.color = 7  # Branco/Texto
-        for i in range(n1):
-            x_c = (x_deg_ini - 0.5 * piso) if i == 0 else (x_deg_ini + (i - 0.5) * piso)
-            y_c = y_min_int + largura_l1 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
-
-        # Seta de fluxo
-        draw.level = 241
-        draw.color = -1  # Por nivel
-        draw.style = -1  # -1 por nivel
-        try:
-            dwg.settings.originalColorsMode = 0
-        except Exception:
-            pass
-        x_seta_start = x_deg_ini + piso * 0.5
-        x_seta_end = x_deg_fim + (pat_dir * 0.5 if tem_patamar_chegada else 0.0)
-        y_seta = y_min_int + largura_l1 / 2.0
-        draw.Line(x_seta_start, y_seta, x_seta_end, y_seta)
-        draw.Line(x_seta_end, y_seta, x_seta_end - 10.0, y_seta + 5.0)
-        draw.Line(x_seta_end, y_seta, x_seta_end - 10.0, y_seta - 5.0)
-        draw.Text(x_seta_start + 10.0, y_seta + 6.0, 8.0, 0.0, "DESCE")
-
-        # COTAS
-        y_cota_top1 = y_max_ext + 35.0
-        y_cota_top2 = y_max_ext + 70.0
-
-        # Cotas parciais
-        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
-        if tem_patamar_partida:
-            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_ini, y_max_ext, x_min_int, y_cota_top1)
-
-        for i in range(n1 - 1):
-            x_a = x_deg_ini + i * piso
-            x_b = x_a + piso
-            dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
-
-        if tem_patamar_chegada:
-            dwg.dim.DimHorizontal(x_deg_fim, y_max_ext, x_max_int, y_max_ext, x_deg_fim, y_cota_top1)
-        dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
-
-        # Cota total horizontal
-        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
-
-        # Cotas verticais (largura)
-        x_cota_dir1 = x_max_ext + 35.0
-        x_cota_dir2 = x_max_ext + 70.0
-        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_min_int, x_cota_dir1, y_min_ext)
-        dwg.dim.DimVertical(x_max_ext, y_min_int, x_max_ext, y_max_int, x_cota_dir1, y_min_int)
-        dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
-        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
-
-        # Indicacao de PLANTA BAIXA
-        x_rotulo_planta = x_min_ext + 10.0
-        y_rotulo_planta = y_min_ext - 60.0
-        desenhar_indicacao_corte(dwg, x_rotulo_planta, y_rotulo_planta, "PLANTA BAIXA", "ESCALA: 1/20")
-
-    elif num_lances == 2:
-        # ======================================================================
-        # PLANTA: 2 LANCES (Escada em U Simetrica com Vigas Envolventes)
-        # ======================================================================
-        largura_total = largura_l1 + vao_lances + largura_l2
-        y_min_int = y_planta_top - largura_total
-        y_max_int = y_planta_top
-        y_min_ext = y_min_int - viga_largura
-        y_max_ext = y_max_int + viga_largura
-
-        y_l1_topo = y_min_int + largura_l1
-        y_l2_base = y_l1_topo + vao_lances
-        y_l2_topo = y_max_int
-
-        # Degraus
-        if n2 <= 0:
-            n2 = n1
-
-        num_pisos_l1 = n1 - 1
-        num_pisos_l2 = n2 - 1
-        num_deg_flight = max(num_pisos_l1, num_pisos_l2)
-
-        x_deg_ini = x0
-        x_deg_fim = x0 + num_deg_flight * piso
-
-        # Limites individuais de cada lance
-        x_l1_fim = x_deg_fim
-        x_l1_ini = x_deg_fim - num_pisos_l1 * piso
-
-        x_l2_ini = x_deg_fim
-        x_l2_fim = x_deg_fim - num_pisos_l2 * piso
-
-        # Patamares
-        pat_l1 = patamar_partida if tem_patamar_partida else 0.0
-        x_l1_pat_ext = x_l1_ini - pat_l1
-        x_l1_viga_ext = x_l1_pat_ext - viga_largura
-
-        pat_l2 = patamar_chegada if tem_patamar_chegada else 0.0
-        x_l2_pat_ext = x_l2_fim - pat_l2
-        x_l2_viga_ext = x_l2_pat_ext - viga_largura
-
-        pat_dir = patamar_int_1
-
-        x_min_int = min(x_l1_pat_ext, x_l2_pat_ext)
-        x_min_ext = min(x_l1_viga_ext, x_l2_viga_ext)
-
-        x_max_int = x_deg_fim + pat_dir
-        x_max_ext = x_max_int + viga_largura
-
-        # ----------------------------------------------------------------------
-        # 1. LINHAS DE FORMA (Nivel 242, Cor por nivel, Estilo -1)
-        # ----------------------------------------------------------------------
-        draw.level = 242
-        draw.color = -1
-        draw.style = -1
-
-        # Retangulo Externo Completo (Vigas Perimetrais da Caixa de Escada)
-        draw.Line(x_min_ext, y_min_ext, x_max_ext, y_min_ext)
-        draw.Line(x_max_ext, y_min_ext, x_max_ext, y_max_ext)
-        draw.Line(x_max_ext, y_max_ext, x_min_ext, y_max_ext)
-        draw.Line(x_min_ext, y_max_ext, x_min_ext, y_min_ext)
-
-        # Retangulo Interno Completo (Borda Interna das Vigas)
-        draw.Line(x_min_int, y_min_int, x_max_int, y_min_int)
-        draw.Line(x_max_int, y_min_int, x_max_int, y_max_int)
-        draw.Line(x_max_int, y_max_int, x_min_int, y_max_int)
-        draw.Line(x_min_int, y_max_int, x_min_int, y_min_int)
-
-        # Divisorias verticais do Patamar Esquerdo (com os lances)
-        if tem_patamar_partida:
-            draw.Line(x_l1_ini, y_min_int, x_l1_ini, y_l1_topo)
-        if tem_patamar_chegada:
-            draw.Line(x_l2_fim, y_l2_base, x_l2_fim, y_max_int)
-
-        # Divisorias verticais do Patamar Direito (com os lances)
-        draw.Line(x_l1_fim, y_min_int, x_l1_fim, y_l1_topo)
-        draw.Line(x_l2_ini, y_l2_base, x_l2_ini, y_max_int)
-
-        # (linha que separa os dois patamares)
-        x_vao_esq = x_min_int
-        draw.Line(x_vao_esq, y_l1_topo, x_deg_fim, y_l1_topo)
-        if vao_lances > 0:
-            draw.Line(x_vao_esq, y_l2_base, x_deg_fim, y_l2_base)
-            draw.Line(x_vao_esq, y_l1_topo, x_vao_esq, y_l2_base)
-            draw.Line(x_deg_fim, y_l1_topo, x_deg_fim, y_l2_base)
-
-        # Degraus Lance 1 (Inferior)
-        for i in range(1, num_pisos_l1):
-            x_deg = x_l1_ini + i * piso
-            draw.Line(x_deg, y_min_int, x_deg, y_l1_topo)
-
-        # Degraus Lance 2 (Superior) - Desenhados a partir da direita (patamar intermediario) para a esquerda
-        for j in range(1, num_pisos_l2):
-            x_deg = x_l2_ini - j * piso
-            draw.Line(x_deg, y_l2_base, x_deg, y_max_int)
-
-        # ----------------------------------------------------------------------
-        # 2. NUMERACAO DOS DEGRAUS E TEXTOS
-        # ----------------------------------------------------------------------
-        draw.color = 7  # Branco/Texto
-
-        # Numeracao Lance 1 (01, 02, 03... da esquerda para a direita)
-        for i in range(n1):
-            x_c = (x_l1_ini - 0.5 * piso) if i == 0 else (x_l1_ini + (i - 0.5) * piso)
-            y_c = y_min_int + largura_l1 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{i + 1:02d}")
-
-        # Numeracao Lance 2 (da direita para a esquerda a partir do patamar intermediario)
-        for j in range(n2):
-            num_deg = n1 + 1 + j
-            x_c = (x_l2_ini + 0.5 * piso) if j == 0 else (x_l2_ini - (j - 0.5) * piso)
-            y_c = y_l2_base + largura_l2 / 2.0
-            draw.Text(x_c - 4.0, y_c - 4.0, 8.0, 0.0, f"{num_deg:02d}")
-
-        # Seta e Linha de Fluxo (Sentido de Subida: SOBE)
-        draw.level = 241
-        draw.color = -1  # Por nivel
-        draw.style = -1  # -1 por nivel
-        try:
-            dwg.settings.originalColorsMode = 0
-        except Exception:
-            pass
-        y_m1 = y_min_int + largura_l1 / 2.0
-        y_m2 = y_l2_base + largura_l2 / 2.0
-        x_m_start = x_l1_ini + piso * 0.5
-        x_m_pat = x_deg_fim + pat_dir * 0.5
-        x_m_arr = x_l2_fim - (pat_l2 * 0.5 if pat_l2 > 0 else 20.0)
-
-        # Circulo de inicio no degrau 01
-        r_circ = 2.5
-        draw.Line(x_m_start - r_circ, y_m1, x_m_start + r_circ, y_m1)
-        draw.Line(x_m_start, y_m1 - r_circ, x_m_start, y_m1 + r_circ)
-
-        # Trajeto do fluxo
-        draw.Line(x_m_start, y_m1, x_m_pat, y_m1)
-        draw.Line(x_m_pat, y_m1, x_m_pat, y_m2)
-        draw.Line(x_m_pat, y_m2, x_m_arr, y_m2)
-
-        # Seta apontando para a esquerda na chegada do Lance 2
-        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 + 5.0)
-        draw.Line(x_m_arr, y_m2, x_m_arr + 12.0, y_m2 - 5.0)
-
-        # Texto SOBE posicionado de forma limpa no inicio
-        draw.Text(x_l1_ini + 10.0, y_m1 + 12.0, 8.0, 0.0, "SOBE")
-
-        # ----------------------------------------------------------------------
-        # 3. LINHAS DE COTA (dwg.dim)
-        # ----------------------------------------------------------------------
-        y_cota_top1 = y_max_ext + 35.0
-        y_cota_top2 = y_max_ext + 70.0
-
-        # Linha 1 de Cotas Superiores (Parciais)
-        # Viga Esquerda
-        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_min_int, y_max_ext, x_min_ext, y_cota_top1)
-
-        # Patamar Esquerdo
-        x_deg_esq_ref = min(x_l1_ini, x_l2_fim)
-        if x_deg_esq_ref > x_min_int:
-            dwg.dim.DimHorizontal(x_min_int, y_max_ext, x_deg_esq_ref, y_max_ext, x_min_int, y_cota_top1)
-
-        # Degraus
-        for i in range(num_deg_flight):
-            x_a = x_deg_esq_ref + i * piso
-            x_b = x_a + piso
-            dwg.dim.DimHorizontal(x_a, y_max_ext, x_b, y_max_ext, x_a, y_cota_top1)
-
-        # Patamar Direito (Intermediario 1)
-        dwg.dim.DimHorizontal(x_deg_fim, y_max_ext, x_max_int, y_max_ext, x_deg_fim, y_cota_top1)
-
-        # Viga Direita
-        dwg.dim.DimHorizontal(x_max_int, y_max_ext, x_max_ext, y_max_ext, x_max_int, y_cota_top1)
-
-        # Linha 2 de Cotas Superiores (Cota Total da Caixa da Escada)
-        dwg.dim.DimHorizontal(x_min_ext, y_max_ext, x_max_ext, y_max_ext, x_min_ext, y_cota_top2)
-
-        # Cotas Verticais a Direita
-        x_cota_dir1 = x_max_ext + 35.0
-        x_cota_dir2 = x_max_ext + 70.0
-
-        # Viga Inferior
-        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_min_int, x_cota_dir1, y_min_ext)
-
-        # Lance 1
-        dwg.dim.DimVertical(x_max_ext, y_min_int, x_max_ext, y_l1_topo, x_cota_dir1, y_min_int)
-
-        # Vao entre Lances
-        if vao_lances > 0:
-            dwg.dim.DimVertical(x_max_ext, y_l1_topo, x_max_ext, y_l2_base, x_cota_dir1, y_l1_topo)
-
-        # Lance 2
-        dwg.dim.DimVertical(x_max_ext, y_l2_base, x_max_ext, y_max_int, x_cota_dir1, y_l2_base)
-
-        # Viga Superior
-        dwg.dim.DimVertical(x_max_ext, y_max_int, x_max_ext, y_max_ext, x_cota_dir1, y_max_int)
-
-        # Cota Vertical Total
-        dwg.dim.DimVertical(x_max_ext, y_min_ext, x_max_ext, y_max_ext, x_cota_dir2, y_min_ext)
-
-        # Indicacao de PLANTA BAIXA
-        x_rotulo_planta = x_min_ext + 10.0
-        y_rotulo_planta = y_min_ext - 60.0
-        desenhar_indicacao_corte(dwg, x_rotulo_planta, y_rotulo_planta, "PLANTA BAIXA", "ESCALA: 1/20")
-
-
-
-# ==============================================================================
-# DESENHO DO CORTE DO 1º LANCE ISOLADO (EMBAIXO DA PLANTA)
-# ==============================================================================
-
-# ==============================================================================
-# DESENHO DO SIMBOLO/TITULO DO CORTE (CORTE A-A / ESCALA)
-# ==============================================================================
-def desenhar_indicacao_corte(dwg, x_pos, y_pos, titulo="CORTE A-A", escala="ESCALA: 1/20"):
-    """Desenha o rotulo padrao de corte com circulo duplo (niveis 243 e 255), titulo (245), linha e texto (243)."""
-    draw = dwg.draw
-
-    raio_ext = 13.5
-    raio_int = 12.0
-    xc = x_pos
-    yc = y_pos
-
-    # 1. Circulo Interno (Nivel 255)
-    draw.level = 255
-    draw.color = -1
-    draw.style = -1
-    draw.Circle(xc, yc, raio_int)
-
-    # 2. Circulo Externo (Nivel 243)
-    draw.level = 243
-    draw.color = -1
-    draw.style = -1
-    draw.Circle(xc, yc, raio_ext)
-
-    # 3. Linha divisoria que toca no circulo (Nivel 243)
-    x_ini_linha = xc + raio_ext
-    x_texto = xc + raio_ext + 10.0
-    largura_linha = max(len(titulo) * 11.5, 115.0)
-    x_fim_linha = x_texto + largura_linha
-
-    draw.level = 243
-    draw.color = -1
-    draw.style = -1
-    draw.Line(x_ini_linha, yc, x_fim_linha, yc)
-
-    # 4. Titulo "CORTE A-A" (Nivel 245)
-    draw.level = 245
-    draw.color = -1
-    draw.style = -1
-    draw.Text(x_texto, yc + 3.0, 13.0, 0.0, titulo)
-
-    # 5. Texto da Escala "ESCALA: 1/20" (Nivel 243)
-    draw.level = 243
-    draw.color = -1
-    draw.style = -1
-    draw.Text(x_texto, yc - 12.0, 8.5, 0.0, escala)
-
-def desenhar_perfil_lance1_isolado(dwg, x0, y0, dados):
-    """Desenha o corte do primeiro lance isolado (com patamar intermediario e viga superior a direita)."""
-    piso = float(dados["piso"])
-    espelho = float(dados["espelho"])
-    espessura = float(dados["espessura"])
-    viga_largura = float(dados["viga_largura"])
-    viga_altura = float(dados["viga_altura"])
-
-    alterar_extremos = dados.get("alterar_extremos", False)
-    if isinstance(alterar_extremos, str):
-        alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
-
-    espelho_primeiro = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
-
-    tem_patamar_partida = dados.get("tem_patamar_partida", True)
-    if isinstance(tem_patamar_partida, str):
-        tem_patamar_partida = (tem_patamar_partida.lower() in ["true", "1", "sim"])
-
-    patamar_partida = float(dados.get("patamar_partida", 150))
-    patamar_int_1 = float(dados.get("patamar_intermediario_1", 120))
-    n1 = int(dados["n_degraus_1"])
-
-    tipo_escada = dados.get("tipo_escada", "CONVENCIONAL")
-    is_plissada = (tipo_escada == "PLISSADA")
-
-    draw = dwg.draw
-    draw.level = 242
-    draw.color = -1
-    draw.style = -1
-
-    # Altura do topo do Lance 1
-    y_topo_l1 = y0 + espelho_primeiro + (n1 - 1) * espelho
-    y_fundo_pat1 = y_topo_l1 - espessura
-
-    # Degraus Lance 1
-    x, y = x0, y0
-    for i in range(n1):
-        h_esp = espelho_primeiro if i == 0 else espelho
-        draw.Line(x, y, x, y + h_esp)
-        y += h_esp
-        if i < n1 - 1:
-            draw.Line(x, y, x + piso, y)
-            x += piso
-
-    x_fim_deg_l1 = x
-
-    if is_plissada:
-        # ======================================================================
-        # FUNDO PLISSADO - LANCE 1 ISOLADO
-        # ======================================================================
-        if tem_patamar_partida:
-            x_partida = x0 - patamar_partida
-            y_partida = y0
-            draw.Line(x_partida, y_partida, x0, y0)
-
-            y_base_partida = y0 - espessura
-            draw.Line(x_partida, y_base_partida, x0 + espessura, y_base_partida)
-
-            # Viga de Saida / Partida
-            x_viga_s_ini = x_partida - viga_largura
-            x_viga_s_meio = x_partida
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-            y_viga_s_corte = y0 - espessura
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
-        else:
-            x_viga_s_ini = x0 - viga_largura
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-            draw.Line(x0, y_viga_s_base, x0, y0 - espessura)
-            draw.Line(x0, y0 - espessura, x0 + espessura, y0 - espessura)
-
-        # 1º espelho vertical do fundo plissado
-        draw.Line(x0 + espessura, y0 - espessura, x0 + espessura, y0 + espelho_primeiro - espessura)
-
-        y_curr = y0 + espelho_primeiro
-        for i in range(n1 - 1):
-            x_start = x0 + i * piso + espessura
-            x_end = x0 + (i + 1) * piso + espessura
-            draw.Line(x_start, y_curr - espessura, x_end, y_curr - espessura)
-            draw.Line(x_end, y_curr - espessura, x_end, y_curr + espelho - espessura)
-            y_curr += espelho
-
-        # Patamar Intermediario / Chegada do Lance 1 (Lado Direito Superior)
-        x_fim_pat1 = x_fim_deg_l1 + patamar_int_1
-        draw.Line(x_fim_deg_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
-
-        y_fundo_chegada = y_topo_l1 - espessura
-        draw.Line(x_fim_deg_l1 + espessura, y_fundo_chegada, x_fim_pat1, y_fundo_chegada)
-
-        # Viga de Apoio do Patamar Intermediario (Lado Direito Superior)
-        x_viga_c_ext = x_fim_pat1 + viga_largura
-        draw.Line(x_fim_pat1, y_topo_l1, x_viga_c_ext, y_topo_l1)
-        draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-        draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
-
-    else:
-        # ======================================================================
-        # FUNDO CONVENCIONAL (RETO) - LANCE 1 ISOLADO
-        # ======================================================================
-        p1x, p1y = x0 + piso, y0 + espelho_primeiro
-        p2x, p2y = x0 + (n1 - 1) * piso, y0 + espelho_primeiro + (n1 - 2) * espelho if n1 > 1 else (p1x + piso, p1y + espelho)
-        f1_x1, f1_y1, f1_x2, f1_y2 = obter_fundo_lance(p1x, p1y, p2x, p2y, espessura)
-
-        # Patamar de Partida (Lado Esquerdo Inferior)
-        if tem_patamar_partida:
-            x_partida = x0 - patamar_partida
-            y_partida = y0
-            draw.Line(x_partida, y_partida, x0, y0)
-
-            y_base_partida = y0 - espessura
-            x_base_partida_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_base_partida)
-            draw.Line(x_partida, y_base_partida, x_base_partida_fim, y_base_partida)
-
-            # Viga de Saida / Partida
-            x_viga_s_ini = x_partida - viga_largura
-            x_viga_s_meio = x_partida
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-            y_viga_s_corte = y0 - espessura
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x_viga_s_meio, y_viga_s_base)
-            draw.Line(x_viga_s_meio, y_viga_s_base, x_viga_s_meio, y_viga_s_corte)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_partida, y_viga_s_topo)
-
-            x_fundo_l1_ini = x_base_partida_fim
-            y_fundo_l1_ini = y_base_partida
-        else:
-            x_viga_s_ini = x0 - viga_largura
-            y_viga_s_topo = y0
-            y_viga_s_base = y0 - viga_altura
-            y_fundo_no_x0 = calcular_y_no_x(f1_x1, f1_y1, f1_x2, f1_y2, x0)
-
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x0, y_viga_s_topo)
-            draw.Line(x_viga_s_ini, y_viga_s_topo, x_viga_s_ini, y_viga_s_base)
-            draw.Line(x_viga_s_ini, y_viga_s_base, x0, y_viga_s_base)
-            draw.Line(x0, y_viga_s_base, x0, y_fundo_no_x0)
-
-            x_fundo_l1_ini = x0
-            y_fundo_l1_ini = y_fundo_no_x0
-
-        # Patamar Intermediario / Chegada do Lance 1 (Lado Direito Superior)
-        x_fim_pat1 = x_fim_deg_l1 + patamar_int_1
-        draw.Line(x_fim_deg_l1, y_topo_l1, x_fim_pat1, y_topo_l1)
-
-        y_fundo_chegada = y_topo_l1 - espessura
-        x_fundo_l1_fim = calcular_x_no_y(f1_x1, f1_y1, f1_x2, f1_y2, y_fundo_chegada)
-
-        draw.Line(x_fundo_l1_ini, y_fundo_l1_ini, x_fundo_l1_fim, y_fundo_chegada)
-        draw.Line(x_fundo_l1_fim, y_fundo_chegada, x_fim_pat1, y_fundo_chegada)
-
-        # Viga de Apoio do Patamar Intermediario (Lado Direito Superior)
-        x_viga_c_ext = x_fim_pat1 + viga_largura
-        draw.Line(x_fim_pat1, y_topo_l1, x_viga_c_ext, y_topo_l1)
-        draw.Line(x_viga_c_ext, y_topo_l1, x_viga_c_ext, y_topo_l1 - viga_altura)
-        draw.Line(x_viga_c_ext, y_topo_l1 - viga_altura, x_fim_pat1, y_topo_l1 - viga_altura)
-        draw.Line(x_fim_pat1, y_topo_l1 - viga_altura, x_fim_pat1, y_fundo_chegada)
-
-    # Indicacao de corte abaixo do 1º lance
-    x_rotulo = x_viga_s_ini + 10.0
-    y_rotulo = (y0 - viga_altura) - 175.0
-    desenhar_indicacao_corte(dwg, x_rotulo, y_rotulo, "CORTE A-A", "ESCALA: 1/20")
-
-
-# ==============================================================================
-# CÁLCULO AUTOMÁTICO DE QUANTITATIVOS (ÁREA DE FORMAS E VOLUME DE CONCRETO)
-# ==============================================================================
-def calcular_quantitativos_escada(dados):
+    Varre o desenho procurando blocos de corte ($CORTEA, LINCOR, etc.)
+    e agrupa em pares colineares (cortes verticais e horizontais).
     """
-    Calcula a Area de Formas (m2) e o Volume de Concreto (m3) da escada
-    com base nas dimensoes geometricas reais.
-    """
-    if not dados:
-        return 0.0, 0.0
+    pontos_corte = []
+    dwg.iterator.Begin()
+    while True:
+        tipo = dwg.iterator.Next()
+        if tipo == TQSDwg.DWGTYPE_EOF:
+            break
+        if tipo == TQSDwg.DWGTYPE_BLOCK:
+            nome_bloco = dwg.iterator.blockName.upper()
+            if "CORTE" in nome_bloco or "LINCOR" in nome_bloco:
+                pontos_corte.append({
+                    "x": dwg.iterator.xc,
+                    "y": dwg.iterator.yc,
+                    "ang": dwg.iterator.insertAngle,
+                    "bloco": dwg.iterator.blockName
+                })
 
-    num_lances = int(dados.get("num_lances", 2))
-    piso = float(dados.get("piso", 28.0))
-    espelho = float(dados.get("espelho", 17.9))
-    espessura = float(dados.get("espessura", 15.0))
-    tipo_escada = str(dados.get("tipo_escada", "CONVENCIONAL")).upper()
+    pares = []
+    usados = set()
+    n = len(pontos_corte)
 
-    alterar_extremos = dados.get("alterar_extremos", False)
-    if isinstance(alterar_extremos, str):
-        alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
-
-    esp_prim = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
-    esp_ult = float(dados.get("espelho_ultimo", espelho)) if alterar_extremos else espelho
-
-    n1 = int(dados.get("n_degraus_1", 8))
-    n2 = int(dados.get("n_degraus_2", 0)) if num_lances >= 2 else 0
-
-    larg_l1 = float(dados.get("largura_lance_1", 120.0))
-    larg_l2 = float(dados.get("largura_lance_2", 105.5)) if num_lances >= 2 else 0.0
-    vao = float(dados.get("vao_lances", 0.0))
-
-    tem_pat_part = dados.get("tem_patamar_partida", True)
-    if isinstance(tem_pat_part, str):
-        tem_pat_part = (tem_pat_part.lower() in ["true", "1", "sim"])
-    pat_part = float(dados.get("patamar_partida", 150.0)) if tem_pat_part else 0.0
-
-    tem_pat_cheg = dados.get("tem_patamar_chegada", True)
-    if isinstance(tem_pat_cheg, str):
-        tem_pat_cheg = (tem_pat_cheg.lower() in ["true", "1", "sim"])
-    pat_cheg = float(dados.get("patamar_chegada", 150.0)) if tem_pat_cheg else 0.0
-
-    pat_int = float(dados.get("patamar_intermediario_1", 120.0)) if num_lances >= 2 else 0.0
-
-    vol_cm3 = 0.0
-    area_form_cm2 = 0.0
-
-    # 1. Patamares
-    if tem_pat_part and pat_part > 0:
-        vol_cm3 += pat_part * espessura * larg_l1
-        area_form_cm2 += pat_part * larg_l1
-        area_form_cm2 += pat_part * espessura
-
-    if num_lances >= 2 and pat_int > 0:
-        larg_pat_int = larg_l1 + larg_l2 + vao
-        vol_cm3 += pat_int * espessura * larg_pat_int
-        area_form_cm2 += pat_int * larg_pat_int
-        area_form_cm2 += pat_int * espessura * 2.0
-
-    if tem_pat_cheg and pat_cheg > 0:
-        larg_cheg = larg_l2 if num_lances >= 2 else larg_l1
-        vol_cm3 += pat_cheg * espessura * larg_cheg
-        area_form_cm2 += pat_cheg * larg_cheg
-        area_form_cm2 += pat_cheg * espessura
-
-    # 2. Lances
-    lances = [(n1, larg_l1, True)]
-    if num_lances >= 2 and n2 > 0:
-        lances.append((n2, larg_l2, False))
-
-    for idx, (n_deg, larg_lance, is_l1) in enumerate(lances):
-        if n_deg <= 0:
+    # 1. Cortes Verticais (mesmo X aproximado, delta Y significativo)
+    for i in range(n):
+        if i in usados:
             continue
-        espelhos_lance = []
-        for i in range(n_deg):
-            if is_l1 and i == 0:
-                espelhos_lance.append(esp_prim)
-            elif (not is_l1 or num_lances == 1) and i == n_deg - 1:
-                espelhos_lance.append(esp_ult)
+        for j in range(i + 1, n):
+            if j in usados:
+                continue
+            p1 = pontos_corte[i]
+            p2 = pontos_corte[j]
+            if abs(p1["x"] - p2["x"]) <= 2.0 and abs(p1["y"] - p2["y"]) >= 10.0:
+                pares.append(((p1["x"], p1["y"]), (p2["x"], p2["y"]), "vertical"))
+                usados.add(i)
+                usados.add(j)
+                break
+
+    # 2. Cortes Horizontais (mesmo Y aproximado, delta X significativo)
+    for i in range(n):
+        if i in usados:
+            continue
+        for j in range(i + 1, n):
+            if j in usados:
+                continue
+            p1 = pontos_corte[i]
+            p2 = pontos_corte[j]
+            if abs(p1["y"] - p2["y"]) <= 2.0 and abs(p1["x"] - p2["x"]) >= 10.0:
+                pares.append(((p1["x"], p1["y"]), (p2["x"], p2["y"]), "horizontal"))
+                usados.add(i)
+                usados.add(j)
+                break
+
+    return pares
+
+
+def cmd_linha_de_corte(eag, tqsjan):
+    """
+    Cria automaticamente as linhas de corte conectando as marcas existentes ($CORTEA).
+    Propriedades definidas: Nivel 205, Cor 2 (Amarelo), Estilo de linha -1 (Por nivel).
+    Se nao encontrar marcadores automaticos, oferece selecao manual por 2 pontos.
+    """
+    try:
+        dwg = tqsjan.dwg
+        pares = encontrar_pares_de_corte(dwg)
+
+        linhas_criadas = 0
+
+        if pares:
+            # Configura propriedades da linha de corte: Nivel 205, Cor 2 (Amarelo), Estilo -1 (Por nivel)
+            dwg.draw.level = 205
+            dwg.draw.color = 2
+            dwg.draw.style = -1
+
+            for pt1, pt2, direcao in pares:
+                dwg.draw.Line(pt1[0], pt1[1], pt2[0], pt2[1])
+                linhas_criadas += 1
+
+            tqsjan.Regen()
+            eag.msg.Print("G3 Plugins: %d linha(s) de corte gerada(s) automaticamente!" % linhas_criadas)
+            eag.msg.PrintStatus("%d linha(s) de corte gerada(s) com sucesso!" % linhas_criadas)
+        else:
+            # Fallback interativo: se a forma nao tiver o bloco $CORTEA padrao
+            eag.msg.Print("Nenhum marcador de corte automatico encontrado.")
+            eag.msg.Print("Modo manual: selecione os dois pontos da linha de corte.")
+            
+            icod, x1, y1 = eag.locate.GetPoint(tqsjan, "Linha de Corte: Selecione o 1o ponto (ou <Esc> para sair)")
+            if icod != 1:
+                return
+            
+            icod2, x2, y2 = eag.locate.GetSecondPoint(
+                tqsjan, x1, y1, TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN,
+                "Linha de Corte: Selecione o 2o ponto"
+            )
+            if icod2 != 1:
+                return
+
+            dwg.draw.level = 205
+            dwg.draw.color = 2
+            dwg.draw.style = -1
+            dwg.draw.Line(x1, y1, x2, y2)
+            tqsjan.Regen()
+            eag.msg.Print("G3 Plugins: Linha de corte manual desenhada com sucesso!")
+
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+
+def _parse_valor_bolinha(texto_str):
+    """
+    Tenta extrair um valor numerico de desnivel/inversao do texto da bolinha (ex: '15', '-15', '+15').
+    Retorna float ou None se nao for numero valido.
+    """
+    if not texto_str:
+        return None
+    limpo = texto_str.strip().replace(",", ".")
+    try:
+        val = float(limpo)
+        if abs(val) < 1e-4:
+            return None
+        return val
+    except ValueError:
+        return None
+
+
+def _formatar_valor_cm(val):
+    """Formata o valor absoluto sem casas decimais desnecessarias."""
+    val_abs = abs(val)
+    if abs(val_abs - round(val_abs)) < 1e-4:
+        return str(int(round(val_abs)))
+    return ("%g" % val_abs).replace(".", ",")
+
+
+def _normalizar_angulo(ang):
+    """Normaliza angulo para 0.0 (horizontal) ou 90.0 (vertical) quando proximo."""
+    a = ang % 360.0
+    if a < 0:
+        a += 360.0
+    if abs(a - 0.0) < 5.0 or abs(a - 360.0) < 5.0 or abs(a - 180.0) < 5.0:
+        return 0.0
+    if abs(a - 90.0) < 5.0 or abs(a - 270.0) < 5.0:
+        return 90.0
+    return round(a, 2)
+
+
+def _bbox_texto(xc, yc, h, ang, texto_str):
+    """
+    Calcula o bounding box aproximado (xmin, ymin, xmax, ymax) de um texto no TQS.
+    No TQS, (xc, yc) e o ponto inferior-esquerdo da linha de base.
+    """
+    comp = len(texto_str) * h * 1.0
+    a = _normalizar_angulo(ang)
+    if a == 90.0:
+        # Quando rotacionado a 90 graus, o texto cresce em +Y e tem altura para a esquerda (-X)
+        return (xc - h * 1.15, yc, xc + h * 0.25, yc + comp)
+    else:
+        return (xc, yc - h * 0.25, xc + comp, yc + h * 1.15)
+
+
+def _boxes_colidem(b1, b2, margem=4.0):
+    """Verifica se dois bounding boxes (xmin, ymin, xmax, ymax) se sobrepoem com margem."""
+    return not (
+        b1[2] + margem < b2[0] or
+        b1[0] - margem > b2[2] or
+        b1[3] + margem < b2[1] or
+        b1[1] - margem > b2[3]
+    )
+
+
+def _resolver_nivel_bolinha(nivel_circulo, nivel_texto, xc_tx, yc_tx, lajes):
+    """
+    Determina o nivel efetivo da bolinha (11 = Viga, 13 = Laje):
+      - Se Circulo e Texto estao no mesmo nivel, usa esse nivel.
+      - Se o usuario alterou apenas o Circulo (ou apenas o Texto) no EAG para testar:
+        - Se algum dos dois foi mudado para fora de (11, 13), retorna esse nivel (sera ignorado).
+        - Se um e 11 e o outro e 13, verifica o contexto original (abaixo de titulo de laje L...
+          era originalmente 13, logo foi mudado para 11; caso contrario era 11 e foi mudado para 13).
+    """
+    if nivel_circulo == nivel_texto:
+        return nivel_circulo
+
+    # Se um deles foi alterado para um nivel diferente de 11 e 13 (ex: nivel 0, 200, etc.)
+    if nivel_circulo not in (11, 13):
+        return nivel_circulo
+    if nivel_texto not in (11, 13):
+        return nivel_texto
+
+    # Um e 11 e o outro e 13: descobre qual era o nivel original pela posicao (laje vs viga)
+    estava_em_laje = False
+    for lj in lajes:
+        if abs(lj["xc"] - xc_tx) <= 35.0 and 0.0 <= (lj["yc"] - yc_tx) <= 85.0:
+            estava_em_laje = True
+            break
+
+    if estava_em_laje:
+        # Originalmente era 13 (Laje); se um dos dois agora e 11, o usuario trocou para 11 (Viga)
+        return 11
+    else:
+        # Originalmente era 11 (Viga); se um dos dois agora e 13, o usuario trocou para 13 (Laje)
+        return 13
+
+
+def coletar_contexto_inversoes(dwg):
+    """
+    Varre o DWG coletando:
+      - Bolinhas de viga (Nivel 11 - Dimensoes de vigas) e de laje (Nivel 13 - Dimensoes de lajes)
+      - Titulos de vigas (Nivel 8, 'V...') e secoes de vigas (Nivel 11, 'b/h')
+      - Titulos de lajes (Nivel 10, 'L...') e espessuras de lajes (Nivel 13, 'h=...')
+      - Obstaculos (outros textos, pilares, linhas de corte e linhas de concreto)
+    """
+    circulos = []
+    textos_numericos = []
+    vigas = []
+    lajes = []
+    obstaculos = []
+    linhas_vert_concreto = []
+    linhas_horiz_concreto = []
+
+    viga_atual = None
+    laje_atual = None
+
+    # Pares de corte tambem contam como obstaculos (faixas de linha de corte)
+    pares_corte = encontrar_pares_de_corte(dwg)
+    for pt1, pt2, direcao in pares_corte:
+        xmin = min(pt1[0], pt2[0]) - 2.0
+        xmax = max(pt1[0], pt2[0]) + 2.0
+        ymin = min(pt1[1], pt2[1]) - 2.0
+        ymax = max(pt1[1], pt2[1]) + 2.0
+        obstaculos.append({"tipo": "corte", "direcao": direcao, "bbox": (xmin, ymin, xmax, ymax)})
+
+    dwg.iterator.Begin()
+    while True:
+        tipo = dwg.iterator.Next()
+        if tipo == TQSDwg.DWGTYPE_EOF:
+            break
+        if dwg.iterator.inBlock != 0:
+            continue
+
+        nivel = dwg.iterator.level
+        addr = dwg.iterator.GetElementReadPosition()
+
+        # Linhas/Polylines de concreto (Nivel 1 e 2) e pilares (Nivel 4)
+        if tipo == TQSDwg.DWGTYPE_POLYLINE and nivel in (1, 2, 4):
+            pts = [dwg.iterator.GetPolylinePt(i) for i in range(dwg.iterator.xySize)]
+            if nivel == 4 and pts:
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                obstaculos.append({"tipo": "pilar", "bbox": (min(xs), min(ys), max(xs), max(ys))})
+            elif nivel in (1, 2) and len(pts) >= 2:
+                for k in range(len(pts) - 1):
+                    x1, y1 = pts[k]
+                    x2, y2 = pts[k + 1]
+                    if abs(x1 - x2) < 1.0 and abs(y1 - y2) > 20.0:
+                        linhas_vert_concreto.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
+                    elif abs(y1 - y2) < 1.0 and abs(x1 - x2) > 20.0:
+                        linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
+
+        elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (200, 205):
+            xmin = min(dwg.iterator.x1, dwg.iterator.x2) - 2.0
+            xmax = max(dwg.iterator.x1, dwg.iterator.x2) + 2.0
+            ymin = min(dwg.iterator.y1, dwg.iterator.y2) - 2.0
+            ymax = max(dwg.iterator.y1, dwg.iterator.y2) + 2.0
+            obstaculos.append({"tipo": "corte_linha", "bbox": (xmin, ymin, xmax, ymax)})
+
+        elif tipo == TQSDwg.DWGTYPE_CIRCLE:
+            if nivel in (28, 29):
+                continue
+            circulos.append({
+                "addr": addr,
+                "xc": dwg.iterator.xc,
+                "yc": dwg.iterator.yc,
+                "r": dwg.iterator.radius,
+                "level": nivel,
+            })
+
+        elif tipo == TQSDwg.DWGTYPE_TEXT:
+            if nivel in (28, 29):
+                continue
+            txt_raw = dwg.iterator.text.strip()
+            xc = dwg.iterator.xc
+            yc = dwg.iterator.yc
+            x1 = dwg.iterator.x1
+            y1 = dwg.iterator.y1
+            x2 = dwg.iterator.x2
+            y2 = dwg.iterator.y2
+            h = dwg.iterator.textHeight
+            ang = _normalizar_angulo(dwg.iterator.textAngle)
+
+            # 1. Titulo de Viga (Nivel 8, ex: 'V101')
+            if nivel == 8 and txt_raw.upper().startswith("V"):
+                viga_atual = {
+                    "nome": txt_raw,
+                    "addr_titulo": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                    "secao": None,
+                }
+                laje_atual = None
+                vigas.append(viga_atual)
+                obstaculos.append({
+                    "tipo": "viga_titulo",
+                    "addr": addr,
+                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                })
+                continue
+
+            # 2. Secao de Viga (Nivel 11, ex: '14/70')
+            if nivel == 11 and "/" in txt_raw:
+                sec_obj = {
+                    "texto": txt_raw,
+                    "addr": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                }
+                if viga_atual is not None and viga_atual["secao"] is None:
+                    viga_atual["secao"] = sec_obj
+                obstaculos.append({
+                    "tipo": "viga_secao",
+                    "addr": addr,
+                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                })
+                continue
+
+            # 3. Titulo de Laje (Nivel 10, ex: 'L103')
+            if nivel == 10 and txt_raw.upper().startswith("L"):
+                laje_atual = {
+                    "nome": txt_raw,
+                    "addr_titulo": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                    "esp": None,
+                }
+                viga_atual = None
+                lajes.append(laje_atual)
+                continue
+
+            # 4. Espessura de Laje (Nivel 13, ex: 'h=15')
+            if nivel == 13 and ("=" in txt_raw or txt_raw.lower().startswith("h")):
+                esp_obj = {
+                    "texto": txt_raw,
+                    "addr": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                }
+                if laje_atual is not None and laje_atual["esp"] is None:
+                    laje_atual["esp"] = esp_obj
+                continue
+
+            # 5. Texto numerico (possivel interior de bolinha)
+            val = _parse_valor_bolinha(txt_raw)
+            if val is not None:
+                textos_numericos.append({
+                    "addr": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "text": txt_raw,
+                    "val": val,
+                    "h": h, "ang": ang,
+                    "level": nivel,
+                })
             else:
-                espelhos_lance.append(espelho)
+                # Outros textos (ex: P1, 25/25, etc.) sao obstaculos
+                obstaculos.append({
+                    "tipo": "texto",
+                    "addr": addr,
+                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                })
 
-        h_total_lance = sum(espelhos_lance)
-        l_horiz = max(n_deg - 1, 1) * piso
-        l_inc = math.hypot(l_horiz, h_total_lance)
+    # Emparelha geometricamente cada circulo com seu texto numerico interno
+    # e verifica se o nivel efetivo da bolinha e 11 (Viga) ou 13 (Laje)
+    bolinhas = []
+    textos_usados = set()
 
-        # Forma dos espelhos (frente vertical)
-        for h_deg in espelhos_lance:
-            area_form_cm2 += h_deg * larg_lance
+    for c in circulos:
+        melhor_tx = None
+        menor_dist = float("inf")
 
-        if tipo_escada == "PLISSADA":
-            for h_deg in espelhos_lance:
-                a_deg = (piso * espessura) + (h_deg * espessura) - (espessura * espessura)
-                vol_cm3 += a_deg * larg_lance
-                area_form_cm2 += (piso + h_deg) * larg_lance
-                area_form_cm2 += 2.0 * ((piso + h_deg) * espessura)
-        else:  # CONVENCIONAL
-            vol_cm3 += l_inc * espessura * larg_lance
-            for h_deg in espelhos_lance:
-                vol_cm3 += (piso * h_deg / 2.0) * larg_lance
+        for idx, tx in enumerate(textos_numericos):
+            if idx in textos_usados:
+                continue
 
-            area_form_cm2 += l_inc * larg_lance
-            area_lat_lado = l_inc * espessura
-            for h_deg in espelhos_lance:
-                area_lat_lado += (piso * h_deg / 2.0)
-            area_form_cm2 += 2.0 * area_lat_lado
+            mx = 0.5 * (tx["x1"] + tx["x2"])
+            my = 0.5 * (tx["y1"] + tx["y2"])
+            dist_mid = math.hypot(c["xc"] - mx, c["yc"] - my)
+            dist_orig = math.hypot(c["xc"] - tx["xc"], c["yc"] - tx["yc"])
 
-    vol_m3 = vol_cm3 / 1000000.0
-    area_m2 = area_form_cm2 / 10000.0
-    return area_m2, vol_m3
+            if dist_mid <= c["r"] * 1.25 or dist_orig <= c["r"] * 1.35:
+                if dist_mid < menor_dist:
+                    menor_dist = dist_mid
+                    melhor_tx = (idx, tx)
+
+        if melhor_tx is not None:
+            idx_tx, tx_obj = melhor_tx
+            textos_usados.add(idx_tx)
+
+            nivel_efetivo = _resolver_nivel_bolinha(
+                c["level"], tx_obj["level"], tx_obj["xc"], tx_obj["yc"], lajes
+            )
+            # So processa bolinhas cujo nivel efetivo seja 11 (Viga) ou 13 (Laje)
+            if nivel_efetivo not in (11, 13):
+                continue
+
+            bolinhas.append({
+                "addr_circulo": c["addr"],
+                "addr_texto": tx_obj["addr"],
+                "val": tx_obj["val"],
+                "xc": tx_obj["xc"],
+                "yc": tx_obj["yc"],
+                "h": tx_obj["h"],
+                "ang": tx_obj["ang"],
+                "level": nivel_efetivo,  # 11 = Viga, 13 = Laje
+            })
+
+    return {
+        "bolinhas": bolinhas,
+        "vigas": vigas,
+        "lajes": lajes,
+        "obstaculos": obstaculos,
+        "linhas_vert_concreto": linhas_vert_concreto,
+        "linhas_horiz_concreto": linhas_horiz_concreto,
+    }
 
 
-# ==============================================================================
-# DESENHO DA TABELA DE CRITÉRIOS AMBIENTAIS E RESUMO DE QUANTITATIVO
-# ==============================================================================
-def desenhar_tabela_criterios_quantitativos(dwg, x_tab, y_tab, dados=None):
+def _agrupar_bolinhas_vigas(bolinhas_viga, vigas):
     """
-    Desenha a Tabela de Classe de Agressividade Ambiental e o Resumo de Quantitativo
-    a direita da escada, com layout e proporções bem ajustados.
+    Agrupa bolinhas de Nivel 11 que pertencem geometricamente ao mesmo eixo de viga
+    (mesma orientacao e mesma faixa X ou Y, com mesmo valor) para escrever apenas 1 vez por viga.
     """
-    draw = dwg.draw
+    grupos = []
+    usadas = set()
 
-    largura_tab = 320.0
-    larg_col1 = 115.0
-    x_div = x_tab + larg_col1
-    x_fim = x_tab + largura_tab
+    for i, b1 in enumerate(bolinhas_viga):
+        if i in usadas:
+            continue
+        grupo = [b1]
+        usadas.add(i)
 
-    # ==========================================================================
-    # 1. TABELA DE AGRESSIVIDADE AMBIENTAL (TOPO)
-    # ==========================================================================
-    h_header1 = 26.0
-    h_row1 = 46.0
-    h_row2 = 40.0
+        for j in range(i + 1, len(bolinhas_viga)):
+            if j in usadas:
+                continue
+            b2 = bolinhas_viga[j]
 
-    y_top1 = y_tab
-    y_hdr_bot1 = y_top1 - h_header1
-    y_row1_bot = y_hdr_bot1 - h_row1
-    y_row2_bot = y_row1_bot - h_row2
+            mesmo_eixo_horiz = (
+                b1["ang"] == 0.0 and b2["ang"] == 0.0 and
+                abs(b1["yc"] - b2["yc"]) <= 40.0 and
+                abs(b1["val"] - b2["val"]) < 1e-3
+            )
+            mesmo_eixo_vert = (
+                b1["ang"] == 90.0 and b2["ang"] == 90.0 and
+                abs(b1["xc"] - b2["xc"]) <= 40.0 and
+                abs(b1["val"] - b2["val"]) < 1e-3
+            )
 
-    # --- Cabecalho (Amarelo / Nivel 245) ---
-    draw.level = 245
-    draw.color = 2  # Amarelo
-    draw.style = -1
+            if mesmo_eixo_horiz or mesmo_eixo_vert:
+                grupo.append(b2)
+                usadas.add(j)
 
-    # Retangulo do cabecalho
-    draw.Line(x_tab, y_top1, x_fim, y_top1)
-    draw.Line(x_fim, y_top1, x_fim, y_hdr_bot1)
-    draw.Line(x_fim, y_hdr_bot1, x_tab, y_hdr_bot1)
-    draw.Line(x_tab, y_hdr_bot1, x_tab, y_top1)
+        # Associa ao cabecalho da viga (V... + b/h) se estiver na mesma faixa geometrica
+        viga_assoc = None
+        for v in vigas:
+            if v["ang"] == grupo[0]["ang"]:
+                if v["ang"] == 0.0 and any(abs(v["yc"] - b["yc"]) <= 40.0 for b in grupo):
+                    viga_assoc = v
+                    break
+                elif v["ang"] == 90.0 and any(abs(v["xc"] - b["xc"]) <= 40.0 for b in grupo):
+                    viga_assoc = v
+                    break
 
-    # Textos do cabecalho centralizados (Amarelo)
-    draw.Text(x_tab + 75.0, y_top1 - 10.0, 6.0, 0.0, "CLASSE DE AGRESSIVIDADE AMBIENTAL")
-    draw.Text(x_tab + 120.0, y_top1 - 19.5, 5.5, 0.0, "(NBR-6118: 2023)")
+        grupos.append((viga_assoc, grupo))
 
-    # --- Corpo da Tabela 1 (Bordas Magenta / Nivel 243) ---
-    draw.level = 243
-    draw.color = 6  # Magenta
+    return grupos
 
-    # Contorno externo do corpo
-    draw.Line(x_tab, y_hdr_bot1, x_fim, y_hdr_bot1)
-    draw.Line(x_fim, y_hdr_bot1, x_fim, y_row2_bot)
-    draw.Line(x_fim, y_row2_bot, x_tab, y_row2_bot)
-    draw.Line(x_tab, y_row2_bot, x_tab, y_hdr_bot1)
 
-    # Linha divisoria vertical (entre col1 e col2)
-    draw.Line(x_div, y_hdr_bot1, x_div, y_row2_bot)
+def cmd_inversoes(eag, tqsjan):
+    """
+    Identifica as bolinhas estritamente pelo seu NIVEL:
+      - Nivel 11 (Dimensoes de vigas): 'VIGA INVERTIDA xCM' (1 unico texto por viga)
+      - Nivel 13 (Dimensoes de lajes): 'LAJE REBAIXADA' / 'xCM' (organizado sem sobreposicao)
+    """
+    try:
+        dwg = tqsjan.dwg
+        ctx = coletar_contexto_inversoes(dwg)
+        bolinhas = ctx["bolinhas"]
 
-    # Linha divisoria horizontal (entre row1 e row2)
-    draw.Line(x_tab, y_row1_bot, x_fim, y_row1_bot)
+        if not bolinhas:
+            eag.msg.Print("G3 Plugins: Nenhuma bolinha nos niveis 11 (vigas) ou 13 (lajes) encontrada.")
+            eag.msg.PrintStatus("Nenhuma bolinha de viga/laje encontrada.")
+            return
 
-    # --- Obter Classe de Agressividade Ambiental e Cobrimento dos dados ---
-    classe_agr = (dados.get("classe_agressividade", "III") if dados else "III").upper()
+        obstaculos = ctx["obstaculos"]
+        # Identificacao estritamente pelo Nivel do TQS:
+        # Nivel 11 = Dimensoes de vigas | Nivel 13 = Dimensoes de lajes
+        bolinhas_viga = [b for b in bolinhas if b["level"] == 11]
+        bolinhas_laje = [b for b in bolinhas if b["level"] == 13]
 
-    if classe_agr == "I":
-        txt_classe_l1 = "I - FRACA"
-        txt_classe_l2 = "RURAL"
-        txt_ac = "a/c <= 0, 65"
-    elif classe_agr == "II":
-        txt_classe_l1 = "II - MODERADA"
-        txt_classe_l2 = "URBANO"
-        txt_ac = "a/c <= 0, 60"
-    elif classe_agr == "IV":
-        txt_classe_l1 = "IV - MUITO FORTE"
-        txt_classe_l2 = "RESPINGOS DE MARE"
-        txt_ac = "a/c <= 0, 45"
-    else:  # Classe III (Padrao)
-        txt_classe_l1 = "III - FORTE"
-        txt_classe_l2 = "AMBIENTE MARINHO"
-        txt_ac = "a/c <= 0, 55"
+        textos_criados = 0
+        bolinhas_apagadas = 0
 
-    cob_val = float(dados.get("cobrimento_lajes", 2.0)) if dados else 2.0
-    txt_cob = f"LAJES  {cob_val:.1f}cm"
+        # ---------------------------------------------------------------------
+        # 1. PROCESSA VIGAS (NIVEL 11) - 1 UNICO TEXTO POR VIGA
+        # ---------------------------------------------------------------------
+        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"])
 
-    # --- Textos do Corpo da Tabela 1 (Amarelo) ---
-    draw.color = 2  # Amarelo
+        for viga, grupo in grupos_vigas:
+            # Apaga TODAS as bolinhas de Nivel 11 dessa mesma viga
+            for b in grupo:
+                dwg.edit.Erase(b["addr_circulo"])
+                dwg.edit.Erase(b["addr_texto"])
+                bolinhas_apagadas += 1
 
-    # Row 1 - Coluna 1: Classe de Agressividade (Centralizado)
-    larg_txt1 = len(txt_classe_l1) * (6.0 * 0.8)
-    x_c1 = x_tab + max((larg_col1 - larg_txt1) / 2.0, 5.0)
-    draw.Text(x_c1, y_hdr_bot1 - 17.0, 6.0, 0.0, txt_classe_l1)
+            b_ref = grupo[0]
+            val_str = _formatar_valor_cm(b_ref["val"])
+            novo_texto = "VIGA INVERTIDA %sCM" % val_str
+            h_txt = b_ref["h"]
+            ang_txt = b_ref["ang"]
+            nivel_txt = 11
 
-    larg_txt2 = len(txt_classe_l2) * (5.5 * 0.8)
-    x_c2 = x_tab + max((larg_col1 - larg_txt2) / 2.0, 5.0)
-    draw.Text(x_c2, y_hdr_bot1 - 30.0, 5.5, 0.0, txt_classe_l2)
+            x_dest = b_ref["xc"]
+            y_dest = b_ref["yc"]
 
-    # Row 1 - Coluna 2: FATORES ATENUANTES
-    draw.Text(x_div + 8.0, y_hdr_bot1 - 8.5, 5.5, 0.0, "FATORES ATENUANTES:")
-    draw.Text(x_div + 8.0, y_hdr_bot1 - 16.5, 4.2, 0.0, "-Rigido controle de qualidade e")
-    draw.Text(x_div + 12.0, y_hdr_bot1 - 23.5, 4.2, 0.0, "de tolerancia de medidas na obra.")
-    draw.Text(x_div + 8.0, y_hdr_bot1 - 31.0, 4.2, 0.0, "-Ambientes revestidos com argamassa")
-    draw.Text(x_div + 12.0, y_hdr_bot1 - 38.0, 4.2, 0.0, "e pintura.")
+            # Se temos o titulo e a secao da viga (ex: V101 e 14/70), garante alinhamento limpo
+            if viga is not None and viga["secao"] is not None:
+                sec = viga["secao"]
+                if ang_txt == 0.0:
+                    larg_sec = abs(sec["x2"] - sec["x1"])
+                    # Se a secao (ex: 14/70) estava desalinhada em Y do nome da viga (ex: V101),
+                    # alinha a secao na mesma linha do nome da viga para nao bater em pilares
+                    if abs(sec["yc"] - viga["yc"]) > 5.0:
+                        novo_x_sec = viga["x2"] + 15.0
+                        novo_y_sec = viga["yc"]
+                        dx_sec = novo_x_sec - sec["xc"]
+                        dy_sec = novo_y_sec - sec["yc"]
+                        dwg.edit.Move(sec["addr"], dx_sec, dy_sec)
+                        sec["xc"] = novo_x_sec
+                        sec["yc"] = novo_y_sec
+                        sec["x1"] += dx_sec
+                        sec["x2"] += dx_sec
+                        sec["y1"] += dy_sec
+                        sec["y2"] += dy_sec
+                        x_dest = novo_x_sec + larg_sec + 15.0
+                        y_dest = novo_y_sec
+                    else:
+                        x_dest = sec["x2"] + 12.0
+                        y_dest = sec["yc"]
+                elif ang_txt == 90.0:
+                    larg_sec = abs(sec["y2"] - sec["y1"])
+                    if abs(sec["xc"] - viga["xc"]) > 5.0:
+                        novo_x_sec = viga["xc"]
+                        novo_y_sec = viga["y2"] + 15.0
+                        dx_sec = novo_x_sec - sec["xc"]
+                        dy_sec = novo_y_sec - sec["yc"]
+                        dwg.edit.Move(sec["addr"], dx_sec, dy_sec)
+                        sec["xc"] = novo_x_sec
+                        sec["yc"] = novo_y_sec
+                        sec["x1"] += dx_sec
+                        sec["x2"] += dx_sec
+                        sec["y1"] += dy_sec
+                        sec["y2"] += dy_sec
+                        x_dest = novo_x_sec
+                        y_dest = novo_y_sec + larg_sec + 15.0
+                    else:
+                        x_dest = sec["xc"]
+                        y_dest = sec["y2"] + 12.0
 
-    # Row 2 - Coluna 1: COBRIMENTOS: LAJES
-    draw.Text(x_tab + 12.0, y_row1_bot - 14.0, 5.5, 0.0, "COBRIMENTOS:")
-    draw.Text(x_tab + 12.0, y_row1_bot - 26.0, 5.5, 0.0, txt_cob)
+            dwg.draw.level = nivel_txt
+            dwg.draw.color = -1
+            dwg.draw.style = 0
+            dwg.draw.Text(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+            textos_criados += 1
 
-    # Row 2 - Coluna 2: FATOR AGUA/CIMENTO DO CONCRETO
-    draw.Text(x_div + 8.0, y_row1_bot - 11.0, 5.5, 0.0, "FATOR AGUA/CIMENTO")
-    draw.Text(x_div + 8.0, y_row1_bot - 19.5, 5.5, 0.0, "DO CONCRETO:")
-    draw.Text(x_div + 60.0, y_row1_bot - 31.0, 5.5, 0.0, txt_ac)
+            # Registra o novo texto de viga invertida como obstaculo para nao sobrepor com lajes
+            obstaculos.append({
+                "tipo": "viga_invertida",
+                "bbox": _bbox_texto(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+            })
 
-    # ==========================================================================
-    # 2. TABELA DE RESUMO DE QUANTITATIVO (ABAIXO)
-    # ==========================================================================
-    gap_tabelas = 22.0
-    y_top2 = y_row2_bot - gap_tabelas
-    h_header2 = 20.0
-    h_row_q = 15.0
+        # ---------------------------------------------------------------------
+        # 2. PROCESSA LAJES (NIVEL 13) - SEM SOBREPOSICAO
+        # ---------------------------------------------------------------------
+        for b in bolinhas_laje:
+            dwg.edit.Erase(b["addr_circulo"])
+            dwg.edit.Erase(b["addr_texto"])
+            bolinhas_apagadas += 1
 
-    y_hdr_bot2 = y_top2 - h_header2
-    y_q_row1_bot = y_hdr_bot2 - h_row_q
-    y_q_row2_bot = y_q_row1_bot - h_row_q
+            val_str = _formatar_valor_cm(b["val"])
+            ang_txt = b["ang"]
+            nivel_txt = 13
+            h_reb = 10.0 if abs(b["h"] - 12.0) < 1.0 else round(b["h"] * 0.85, 1)
 
-    x_div_q = x_tab + 215.0
+            lin1 = "LAJE REBAIXADA"
+            lin2 = "%sCM" % val_str
 
-    # --- Cabecalho Quantitativo (Amarelo) ---
-    draw.level = 245
-    draw.color = 2  # Amarelo
+            # Associa ao cabecalho da laje (L... / h=...) somente se a bolinha estiver logo abaixo dele
+            laje = None
+            for lj in ctx["lajes"]:
+                if abs(lj["xc"] - b["xc"]) <= 45.0 and 0.0 <= (lj["yc"] - b["yc"]) <= 160.0:
+                    laje = lj
+                    break
 
-    # Retangulo cabecalho
-    draw.Line(x_tab, y_top2, x_fim, y_top2)
-    draw.Line(x_fim, y_top2, x_fim, y_hdr_bot2)
-    draw.Line(x_fim, y_hdr_bot2, x_tab, y_hdr_bot2)
-    draw.Line(x_tab, y_hdr_bot2, x_tab, y_top2)
+            if laje is not None and laje["esp"] is not None and ang_txt == 0.0:
+                esp = laje["esp"]
+                x_base = laje["xc"]
+                y_laje = laje["yc"]
+                y_esp = esp["yc"]
 
-    # Texto cabecalho centralizado
-    draw.Text(x_tab + 95.0, y_top2 - 13.0, 6.5, 0.0, "**RESUMO DE QUANTITATIVO")
+                # Se houver uma linha de concreto vertical logo a esquerda (laje estreita como L103),
+                # aproxima levemente da borda esquerda para ganhar espaco a direita
+                for xv, yv1, yv2 in ctx["linhas_vert_concreto"]:
+                    if yv1 <= y_laje <= yv2 and 0.0 < (x_base - xv) <= 25.0:
+                        x_base = max(xv + 2.7, x_base - 14.0)
+                        break
 
-    # --- Grade Quantitativo (Magenta) ---
-    draw.level = 243
-    draw.color = 6  # Magenta
+                # Posicoes relativas do bloco (Laje, h=15, LAJE REBAIXADA, 15CM)
+                dy_esp = y_esp - y_laje
+                dy_lin1 = dy_esp - (h_reb * 1.74)
+                dy_lin2 = dy_lin1 - (h_reb * 1.70)
 
-    # Contorno
-    draw.Line(x_tab, y_hdr_bot2, x_fim, y_hdr_bot2)
-    draw.Line(x_fim, y_hdr_bot2, x_fim, y_q_row2_bot)
-    draw.Line(x_fim, y_q_row2_bot, x_tab, y_q_row2_bot)
-    draw.Line(x_tab, y_q_row2_bot, x_tab, y_hdr_bot2)
+                def _testar_colisao_bloco(x_teste, y_laje_teste):
+                    boxes = [
+                        _bbox_texto(x_teste, y_laje_teste, laje["h"], 0.0, laje["nome"]),
+                        _bbox_texto(x_teste, y_laje_teste + dy_esp, esp["h"], 0.0, esp["texto"]),
+                        _bbox_texto(x_teste, y_laje_teste + dy_lin1, h_reb, 0.0, lin1),
+                        _bbox_texto(x_teste, y_laje_teste + dy_lin2, h_reb, 0.0, lin2),
+                    ]
+                    for bx in boxes:
+                        for obs in obstaculos:
+                            if _boxes_colidem(bx, obs["bbox"], margem=5.0):
+                                return True
+                    return False
 
-    # Divisoria vertical
-    draw.Line(x_div_q, y_hdr_bot2, x_div_q, y_q_row2_bot)
+                # Testa a altura atual; se colidir com VIGA INVERTIDA ou linha de corte,
+                # procura um deslocamento Y livre
+                y_escolhido = y_laje
+                if _testar_colisao_bloco(x_base, y_laje):
+                    candidatos_dy = [
+                        70.0, 80.0, 88.4, 95.0, 105.0, 115.0, 55.0, 40.0,
+                        -40.0, -55.0, -70.0, -85.0, -100.0
+                    ]
+                    for delta_y in candidatos_dy:
+                        if not _testar_colisao_bloco(x_base, y_laje + delta_y):
+                            y_escolhido = y_laje + delta_y
+                            break
 
-    # Divisoria horizontal entre formas e concreto
-    draw.Line(x_tab, y_q_row1_bot, x_fim, y_q_row1_bot)
+                # Move L103 e h=15 se a posicao do bloco foi ajustada para evitar colisao
+                dx_bloco = x_base - laje["xc"]
+                dy_bloco = y_escolhido - laje["yc"]
+                if abs(dx_bloco) > 0.1 or abs(dy_bloco) > 0.1:
+                    dwg.edit.Move(laje["addr_titulo"], dx_bloco, dy_bloco)
+                    dwg.edit.Move(esp["addr"], dx_bloco, dy_bloco)
 
-    # --- Calcular Quantitativos Reais ---
-    area_m2, vol_m3 = calcular_quantitativos_escada(dados)
-    txt_area = f"{area_m2:.2f} m2"
-    txt_vol = f"{vol_m3:.2f} m3"
+                dwg.draw.level = nivel_txt
+                dwg.draw.color = -1
+                dwg.draw.style = 0
+                dwg.draw.Text(x_base, y_escolhido + dy_lin1, h_reb, 0.0, lin1)
+                dwg.draw.Text(x_base, y_escolhido + dy_lin2, h_reb, 0.0, lin2)
+                textos_criados += 1
+            else:
+                # Bolinha de Nivel 13 avulsa (ex: trocada pelo usuario para teste):
+                # escreve LAJE REBAIXADA xCM direto na posicao e orientacao da bolinha
+                dwg.draw.level = nivel_txt
+                dwg.draw.color = -1
+                dwg.draw.style = 0
+                dwg.draw.Text(b["xc"], b["yc"], h_reb, ang_txt, lin1)
+                if ang_txt == 90.0:
+                    dwg.draw.Text(b["xc"] + h_reb * 1.7, b["yc"], h_reb, ang_txt, lin2)
+                else:
+                    dwg.draw.Text(b["xc"], b["yc"] - h_reb * 1.7, h_reb, ang_txt, lin2)
+                textos_criados += 1
 
-    # --- Textos Quantitativo (Amarelo) ---
-    draw.color = 2  # Amarelo
+        # Se ja houver cotas no desenho, reorganiza textos de pilares/vigas/lajes sem sobreposicao
+        try:
+            cotas_helper.organizar_textos_sem_sobreposicao(dwg)
+        except Exception:
+            pass
 
-    # Row 1: AREA DE FORMAS
-    draw.Text(x_tab + 12.0, y_hdr_bot2 - 10.0, 5.5, 0.0, "*AREA DE FORMAS")
-    larg_txt_a = len(txt_area) * (5.5 * 0.8)
-    x_pos_a = x_div_q + max((105.0 - larg_txt_a) / 2.0, 5.0)
-    draw.Text(x_pos_a, y_hdr_bot2 - 10.0, 5.5, 0.0, txt_area)
+        tqsjan.Regen()
+        eag.msg.Print(
+            "G3 Plugins: %d bolinha(s) processada(s) -> %d indicacao(oes) organizada(s) sem sobreposicao!"
+            % (bolinhas_apagadas, textos_criados)
+        )
+        eag.msg.PrintStatus("%d inversao(oes) organizada(s) com sucesso!" % textos_criados)
 
-    # Row 2: VOLUME DE CONCRETO
-    draw.Text(x_tab + 12.0, y_q_row1_bot - 10.0, 5.5, 0.0, "*VOLUME DE CONCRETO")
-    larg_txt_v = len(txt_vol) * (5.5 * 0.8)
-    x_pos_v = x_div_q + max((105.0 - larg_txt_v) / 2.0, 5.0)
-    draw.Text(x_pos_v, y_q_row1_bot - 10.0, 5.5, 0.0, txt_vol)
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
 
-    # --- Nota de Rodape ---
-    draw.Text(x_tab + 80.0, y_q_row2_bot - 13.0, 6.0, 0.0, "**CONFERIR QUANTITATIVOS NA OBRA")
+
+def cmd_criar_cotas(eag, tqsjan):
+    """
+    Cria automaticamente as cotas externas (em camadas) e completa as cadeias
+    de cotas internas da planta de formas sem duplicar cotas existentes.
+    """
+    try:
+        dwg = tqsjan.dwg
+        cotador = cotas_helper.CotadorFormas(dwg)
+        criadas = cotador.cotar_forma_completa()
+
+        if criadas > 0:
+            tqsjan.Regen()
+            eag.msg.Print("G3 Plugins: %d cota(s) gerada(s) automaticamente na planta de formas!" % criadas)
+            eag.msg.PrintStatus("%d cota(s) criada(s) com sucesso!" % criadas)
+        else:
+            eag.msg.Print("G3 Plugins: Todas as cotas da planta de formas ja existem (nenhuma cota duplicada).")
+            eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
+
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+
+def cmd_corrigir_vazios(eag, tqsjan):
+    """
+    Substitui o nivel de todas as linhas de representacao em X de vazios
+    do Nivel 241 para o Nivel 210.
+    """
+    try:
+        dwg = tqsjan.dwg
+        addrs = []
+        dwg.iterator.Begin()
+        while True:
+            tipo = dwg.iterator.Next()
+            if tipo == TQSDwg.DWGTYPE_EOF:
+                break
+            if dwg.iterator.level == 241:
+                addrs.append(dwg.iterator.GetElementReadPosition())
+
+        if not addrs:
+            eag.msg.Print("G3 Plugins: Nenhuma linha em X no nivel 241 encontrada.")
+            eag.msg.PrintStatus("Nenhum vazio no nivel 241 encontrado.")
+            return
+
+        for addr in addrs:
+            dwg.edit.ModifyLevel(addr, 210)
+
+        tqsjan.Regen()
+        total = len(addrs)
+        eag.msg.Print("G3 Plugins: %d linha(s) de vazio alterada(s) do nivel 241 para o nivel 210 com sucesso!" % total)
+        eag.msg.PrintStatus("%d linha(s) de vazio corrigida(s)!" % total)
+
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
 
 
 def meucmd(eag, tqsjan):
-    """Funcao principal acionada pelo menu TQS."""
-    dados = pedir_dados_janela_windows()
-
-    if dados is None:
-        return
-
-    icod, x0, y0 = eag.locate.GetPoint(tqsjan, "Clique no ponto inicial da escada")
-    if icod == -1:
-        return
-
-    desenhar_perfil_escada(tqsjan.dwg, x0, y0, dados)
-    if dados.get("desenhar_planta", True):
-        desenhar_planta_escada(tqsjan.dwg, x0, y0, dados)
-
-        # Se for escada de 2 lances, desenha tambem o corte do 1º lance isolado abaixo da planta
-        if dados.get("num_lances", 2) == 2:
-            largura_l1 = float(dados.get("largura_lance_1", 120.0))
-            largura_l2 = float(dados.get("largura_lance_2", 105.5))
-            vao_lances = float(dados.get("vao_lances", 0.0))
-            largura_total = largura_l1 + vao_lances + largura_l2
-            viga_largura = float(dados.get("viga_largura", 20.0))
-            viga_altura = float(dados.get("viga_altura", 40.0))
-
-            dist_offset = viga_altura + 270.0
-            y_planta_top = y0 - dist_offset
-            y_planta_bot = y_planta_top - largura_total
-            y_min_ext = y_planta_bot - viga_largura
-
-            n1 = int(dados["n_degraus_1"])
-            espelho = float(dados["espelho"])
-            alterar_extremos = dados.get("alterar_extremos", False)
-            if isinstance(alterar_extremos, str):
-                alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
-            espelho_primeiro = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
-            altura_l1 = espelho_primeiro + (n1 - 1) * espelho
-
-            # Folga abaixo da planta para o topo do 1º lance
-            dist_offset_l1 = viga_altura + 240.0
-            y0_lance1 = y_min_ext - dist_offset_l1 - altura_l1
-
-            desenhar_perfil_lance1_isolado(tqsjan.dwg, x0, y0_lance1, dados)
-
-    # Desenha a Tabela de Criterios e Resumo de Quantitativo a direita da escada
-    gerar_tabela = dados.get("gerar_tabela", True)
-    if isinstance(gerar_tabela, str):
-        gerar_tabela = (gerar_tabela.lower() in ["true", "1", "sim"])
-
-    if gerar_tabela:
-        num_lances = dados.get("num_lances", 2)
-        piso = float(dados["piso"])
-        n1 = int(dados["n_degraus_1"])
-        espelho = float(dados["espelho"])
-        alterar_extremos = dados.get("alterar_extremos", False)
-        if isinstance(alterar_extremos, str):
-            alterar_extremos = (alterar_extremos.lower() in ["true", "1", "sim"])
-        espelho_primeiro = float(dados.get("espelho_primeiro", espelho)) if alterar_extremos else espelho
-        altura_l1 = espelho_primeiro + (n1 - 1) * espelho
-
-        patamar_int_1 = float(dados.get("patamar_intermediario_1", 120.0))
-        patamar_chegada = float(dados.get("patamar_chegada", 150.0))
-        tem_patamar_chegada = dados.get("tem_patamar_chegada", True)
-        if isinstance(tem_patamar_chegada, str):
-            tem_patamar_chegada = (tem_patamar_chegada.lower() in ["true", "1", "sim"])
-        viga_largura = float(dados.get("viga_largura", 20.0))
-
-        if num_lances >= 2:
-            x_max_escada = x0 + (n1 - 1) * piso + patamar_int_1 + viga_largura
-        else:
-            x_max_escada = x0 + (n1 - 1) * piso + (patamar_chegada + viga_largura if tem_patamar_chegada else viga_largura)
-
-        x_tabela = x_max_escada + 120.0
-        y_tabela = y0 + altura_l1 + 10.0
-
-        desenhar_tabela_criterios_quantitativos(tqsjan.dwg, x_tabela, y_tabela, dados)
-
-    tqsjan.ZoomTotal()
-    tqsjan.Regen()
+    """Entry point padrao de Formas (chama Linha de Corte)."""
+    cmd_linha_de_corte(eag, tqsjan)
