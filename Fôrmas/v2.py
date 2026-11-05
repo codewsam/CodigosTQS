@@ -9,7 +9,8 @@ Funcoes:
   2. Inversoes (identifica bolinhas pelo Nivel: Nivel 11 = Viga, Nivel 13 = Laje,
      agrupando bolinhas da mesma viga e organizando textos sem sobreposicao)
   3. Criar Cotas (cotagem automatica completa de formas em camadas usando cotas_helper)
-  4. Corrigir Vazios (substitui elementos em X de vazios do Nivel 241 para o Nivel 210)
+  4. Corrigir Vazio e Indicador de Laje (substitui linhas em X de vazios do Nivel 241
+     para o Nivel 210 e apaga setas/indicadores de direcao de laje no Nivel 240)
 ================================================================================
 """
 import math
@@ -743,31 +744,49 @@ def cmd_criar_cotas(eag, tqsjan):
 def cmd_corrigir_vazios(eag, tqsjan):
     """
     Substitui o nivel de todas as linhas de representacao em X de vazios
-    do Nivel 241 para o Nivel 210.
+    do Nivel 241 para o Nivel 210 e apaga as setas/indicadores de direcao
+    de lajes no Nivel 240.
     """
     try:
         dwg = tqsjan.dwg
-        addrs = []
+        addrs_241 = []
+        addrs_240 = []
+
         dwg.iterator.Begin()
         while True:
             tipo = dwg.iterator.Next()
             if tipo == TQSDwg.DWGTYPE_EOF:
                 break
-            if dwg.iterator.level == 241:
-                addrs.append(dwg.iterator.GetElementReadPosition())
+            nivel = dwg.iterator.level
+            addr = dwg.iterator.GetElementReadPosition()
 
-        if not addrs:
-            eag.msg.Print("G3 Plugins: Nenhuma linha em X no nivel 241 encontrada.")
-            eag.msg.PrintStatus("Nenhum vazio no nivel 241 encontrado.")
+            if nivel == 241:
+                addrs_241.append(addr)
+            elif nivel == 240:
+                addrs_240.append(addr)
+
+        if not addrs_241 and not addrs_240:
+            eag.msg.Print("G3 Plugins: Nenhuma linha de vazio (nivel 241) ou indicador de laje (nivel 240) encontrado.")
+            eag.msg.PrintStatus("Nenhum elemento encontrado.")
             return
 
-        for addr in addrs:
+        for addr in addrs_241:
             dwg.edit.ModifyLevel(addr, 210)
 
+        for addr in addrs_240:
+            dwg.edit.Erase(addr)
+
         tqsjan.Regen()
-        total = len(addrs)
-        eag.msg.Print("G3 Plugins: %d linha(s) de vazio alterada(s) do nivel 241 para o nivel 210 com sucesso!" % total)
-        eag.msg.PrintStatus("%d linha(s) de vazio corrigida(s)!" % total)
+
+        msgs = []
+        if addrs_241:
+            msgs.append("%d linha(s) de vazio (241 -> 210)" % len(addrs_241))
+        if addrs_240:
+            msgs.append("%d indicador(es)/seta(s) de laje (nivel 240 apagados)" % len(addrs_240))
+
+        resumo = " e ".join(msgs)
+        eag.msg.Print("G3 Plugins: Sucesso! %s." % resumo)
+        eag.msg.PrintStatus("Vazios e indicadores de laje corrigidos!")
 
     except Exception as e:
         try:
