@@ -1,42 +1,163 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-G3 PLUGINS - ANTI-SOBREPOSICAO (TQS EAG)
+G3 PLUGINS - FORMAS (TQS EAG)
 ================================================================================
-Modulo especializado em organizacao espacial e resolucao inteligente de
-sobreposicoes em plantas de formas no ambiente TQS EAG.
-
-Implementa rigorosamente as diretrizes da Skill:
-  .gemini/skills/tqs-anti-sobreposicao/SKILL.md
-
-Principais Leis e Recursos:
-  1. Mapeamento Semantico de Niveis (Layers imutaveis vs moveis/deslizantes)
-  2. Lei no 1: Grupos Atomicos (nunca desmembrar P.. de b/h, bolinha de numero, L.. de h=..)
-  3. Lei no 2: Seta de Chamada Executiva no Nivel 221 para Pilares com patamar
-     passando exatamente entre o nome P.. e a secao b/h, com idempotencia.
-  4. Lei no 3: Restricoes de Jaula (deslizamento axial de vigas, orbita de pilares,
-     confinamento celular de lajes).
-  5. Pipeline Completo: Vigas/Bolinhas -> Pilares + Setas -> Lajes.
+Modulo dedicado a ferramentas e automatizacoes de formas estruturais.
+Funcoes:
+  1. Linha de Corte (criacao automatica de linha Nivel 205, Cor 2, Estilo -1)
+  2. Inversoes (identifica bolinhas pelo Nivel: Nivel 11 = Viga, Nivel 13 = Laje,
+     agrupando bolinhas da mesma viga e organizando textos sem sobreposicao)
+  3. Criar Cotas (cotagem automatica completa de formas em camadas usando cotas_helper)
+  4. Corrigir Vazio e Indicador de Laje (substitui linhas em X de vazios do Nivel 241
+     para o Nivel 210 e apaga setas/indicadores de direcao de laje no Nivel 240)
 ================================================================================
 """
-
 import math
-from TQS import TQSUtil, TQSDwg
-
-try:
-    TQSUtil.LoadDll("IPOCOT.DLL")
-except Exception:
-    pass
+from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
+import cotas_helper
 
 
-def _garantir_ipocot_carregado():
+def encontrar_pares_de_corte(dwg):
+    """
+    Varre o desenho procurando blocos de corte ($CORTEA, LINCOR, etc.)
+    e agrupa em pares colineares (cortes verticais e horizontais).
+    """
+    pontos_corte = []
+    dwg.iterator.Begin()
+    while True:
+        tipo = dwg.iterator.Next()
+        if tipo == TQSDwg.DWGTYPE_EOF:
+            break
+        if tipo == TQSDwg.DWGTYPE_BLOCK:
+            nome_bloco = dwg.iterator.blockName.upper()
+            if "CORTE" in nome_bloco or "LINCOR" in nome_bloco:
+                pontos_corte.append({
+                    "x": dwg.iterator.xc,
+                    "y": dwg.iterator.yc,
+                    "ang": dwg.iterator.insertAngle,
+                    "bloco": dwg.iterator.blockName
+                })
+
+    pares = []
+    usados = set()
+    n = len(pontos_corte)
+
+    # 1. Cortes Verticais (mesmo X aproximado, delta Y significativo)
+    for i in range(n):
+        if i in usados:
+            continue
+        for j in range(i + 1, n):
+            if j in usados:
+                continue
+            p1 = pontos_corte[i]
+            p2 = pontos_corte[j]
+            if abs(p1["x"] - p2["x"]) <= 2.0 and abs(p1["y"] - p2["y"]) >= 10.0:
+                pares.append(((p1["x"], p1["y"]), (p2["x"], p2["y"]), "vertical"))
+                usados.add(i)
+                usados.add(j)
+                break
+
+    # 2. Cortes Horizontais (mesmo Y aproximado, delta X significativo)
+    for i in range(n):
+        if i in usados:
+            continue
+        for j in range(i + 1, n):
+            if j in usados:
+                continue
+            p1 = pontos_corte[i]
+            p2 = pontos_corte[j]
+            if abs(p1["y"] - p2["y"]) <= 2.0 and abs(p1["x"] - p2["x"]) >= 10.0:
+                pares.append(((p1["x"], p1["y"]), (p2["x"], p2["y"]), "horizontal"))
+                usados.add(i)
+                usados.add(j)
+                break
+
+    return pares
+
+
+def cmd_linha_de_corte(eag, tqsjan):
+    """
+    Cria automaticamente as linhas de corte conectando as marcas existentes ($CORTEA).
+    Propriedades definidas: Nivel 205, Cor 2 (Amarelo), Estilo de linha -1 (Por nivel).
+    Se nao encontrar marcadores automaticos, oferece selecao manual por 2 pontos.
+    """
     try:
-        TQSUtil.LoadDll("IPOCOT.DLL")
-    except Exception:
-        pass
+        dwg = tqsjan.dwg
+        pares = encontrar_pares_de_corte(dwg)
+
+        linhas_criadas = 0
+
+        if pares:
+            # Configura propriedades da linha de corte: Nivel 205, Cor 2 (Amarelo), Estilo -1 (Por nivel)
+            dwg.draw.level = 205
+            dwg.draw.color = 2
+            dwg.draw.style = -1
+
+            for pt1, pt2, direcao in pares:
+                dwg.draw.Line(pt1[0], pt1[1], pt2[0], pt2[1])
+                linhas_criadas += 1
+
+            tqsjan.Regen()
+            eag.msg.Print("G3 Plugins: %d linha(s) de corte gerada(s) automaticamente!" % linhas_criadas)
+            eag.msg.PrintStatus("%d linha(s) de corte gerada(s) com sucesso!" % linhas_criadas)
+        else:
+            # Fallback interativo: se a forma nao tiver o bloco $CORTEA padrao
+            eag.msg.Print("Nenhum marcador de corte automatico encontrado.")
+            eag.msg.Print("Modo manual: selecione os dois pontos da linha de corte.")
+            
+            icod, x1, y1 = eag.locate.GetPoint(tqsjan, "Linha de Corte: Selecione o 1o ponto (ou <Esc> para sair)")
+            if icod != 1:
+                return
+            
+            icod2, x2, y2 = eag.locate.GetSecondPoint(
+                tqsjan, x1, y1, TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN,
+                "Linha de Corte: Selecione o 2o ponto"
+            )
+            if icod2 != 1:
+                return
+
+            dwg.draw.level = 205
+            dwg.draw.color = 2
+            dwg.draw.style = -1
+            dwg.draw.Line(x1, y1, x2, y2)
+            tqsjan.Regen()
+            eag.msg.Print("G3 Plugins: Linha de corte manual desenhada com sucesso!")
+
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+
+def _parse_valor_bolinha(texto_str):
+    """
+    Tenta extrair um valor numerico de desnivel/inversao do texto da bolinha (ex: '15', '-15', '+15').
+    Retorna float ou None se nao for numero valido.
+    """
+    if not texto_str:
+        return None
+    limpo = texto_str.strip().replace(",", ".")
+    try:
+        val = float(limpo)
+        if abs(val) < 1e-4:
+            return None
+        return val
+    except ValueError:
+        return None
+
+
+def _formatar_valor_cm(val):
+    """Formata o valor absoluto sem casas decimais desnecessarias."""
+    val_abs = abs(val)
+    if abs(val_abs - round(val_abs)) < 1e-4:
+        return str(int(round(val_abs)))
+    return ("%g" % val_abs).replace(".", ",")
 
 
 def _normalizar_angulo(ang):
+    """Normaliza angulo para 0.0 (horizontal) ou 90.0 (vertical) quando proximo."""
     a = ang % 360.0
     if a < 0:
         a += 360.0
@@ -47,20 +168,21 @@ def _normalizar_angulo(ang):
     return round(a, 2)
 
 
-def _bbox_texto(x1, y1, h, ang, texto_str):
+def _bbox_texto(xc, yc, h, ang, texto_str):
     """
-    Calcula bounding box (xmin, ymin, xmax, ymax) de um texto no TQS.
-    Cada caractere ocupa aproximadamente 1.0 * h na fonte padrao TQS.
+    Calcula o bounding box aproximado (xmin, ymin, xmax, ymax) de um texto no TQS.
+    No TQS, (xc, yc) e o ponto inferior-esquerdo da linha de base.
     """
     comp = len(texto_str) * h * 1.0
     a = _normalizar_angulo(ang)
     if a == 90.0:
-        return (x1 - h * 1.15, y1, x1 + h * 0.25, y1 + comp)
+        # Quando rotacionado a 90 graus, o texto cresce em +Y e tem altura para a esquerda (-X)
+        return (xc - h * 1.15, yc, xc + h * 0.25, yc + comp)
     else:
-        return (x1, y1 - h * 0.25, x1 + comp, y1 + h * 1.15)
+        return (xc, yc - h * 0.25, xc + comp, yc + h * 1.15)
 
 
-def _boxes_colidem(b1, b2, margem=2.0):
+def _boxes_colidem(b1, b2, margem=4.0):
     """Verifica se dois bounding boxes (xmin, ymin, xmax, ymax) se sobrepoem com margem."""
     return not (
         b1[2] + margem < b2[0] or
@@ -70,107 +192,67 @@ def _boxes_colidem(b1, b2, margem=2.0):
     )
 
 
-def _segmento_colide_box(x1, y1, x2, y2, box, margem=1.0):
-    """Verifica se um segmento de reta cruza ou toca um bounding box."""
-    bx_seg = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
-    if not _boxes_colidem(bx_seg, box, margem=margem):
-        return False
-    if abs(x1 - x2) < 0.5:  # Segmento vertical
-        xv = 0.5 * (x1 + x2)
-        if (box[0] - margem) <= xv <= (box[2] + margem):
-            return max(box[1], min(y1, y2)) <= min(box[3], max(y1, y2))
-    elif abs(y1 - y2) < 0.5:  # Segmento horizontal
-        yh = 0.5 * (y1 + y2)
-        if (box[1] - margem) <= yh <= (box[3] + margem):
-            return max(box[0], min(x1, x2)) <= min(box[2], max(x1, x2))
-    return True
-
-
-def desenhar_seta_chamada_executiva(dwg, x_fim_patamar, x_joelho, y_patamar, x_seta, y_seta):
+def _resolver_nivel_bolinha(nivel_circulo, nivel_texto, xc_tx, yc_tx, lajes):
     """
-    Desenha a Seta de Chamada Executiva no Nivel 221 (padrao executivo da Skill):
-      - Patamar horizontal passando exatamente entre o nome do pilar e a secao
-      - Linha diagonal (leader) do joelho ate a borda mais proxima do pilar
-      - Cabeca da seta na ponta com duas asas de 6.0 cm a 18 graus
+    Determina o nivel efetivo da bolinha (11 = Viga, 13 = Laje):
+      - Se Circulo e Texto estao no mesmo nivel, usa esse nivel.
+      - Se o usuario alterou apenas o Circulo (ou apenas o Texto) no EAG para testar:
+        - Se algum dos dois foi mudado para fora de (11, 13), retorna esse nivel (sera ignorado).
+        - Se um e 11 e o outro e 13, verifica o contexto original (abaixo de titulo de laje L...
+          era originalmente 13, logo foi mudado para 11; caso contrario era 11 e foi mudado para 13).
     """
-    dwg.draw.level = 221
-    dwg.draw.color = -1
-    dwg.draw.style = 0
+    if nivel_circulo == nivel_texto:
+        return nivel_circulo
 
-    # 1. Patamar horizontal
-    dwg.draw.Line(x_fim_patamar, y_patamar, x_joelho, y_patamar)
+    # Se um deles foi alterado para um nivel diferente de 11 e 13 (ex: nivel 0, 200, etc.)
+    if nivel_circulo not in (11, 13):
+        return nivel_circulo
+    if nivel_texto not in (11, 13):
+        return nivel_texto
 
-    # 2. Linha diagonal ate o pilar
-    dwg.draw.Line(x_joelho, y_patamar, x_seta, y_seta)
+    # Um e 11 e o outro e 13: descobre qual era o nivel original pela posicao (laje vs viga)
+    estava_em_laje = False
+    for lj in lajes:
+        if abs(lj["xc"] - xc_tx) <= 35.0 and 0.0 <= (lj["yc"] - yc_tx) <= 85.0:
+            estava_em_laje = True
+            break
 
-    # 3. Cabeca da seta na ponta (x_seta, y_seta)
-    dx = x_joelho - x_seta
-    dy = y_patamar - y_seta
-    comp = math.hypot(dx, dy)
-    if comp > 1.0:
-        ang_base = math.atan2(dy, dx)
-        comp_seta = 6.0
-        abertura = math.radians(18.0)
-        for sinal in (-1.0, 1.0):
-            ang_asa = ang_base + sinal * abertura
-            xa = x_seta + comp_seta * math.cos(ang_asa)
-            ya = y_seta + comp_seta * math.sin(ang_asa)
-            dwg.draw.Line(x_seta, y_seta, xa, ya)
+    if estava_em_laje:
+        # Originalmente era 13 (Laje); se um dos dois agora e 11, o usuario trocou para 11 (Viga)
+        return 11
+    else:
+        # Originalmente era 11 (Viga); se um dos dois agora e 13, o usuario trocou para 13 (Laje)
+        return 13
 
 
-def apagar_chamadas_antigas_do_pilar(dwg, pcx, pcy, linhas_242, linhas_221_setas, raio_busca=35.0):
+def coletar_contexto_inversoes(dwg):
     """
-    Idempotencia: apaga qualquer linha nativa de chamada do TQS (Nivel 242) ou
-    seta de chamada anterior (Nivel 221) associada ao pilar fisico, permitindo
-    rodar o comando repetidas vezes (antes ou depois de cotar) sem duplicar linhas.
+    Varre o DWG coletando:
+      - Bolinhas de viga (Nivel 11 - Dimensoes de vigas) e de laje (Nivel 13 - Dimensoes de lajes)
+      - Titulos de vigas (Nivel 8, 'V...') e secoes de vigas (Nivel 11, 'b/h')
+      - Titulos de lajes (Nivel 10, 'L...') e espessuras de lajes (Nivel 13, 'h=...')
+      - Obstaculos (outros textos, pilares, linhas de corte e linhas de concreto)
     """
-    apagadas = 0
-    # Nivel 242 (chamada nativa TQS)
-    for l242 in linhas_242:
-        if abs(l242["x1"] - pcx) <= raio_busca and abs(l242["y1"] - pcy) <= raio_busca:
-            try:
-                dwg.edit.Erase(l242["addr"])
-                apagadas += 1
-            except Exception:
-                pass
+    circulos = []
+    textos_numericos = []
+    vigas = []
+    lajes = []
+    obstaculos = []
+    linhas_vert_concreto = []
+    linhas_horiz_concreto = []
+    secoes_viga_coletadas = []
 
-    # Nivel 221 (setas executivas anteriores que tocam o pilar)
-    for l221 in linhas_221_setas:
-        d1 = math.hypot(l221["x1"] - pcx, l221["y1"] - pcy)
-        d2 = math.hypot(l221["x2"] - pcx, l221["y2"] - pcy)
-        if min(d1, d2) <= raio_busca:
-            try:
-                dwg.edit.Erase(l221["addr"])
-                apagadas += 1
-            except Exception:
-                pass
+    viga_atual = None
+    laje_atual = None
 
-    return apagadas
-
-
-def executar_anti_sobreposicao(dwg):
-    """
-    Executa o pipeline completo de anti-sobreposicao em conformidade com a Skill:
-      1. Scanner geral do DWG (obstaculos fixos, cotas, textos, polilineas, bolinhas)
-      2. Montagem dos Grupos Atomicos (PilarGroup, BolinhaGroup, SecaoVigaGroup, LajeGroup)
-      3. Estagio 1: Desobstrucao axial de vigas e bolinhas (ao longo do eixo da viga)
-      4. Estagio 2: Realocacao inteligente de pilares com Seta Executiva no Nivel 221
-      5. Estagio 3: Confinamento e ajuste de lajes dentro de sua celula
-    Retorna o total de elementos reposicionados e organizados.
-    """
-    _garantir_ipocot_carregado()
-
-    # -------------------------------------------------------------------------
-    # 1. SCANNER DO DWG
-    # -------------------------------------------------------------------------
-    poly_pilares = []       # Polilineas de pilares fisicos (Niveis 3 e 4)
-    lines_concreto = []      # Segmentos de concreto (Niveis 1, 2, 201)
-    obstaculos_fixos = []    # Shafts/Vazios em X (210, 241), Linhas de corte (200, 205)
-    todos_obstaculos_cotas = [] # Segmentos de cotas/IPOCOT (122, 216, 221)
-    texts_raw = []
-    circs_raw = []
-    linhas_242 = []
-    linhas_221_setas = []
+    # Pares de corte tambem contam como obstaculos (faixas de linha de corte)
+    pares_corte = encontrar_pares_de_corte(dwg)
+    for pt1, pt2, direcao in pares_corte:
+        xmin = min(pt1[0], pt2[0]) - 2.0
+        xmax = max(pt1[0], pt2[0]) + 2.0
+        ymin = min(pt1[1], pt2[1]) - 2.0
+        ymax = max(pt1[1], pt2[1]) + 2.0
+        obstaculos.append({"tipo": "corte", "direcao": direcao, "bbox": (xmin, ymin, xmax, ymax)})
 
     dwg.iterator.Begin()
     while True:
@@ -180,391 +262,562 @@ def executar_anti_sobreposicao(dwg):
         if dwg.iterator.inBlock != 0:
             continue
 
-        l = dwg.iterator.level
+        nivel = dwg.iterator.level
         addr = dwg.iterator.GetElementReadPosition()
 
-        if tipo == TQSDwg.DWGTYPE_POLYLINE:
+        # Linhas/Polylines de concreto (Nivel 1 e 2) e pilares (Nivel 4)
+        if tipo == TQSDwg.DWGTYPE_POLYLINE and nivel in (1, 2, 4):
             pts = [dwg.iterator.GetPolylinePt(i) for i in range(dwg.iterator.xySize)]
-            if not pts:
-                continue
-            xs = [p[0] for p in pts]
-            ys = [p[1] for p in pts]
-            dx_poly = max(xs) - min(xs)
-            dy_poly = max(ys) - min(ys)
-            # Poligonos de pilares (nascem, morrem, continuam nos niveis 2, 3, 4, 5)
-            if l in (2, 3, 4, 5) and 8.0 <= dx_poly <= 180.0 and 8.0 <= dy_poly <= 180.0 and len(pts) >= 4:
-                poly_pilares.append({
-                    "addr": addr,
-                    "level": l,
-                    "pts": pts,
-                    "box": (min(xs), min(ys), max(xs), max(ys)),
-                    "pcx": 0.5 * (min(xs) + max(xs)),
-                    "pcy": 0.5 * (min(ys) + max(ys)),
-                })
-            elif l in (1, 2, 201):
-                for i in range(len(pts) - 1):
-                    lines_concreto.append((pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1], l))
-            elif l in (210, 241, 200, 205):
-                obstaculos_fixos.append((min(xs), min(ys), max(xs), max(ys)))
+            if nivel == 4 and pts:
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                obstaculos.append({"tipo": "pilar", "bbox": (min(xs), min(ys), max(xs), max(ys))})
+            elif nivel in (1, 2) and len(pts) >= 2:
+                for k in range(len(pts) - 1):
+                    x1, y1 = pts[k]
+                    x2, y2 = pts[k + 1]
+                    if abs(x1 - x2) < 1.0 and abs(y1 - y2) > 20.0:
+                        linhas_vert_concreto.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
+                    elif abs(y1 - y2) < 1.0 and abs(x1 - x2) > 20.0:
+                        linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
 
-        elif tipo == TQSDwg.DWGTYPE_LINE:
-            x1, y1, x2, y2 = dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2
-            if l in (1, 2, 201):
-                lines_concreto.append((x1, y1, x2, y2, l))
-            elif l in (210, 241, 200, 205):
-                obstaculos_fixos.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
-            elif l in (122, 216):
-                todos_obstaculos_cotas.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
-            elif l == 221:
-                # Linha de cota existente ou antiga seta de chamada
-                todos_obstaculos_cotas.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
-                linhas_221_setas.append({
-                    "addr": addr, "x1": x1, "y1": y1, "x2": x2, "y2": y2
-                })
-            elif l == 242:
-                linhas_242.append({
-                    "addr": addr, "x1": x1, "y1": y1, "x2": x2, "y2": y2
-                })
-
-        elif tipo == TQSDwg.DWGTYPE_TEXT:
-            txt_str = dwg.iterator.text.strip()
-            h = dwg.iterator.textHeight
-            ang = _normalizar_angulo(dwg.iterator.textAngle)
-            x1, y1 = dwg.iterator.x1, dwg.iterator.y1
-            x2, y2 = dwg.iterator.x2, dwg.iterator.y2
-            xc, yc = dwg.iterator.xc, dwg.iterator.yc
-            b = _bbox_texto(x1, y1, h, ang, txt_str)
-
-            if l in (122, 216):
-                todos_obstaculos_cotas.append(b)
-            else:
-                texts_raw.append({
-                    "addr": addr, "level": l, "txt": txt_str,
-                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                    "xc": xc, "yc": yc, "h": h, "ang": ang, "box": b
-                })
+        elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (200, 205):
+            xmin = min(dwg.iterator.x1, dwg.iterator.x2) - 2.0
+            xmax = max(dwg.iterator.x1, dwg.iterator.x2) + 2.0
+            ymin = min(dwg.iterator.y1, dwg.iterator.y2) - 2.0
+            ymax = max(dwg.iterator.y1, dwg.iterator.y2) + 2.0
+            obstaculos.append({"tipo": "corte_linha", "bbox": (xmin, ymin, xmax, ymax)})
 
         elif tipo == TQSDwg.DWGTYPE_CIRCLE:
-            circs_raw.append({
-                "addr": addr, "level": l,
-                "xc": dwg.iterator.xc, "yc": dwg.iterator.yc, "r": dwg.iterator.radius
-            })
-
-    total_ajustes = 0
-
-    # -------------------------------------------------------------------------
-    # 2. MONTAGEM DOS GRUPOS ATOMICOS (LEI No 1)
-    # -------------------------------------------------------------------------
-    # A. BolinhaGroup: Circulo + Texto numerico interno
-    bolinhas_group = []
-    used_tx_idx = set()
-    for c in circs_raw:
-        best_tx = None
-        min_d = float("inf")
-        for i, tx in enumerate(texts_raw):
-            if i in used_tx_idx or tx["level"] not in (11, 13):
+            if nivel in (28, 29):
                 continue
-            if "/" in tx["txt"] or "=" in tx["txt"] or tx["txt"].lower().startswith("h"):
+            circulos.append({
+                "addr": addr,
+                "xc": dwg.iterator.xc,
+                "yc": dwg.iterator.yc,
+                "r": dwg.iterator.radius,
+                "level": nivel,
+            })
+
+        elif tipo == TQSDwg.DWGTYPE_TEXT:
+            if nivel in (28, 29):
                 continue
-            d = math.hypot(c["xc"] - tx["xc"], c["yc"] - tx["yc"])
-            if d <= c["r"] * 1.35 and d < min_d:
-                min_d = d
-                best_tx = (i, tx)
-        if best_tx is not None:
-            used_tx_idx.add(best_tx[0])
-            tx = best_tx[1]
-            bolinhas_group.append({
-                "addr_circ": c["addr"],
-                "addr_txt": tx["addr"],
-                "xc": c["xc"], "yc": c["yc"], "r": c["r"], "level": c["level"],
-                "txt": tx["txt"], "h": tx["h"], "ang": tx["ang"],
-                "box": (c["xc"] - c["r"], c["yc"] - c["r"], c["xc"] + c["r"], c["yc"] + c["r"]),
-                "dx_txt": tx["x1"] - c["xc"],
-                "dy_txt": tx["y1"] - c["yc"],
-            })
+            txt_raw = dwg.iterator.text.strip()
+            xc = dwg.iterator.xc
+            yc = dwg.iterator.yc
+            x1 = dwg.iterator.x1
+            y1 = dwg.iterator.y1
+            x2 = dwg.iterator.x2
+            y2 = dwg.iterator.y2
+            h = dwg.iterator.textHeight
+            ang = _normalizar_angulo(dwg.iterator.textAngle)
 
-    # B. PilarGroup: Nome P.. (Nivel 9) + Secao b/h (Nivel 12)
-    p9_list = [tx for tx in texts_raw if tx["level"] == 9 and tx["txt"].upper().startswith("P")]
-    p12_list = [tx for tx in texts_raw if tx["level"] == 12 and "/" in tx["txt"]]
-    pilares_group = []
-    used_12_idx = set()
-
-    # Pareamento 1-para-1 exclusivo entre P... e poly_pilares
-    poly_usados = set()
-    pilares_com_cands = []
-    for p9 in p9_list:
-        cands_p = []
-        for idx_pb, pb in enumerate(poly_pilares):
-            dp = math.hypot(p9["x1"] - pb["pcx"], p9["y1"] - pb["pcy"])
-            cands_p.append((dp, idx_pb, pb))
-        cands_p.sort(key=lambda x: x[0])
-        pilares_com_cands.append((p9, cands_p))
-
-    pilares_com_cands.sort(key=lambda x: x[1][0][0] if x[1] else float("inf"))
-    map_p9_poly = {}
-    for p9, cands_p in pilares_com_cands:
-        for dp, idx_pb, pb in cands_p:
-            if idx_pb not in poly_usados:
-                poly_usados.add(idx_pb)
-                map_p9_poly[id(p9)] = pb
-                break
-        if id(p9) not in map_p9_poly and cands_p:
-            map_p9_poly[id(p9)] = cands_p[0][2]
-
-    for p9 in p9_list:
-        best_12 = None
-        min_d = float("inf")
-        for i, p12 in enumerate(p12_list):
-            if i in used_12_idx:
+            # 1. Titulo de Viga (Nivel 8, ex: 'V101')
+            if nivel == 8 and txt_raw.upper().startswith("V"):
+                bx = _bbox_texto(xc, yc, h, ang, txt_raw)
+                viga_atual = {
+                    "nome": txt_raw,
+                    "addr_titulo": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                    "bbox": bx,
+                    "secao": None,
+                }
+                laje_atual = None
+                vigas.append(viga_atual)
+                obstaculos.append({
+                    "tipo": "viga_titulo",
+                    "addr": addr,
+                    "bbox": bx
+                })
                 continue
-            d = math.hypot(p9["x1"] - p12["x1"], p9["y1"] - p12["y1"])
-            if d <= 45.0 and d < min_d:
-                min_d = d
-                best_12 = (i, p12)
-        p12_obj = None
-        if best_12 is not None:
-            used_12_idx.add(best_12[0])
-            p12_obj = best_12[1]
 
-        bp9 = p9["box"]
-        bp12 = p12_obj["box"] if p12_obj else bp9
-        bconj = (min(bp9[0], bp12[0]), min(bp9[1], bp12[1]), max(bp9[2], bp12[2]), max(bp9[3], bp12[3]))
+            # 2. Secao de Viga (Nivel 11, ex: '14/70')
+            if nivel == 11 and "/" in txt_raw:
+                bx = _bbox_texto(xc, yc, h, ang, txt_raw)
+                sec_obj = {
+                    "texto": txt_raw,
+                    "addr": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                    "bbox": bx,
+                }
+                secoes_viga_coletadas.append(sec_obj)
+                obstaculos.append({
+                    "tipo": "viga_secao",
+                    "addr": addr,
+                    "bbox": bx
+                })
+                continue
 
-        p_poly = map_p9_poly.get(id(p9))
+            # 3. Titulo de Laje (Nivel 10, ex: 'L103')
+            if nivel == 10 and txt_raw.upper().startswith("L"):
+                laje_atual = {
+                    "nome": txt_raw,
+                    "addr_titulo": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                    "esp": None,
+                }
+                viga_atual = None
+                lajes.append(laje_atual)
+                continue
 
-        pilares_group.append({
-            "p9": p9,
-            "p12": p12_obj,
-            "dx_sec": (p12_obj["x1"] - p9["x1"]) if p12_obj else 0.0,
-            "dy_sec": (p12_obj["y1"] - p9["y1"]) if p12_obj else -18.0,
-            "box": bconj,
-            "larg_conj": bconj[2] - bconj[0],
-            "alt_conj": bconj[3] - bconj[1],
-            "p_poly": p_poly,
-        })
+            # 4. Espessura de Laje (Nivel 13, ex: 'h=15')
+            if nivel == 13 and ("=" in txt_raw or txt_raw.lower().startswith("h")):
+                esp_obj = {
+                    "texto": txt_raw,
+                    "addr": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "h": h, "ang": ang,
+                }
+                if laje_atual is not None and laje_atual["esp"] is None:
+                    laje_atual["esp"] = esp_obj
+                continue
 
-    # C. SecaoVigaGroup: Secao b/h (Nivel 11) + Bolinha acoplada (se houver)
-    vigas_titulo = [tx for tx in texts_raw if tx["level"] == 8 and tx["txt"].upper().startswith("V")]
-    vigas_inv_group = [tx for tx in texts_raw if tx["level"] == 11 and "VIGA INVERTIDA" in tx["txt"].upper()]
-    sec_vigas_group = []
-    for tx in texts_raw:
-        if tx["level"] == 11 and "/" in tx["txt"]:
-            bolinha_acoplada = None
-            for b in bolinhas_group:
-                if abs(tx["ang"] % 180.0) < 5.0:  # Horizontal
-                    if 0.0 < (b["xc"] - max(tx["x1"], tx["x2"])) <= 35.0 and abs(b["yc"] - tx["y1"]) <= 20.0:
-                        bolinha_acoplada = b
-                        break
-                else:  # Vertical
-                    if 0.0 < (b["yc"] - max(tx["y1"], tx["y2"])) <= 35.0 and abs(b["xc"] - tx["x1"]) <= 20.0:
-                        bolinha_acoplada = b
-                        break
-            sec_vigas_group.append({
-                "tx": tx,
-                "bolinha": bolinha_acoplada
+            # 5. Texto numerico (possivel interior de bolinha)
+            val = _parse_valor_bolinha(txt_raw)
+            if val is not None:
+                textos_numericos.append({
+                    "addr": addr,
+                    "xc": xc, "yc": yc,
+                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "text": txt_raw,
+                    "val": val,
+                    "h": h, "ang": ang,
+                    "level": nivel,
+                })
+            else:
+                # Outros textos (ex: P1, 25/25, etc.) sao obstaculos
+                obstaculos.append({
+                    "tipo": "texto",
+                    "addr": addr,
+                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                })
+
+    # Emparelha geometricamente cada circulo com seu texto numerico interno
+    # e verifica se o nivel efetivo da bolinha e 11 (Viga) ou 13 (Laje)
+    bolinhas = []
+    textos_usados = set()
+
+    for c in circulos:
+        melhor_tx = None
+        menor_dist = float("inf")
+
+        for idx, tx in enumerate(textos_numericos):
+            if idx in textos_usados:
+                continue
+
+            mx = 0.5 * (tx["x1"] + tx["x2"])
+            my = 0.5 * (tx["y1"] + tx["y2"])
+            dist_mid = math.hypot(c["xc"] - mx, c["yc"] - my)
+            dist_orig = math.hypot(c["xc"] - tx["xc"], c["yc"] - tx["yc"])
+
+            if dist_mid <= c["r"] * 1.25 or dist_orig <= c["r"] * 1.35:
+                if dist_mid < menor_dist:
+                    menor_dist = dist_mid
+                    melhor_tx = (idx, tx)
+
+        if melhor_tx is not None:
+            idx_tx, tx_obj = melhor_tx
+            textos_usados.add(idx_tx)
+
+            nivel_efetivo = _resolver_nivel_bolinha(
+                c["level"], tx_obj["level"], tx_obj["xc"], tx_obj["yc"], lajes
+            )
+            # So processa bolinhas cujo nivel efetivo seja 11 (Viga) ou 13 (Laje)
+            if nivel_efetivo not in (11, 13):
+                continue
+
+            bolinhas.append({
+                "addr_circulo": c["addr"],
+                "addr_texto": tx_obj["addr"],
+                "val": tx_obj["val"],
+                "xc": tx_obj["xc"],
+                "yc": tx_obj["yc"],
+                "h": tx_obj["h"],
+                "ang": tx_obj["ang"],
+                "level": nivel_efetivo,  # 11 = Viga, 13 = Laje
             })
 
-    # D. LajeGroup: Titulo L.. (Nivel 10) + Espessura h=.. (Nivel 13) + Itens
-    lajes_group = []
-    for tx in texts_raw:
-        if tx["level"] == 10 and tx["txt"].upper().startswith("L"):
-            # Encontra espessura h=... logo abaixo
-            esp_obj = None
-            for tx_esp in texts_raw:
-                if tx_esp["level"] == 13 and ("=" in tx_esp["txt"] or tx_esp["txt"].lower().startswith("h")):
-                    if abs(tx["x1"] - tx_esp["x1"]) <= 35.0 and 0.0 <= (tx["y1"] - tx_esp["y1"]) <= 55.0:
-                        esp_obj = tx_esp
-                        break
-            # Outros textos da laje (ex: LAJE REBAIXADA / xCM)
-            outros_itens = []
-            for tx_it in texts_raw:
-                if tx_it["level"] == 13 and tx_it is not esp_obj:
-                    if abs(tx["x1"] - tx_it["x1"]) <= 45.0 and 0.0 <= (tx["y1"] - tx_it["y1"]) <= 115.0:
-                        outros_itens.append(tx_it)
+    # Pareamento geometrico de secoes de viga com titulos de viga
+    for v in vigas:
+        if v["secao"] is None:
+            best_sec = None
+            min_d = float("inf")
+            for s in secoes_viga_coletadas:
+                if s["ang"] == v["ang"]:
+                    if v["ang"] == 0.0:
+                        if abs(v["y1"] - s["y1"]) <= 45.0:
+                            d = math.hypot(v["xc"] - s["xc"], v["yc"] - s["yc"])
+                            if d < 180.0 and d < min_d:
+                                min_d = d
+                                best_sec = s
+                    else:
+                        if abs(v["x1"] - s["x1"]) <= 45.0:
+                            d = math.hypot(v["xc"] - s["xc"], v["yc"] - s["yc"])
+                            if d < 180.0 and d < min_d:
+                                min_d = d
+                                best_sec = s
+            if best_sec is not None:
+                v["secao"] = best_sec
 
-            lajes_group.append({
-                "titulo": tx,
-                "esp": esp_obj,
-                "itens": outros_itens
-            })
+    return {
+        "bolinhas": bolinhas,
+        "vigas": vigas,
+        "secoes": secoes_viga_coletadas,
+        "lajes": lajes,
+        "obstaculos": obstaculos,
+        "linhas_vert_concreto": linhas_vert_concreto,
+        "linhas_horiz_concreto": linhas_horiz_concreto,
+    }
 
-    # -------------------------------------------------------------------------
-    # 3. ESTAGIO 1 — DESOBSTRUCAO AXIAL DE VIGAS E BOLINHAS (LEI No 3A)
-    # [DESATIVADO TEMPORARIAMENTE A PEDIDO DO USUARIO - FOCANDO APENAS EM PILARES]
-    # -------------------------------------------------------------------------
-    boxes_pilares = [pb["box"] for pb in poly_pilares]
-    # obstaculos_para_vigas = list(boxes_pilares) + list(obstaculos_fixos) + list(todos_obstaculos_cotas)
-    # (Estagio 1 de vigas comentado para focar exclusivamente na resolucao de pilares)
 
-    # -------------------------------------------------------------------------
-    # 4. ESTAGIO 2 — REALOCACAO INTELIGENTE DE PILARES + SETA EXECUTIVA (LEIS 2 e 3B)
-    # -------------------------------------------------------------------------
-    # Atualiza obstaculos para pilares (vigas atualizadas, shafts, cotas, linhas de corte)
-    obstaculos_para_pilar = list(boxes_pilares) + list(obstaculos_fixos) + list(todos_obstaculos_cotas)
-    for v in vigas_titulo:
-        obstaculos_para_pilar.append(v["box"])
-    for svg in sec_vigas_group:
-        obstaculos_para_pilar.append(svg["tx"]["box"])
-        if svg["bolinha"]:
-            obstaculos_para_pilar.append(svg["bolinha"]["box"])
-    for vi in vigas_inv_group:
-        obstaculos_para_pilar.append(vi["box"])
+def _agrupar_bolinhas_vigas(bolinhas_viga, vigas, secoes):
+    """
+    Agrupa bolinhas de Nivel 11 por viga. Se uma viga inteira tiver o mesmo valor de inversao
+    (ex: V501-A com 40cm em todos os vaos), gera apenas 1 unica indicacao no cabecalho da viga,
+    apagando todas as bolinhas repetidas. Se houver desníveis diferentes na mesma viga, gera 1 indicacao
+    por desnível em seu respectivo trecho.
+    """
+    # Mapeia cada bolinha para a viga mais proxima no mesmo alinhamento
+    bolinhas_por_viga = {}
+    for v in vigas:
+        bolinhas_por_viga[v["nome"]] = {"viga": v, "bolinhas": []}
 
-    for p_grp in pilares_group:
-        p9 = p_grp["p9"]
-        p12 = p_grp["p12"]
-        p_poly = p_grp["p_poly"]
-        b_conj = p_grp["box"]
+    bolinhas_avulsas = []
+    for b in bolinhas_viga:
+        cands_v = []
+        for v in vigas:
+            if abs((b["ang"] - v["ang"]) % 180.0) < 5.0:
+                if v["ang"] == 0.0:
+                    if abs(b["yc"] - v["yc"]) <= 40.0:
+                        cands_v.append((v, abs(b["xc"] - v["xc"])))
+                else:
+                    if abs(b["xc"] - v["xc"]) <= 40.0:
+                        cands_v.append((v, abs(b["yc"] - v["yc"])))
+        if cands_v:
+            cands_v.sort(key=lambda x: x[1])
+            melhor_v = cands_v[0][0]
+            bolinhas_por_viga[melhor_v["nome"]]["bolinhas"].append(b)
+        else:
+            bolinhas_avulsas.append(b)
 
-        # Verifica colisao atual com vigas, shafts, cotas ou outros pilares
-        colide = False
-        for obs in obstaculos_para_pilar:
-            if _boxes_colidem(b_conj, obs, margem=1.5):
-                colide = True
-                break
-
-        # Verifica se alguma linha de concreto cruza o meio do texto do pilar
-        if not colide:
-            for lx1, ly1, lx2, ly2, _ in lines_concreto:
-                if _segmento_colide_box(lx1, ly1, lx2, ly2, b_conj, margem=1.0):
-                    colide = True
-                    break
-
-        if not colide:
+    resultado = []
+    for v_nome, data in bolinhas_por_viga.items():
+        v = data["viga"]
+        blist = data["bolinhas"]
+        if not blist:
             continue
 
-        pcx = p_poly["pcx"] if p_poly else p9["x1"]
-        pcy = p_poly["pcy"] if p_poly else p9["y1"]
-        larg_conj = p_grp["larg_conj"]
-        alt_conj = p_grp["alt_conj"]
-        p_box = p_poly["box"] if p_poly else (pcx - 12.5, pcy - 12.5, pcx + 12.5, pcy + 12.5)
+        # Agrupa bolinhas por valor
+        por_valor = {}
+        for b in blist:
+            v_key = round(b["val"], 1)
+            if v_key not in por_valor:
+                por_valor[v_key] = []
+            por_valor[v_key].append(b)
 
-        # Candidatos em orbita nos 4 quadrantes e 4 eixos cardeais com raios progressivos (Skill Secao 4B)
-        candidatos = []
-        for r in (35.0, 50.0, 65.0, 80.0, 95.0, 115.0, 140.0):
-            # Superior direito
-            candidatos.append((pcx + r, pcy + r * 0.7))
-            # Superior esquerdo
-            candidatos.append((pcx - r - larg_conj, pcy + r * 0.7))
-            # Inferior direito
-            candidatos.append((pcx + r, pcy - r * 0.7 - alt_conj))
-            # Inferior esquerdo
-            candidatos.append((pcx - r - larg_conj, pcy - r * 0.7 - alt_conj))
-            # Cardeais (Direita, Esquerda, Acima, Abaixo)
-            candidatos.append((pcx + r + 5.0, pcy - 0.5 * alt_conj))
-            candidatos.append((pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj))
-            candidatos.append((pcx - 0.5 * larg_conj, pcy + r + 5.0))
-            candidatos.append((pcx - 0.5 * larg_conj, pcy - r - alt_conj - 5.0))
+        # Se a viga possui valor unico em todos os vaos: gera apenas 1 indicacao!
+        for val, grp in por_valor.items():
+            b_ref = grp[0]
+            ang = v["ang"]
 
-        escolhido = None
-        for cand_x, cand_y in candidatos:
-            cb9 = _bbox_texto(cand_x, cand_y, p9["h"], p9["ang"], p9["txt"])
-            cb12 = _bbox_texto(cand_x + p_grp["dx_sec"], cand_y + p_grp["dy_sec"], p12["h"] if p12 else 12.0, p9["ang"], p12["txt"] if p12 else "")
-            c_conj = (min(cb9[0], cb12[0]), min(cb9[1], cb12[1]), max(cb9[2], cb12[2]), max(cb9[3], cb12[3]))
+            # Encontra secao mais proxima deste grupo de bolinhas
+            cands_sec = [s for s in secoes if s["ang"] == ang]
+            sec_prox = None
+            min_ds = float("inf")
+            for s in cands_sec:
+                if ang == 0.0:
+                    if abs(s["yc"] - b_ref["yc"]) <= 40.0:
+                        d = math.hypot(s["xc"] - b_ref["xc"], s["yc"] - b_ref["yc"])
+                        if d <= 250.0 and d < min_ds:
+                            min_ds = d
+                            sec_prox = s
+                else:
+                    if abs(s["xc"] - b_ref["xc"]) <= 40.0:
+                        d = math.hypot(s["xc"] - b_ref["xc"], s["yc"] - b_ref["yc"])
+                        if d <= 250.0 and d < min_ds:
+                            min_ds = d
+                            sec_prox = s
 
-            # Restricoes eliminatorias da Skill:
-            # 0. Nao pode colidir com nenhum outro pilar (posicao original ou ja realocada)
-            if any(_boxes_colidem(c_conj, p_outro["box"], margem=3.0) for p_outro in pilares_group if p_outro is not p_grp):
-                continue
-            # 1. Nao pode tocar poligonos de pilares (Nivel 4)
-            if any(_boxes_colidem(c_conj, pb, margem=2.0) for pb in boxes_pilares):
-                continue
-            # 2. Nao pode tocar shafts em X ou linhas de corte
-            if any(_boxes_colidem(c_conj, obs, margem=2.0) for obs in obstaculos_fixos):
-                continue
-            # 3. Nao pode tocar cotas existentes
-            if any(_boxes_colidem(c_conj, c_obs, margem=2.0) for c_obs in todos_obstaculos_cotas):
-                continue
-            # 4. Nao pode tocar vigas (titulos e secoes)
-            if any(_boxes_colidem(c_conj, v["box"], margem=2.0) for v in vigas_titulo):
-                continue
-            if any(_boxes_colidem(c_conj, s["tx"]["box"], margem=2.0) for s in sec_vigas_group):
-                continue
-            # 5. Nao pode tocar vigas invertidas ja posicionadas
-            if any(_boxes_colidem(c_conj, vi["box"], margem=2.0) for vi in vigas_inv_group):
-                continue
-            # 6. Nao pode tocar obstaculos acumulados de pilares ja realocados
-            if any(_boxes_colidem(c_conj, obs_p, margem=2.0) for obs_p in obstaculos_para_pilar):
-                continue
-            # 7. Nao pode ser cortado por linhas de face de concreto
-            corte_concreto = False
-            for lx1, ly1, lx2, ly2, _ in lines_concreto:
-                if _segmento_colide_box(lx1, ly1, lx2, ly2, c_conj, margem=1.0):
-                    corte_concreto = True
-                    break
-            if corte_concreto:
-                continue
+            # Se a viga so tem 1 valor e tem secao no cabecalho, prioriza o cabecalho
+            sec_usar = v.get("secao") if len(por_valor) == 1 else (sec_prox or v.get("secao"))
+            resultado.append((v, sec_usar, grp, val))
 
-            escolhido = (cand_x, cand_y, c_conj)
-            break
+    for b in bolinhas_avulsas:
+        resultado.append((None, None, [b], b["val"]))
 
-        if escolhido is not None:
-            nx, ny, novo_box = escolhido
-            dx = nx - p9["x1"]
-            dy = ny - p9["y1"]
-
-            dwg.edit.Move(p9["addr"], dx, dy)
-            p9["x1"] = nx
-            p9["y1"] = ny
-            p9["box"] = _bbox_texto(nx, ny, p9["h"], p9["ang"], p9["txt"])
-
-            if p12 is not None:
-                dwg.edit.Move(p12["addr"], dx, dy)
-                p12["x1"] += dx
-                p12["y1"] += dy
-                p12["box"] = _bbox_texto(p12["x1"], p12["y1"], p12["h"], p12["ang"], p12["txt"])
-
-            p_grp["box"] = novo_box
-            obstaculos_para_pilar.append(novo_box)
-
-            # Idempotencia: apaga chamada velha (Nivel 242 ou 221)
-            apagar_chamadas_antigas_do_pilar(dwg, pcx, pcy, linhas_242, linhas_221_setas, raio_busca=45.0)
-
-            # Desenha a Seta de Chamada Executiva com Patamar no Nivel 221
-            y_patamar = ny - 3.0  # Passa exatamente entre P.. e b/h
-            if nx >= pcx:
-                x_joelho = nx - 3.0
-                x_fim_patamar = nx + larg_conj + 2.0
-                x_seta = min(p_box[2], max(p_box[0] + 5.0, pcx + 3.0))
-                y_seta = p_box[1] if y_patamar < pcy else p_box[3]
-            else:
-                x_joelho = nx + larg_conj + 3.0
-                x_fim_patamar = nx - 2.0
-                x_seta = max(p_box[0], min(p_box[2] - 5.0, pcx - 3.0))
-                y_seta = p_box[1] if y_patamar < pcy else p_box[3]
-
-            dist_seta = math.hypot(x_joelho - x_seta, y_patamar - y_seta)
-            if dist_seta >= 20.0:
-                desenhar_seta_chamada_executiva(dwg, x_fim_patamar, x_joelho, y_patamar, x_seta, y_seta)
-
-            total_ajustes += 1
-
-    # -------------------------------------------------------------------------
-    # 5. ESTAGIO 3 — CONFINAMENTO E AJUSTE DE LAJES (LEIS 2 e 3C)
-    # [DESATIVADO TEMPORARIAMENTE A PEDIDO DO USUARIO - FOCANDO APENAS EM PILARES]
-    # -------------------------------------------------------------------------
-    # (Estagio 3 de lajes comentado para focar exclusivamente na resolucao de pilares)
-
-    return total_ajustes
+    return resultado
 
 
-def cmd_corrigir_sobreposicao(eag, tqsjan):
+def cmd_inversoes(eag, tqsjan):
     """
-    Entry point do comando Corrigir Sobreposicao no EAG do TQS.
-    Organiza textos de vigas, bolinhas, pilares (com setas executivas)
-    e lajes eliminando sobreposicoes sem cometer loucuras estruturais.
+    Identifica as bolinhas estritamente pelo seu NIVEL:
+      - Nivel 11 (Dimensoes de vigas): 'VIGA INVERTIDA xCM' (1 unico texto por viga)
+      - Nivel 13 (Dimensoes de lajes): 'LAJE REBAIXADA' / 'xCM' (organizado sem sobreposicao)
     """
     try:
         dwg = tqsjan.dwg
-        total = executar_anti_sobreposicao(dwg)
+        ctx = coletar_contexto_inversoes(dwg)
+        bolinhas = ctx["bolinhas"]
+
+        if not bolinhas:
+            eag.msg.Print("G3 Plugins: Nenhuma bolinha nos niveis 11 (vigas) ou 13 (lajes) encontrada.")
+            eag.msg.PrintStatus("Nenhuma bolinha de viga/laje encontrada.")
+            return
+
+        obstaculos = ctx["obstaculos"]
+        # Identificacao estritamente pelo Nivel do TQS:
+        # Nivel 11 = Dimensoes de vigas | Nivel 13 = Dimensoes de lajes
+        bolinhas_viga = [b for b in bolinhas if b["level"] == 11]
+        bolinhas_laje = [b for b in bolinhas if b["level"] == 13]
+
+        textos_criados = 0
+        bolinhas_apagadas = 0
+
+        # ---------------------------------------------------------------------
+        # 1. PROCESSA VIGAS (NIVEL 11) - 1 UNICO TEXTO POR VIGA (SEM REPETIR)
+        # ---------------------------------------------------------------------
+        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"], ctx.get("secoes", []))
+
+        for viga, sec, grupo, val in grupos_vigas:
+            # Apaga TODAS as bolinhas dessa viga
+            for b in grupo:
+                dwg.edit.Erase(b["addr_circulo"])
+                dwg.edit.Erase(b["addr_texto"])
+                bolinhas_apagadas += 1
+
+            b_ref = grupo[0]
+            val_str = _formatar_valor_cm(val)
+            novo_texto = "VIGA INVERTIDA %sCM" % val_str
+            h_txt = b_ref["h"]
+            ang_txt = viga["ang"] if viga is not None else b_ref["ang"]
+            nivel_txt = 11
+
+            x_dest = b_ref["xc"]
+            y_dest = b_ref["yc"]
+
+            if viga is not None:
+                sec_ref = sec or viga.get("secao")
+                if ang_txt == 0.0:
+                    x_fim_viga = max(viga["bbox"][2], sec_ref["bbox"][2]) if sec_ref else viga["bbox"][2]
+                    x_dest = x_fim_viga + 15.0
+                    y_dest = viga["yc"]
+                else:
+                    y_fim_viga = max(viga["bbox"][3], sec_ref["bbox"][3]) if sec_ref else viga["bbox"][3]
+                    x_dest = viga["xc"]
+                    y_dest = y_fim_viga + 15.0
+            elif sec is not None:
+                if ang_txt == 0.0:
+                    x_dest = sec["bbox"][2] + 15.0
+                    y_dest = sec["yc"]
+                else:
+                    x_dest = sec["xc"]
+                    y_dest = sec["bbox"][3] + 15.0
+
+            # Desobstrucao preventiva com obstaculos existentes e ja criados
+            cand_box = _bbox_texto(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+            colide = any(_boxes_colidem(cand_box, obs["bbox"], margem=0.5) for obs in obstaculos)
+            if colide:
+                deltas = [20.0, 35.0, 50.0, 70.0, 90.0, 110.0, 130.0, -20.0, -40.0, -60.0]
+                for delta in deltas:
+                    if ang_txt == 0.0:
+                        test_box = _bbox_texto(x_dest + delta, y_dest, h_txt, ang_txt, novo_texto)
+                    else:
+                        test_box = _bbox_texto(x_dest, y_dest + delta, h_txt, ang_txt, novo_texto)
+                    if not any(_boxes_colidem(test_box, obs["bbox"], margem=0.5) for obs in obstaculos):
+                        if ang_txt == 0.0:
+                            x_dest += delta
+                        else:
+                            y_dest += delta
+                        cand_box = test_box
+                        break
+
+            dwg.draw.level = nivel_txt
+            dwg.draw.color = -1
+            dwg.draw.style = 0
+            dwg.draw.Text(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+            textos_criados += 1
+
+            # Registra o novo texto de viga invertida como obstaculo para nao sobrepor com outros
+            obstaculos.append({
+                "tipo": "viga_invertida",
+                "bbox": cand_box
+            })
+
+        # ---------------------------------------------------------------------
+        # 2. PROCESSA LAJES (NIVEL 13) - SEM SOBREPOSICAO
+        # ---------------------------------------------------------------------
+        for b in bolinhas_laje:
+            dwg.edit.Erase(b["addr_circulo"])
+            dwg.edit.Erase(b["addr_texto"])
+            bolinhas_apagadas += 1
+
+            val_str = _formatar_valor_cm(b["val"])
+            ang_txt = b["ang"]
+            nivel_txt = 13
+            h_reb = 10.0 if abs(b["h"] - 12.0) < 1.0 else round(b["h"] * 0.85, 1)
+
+            lin1 = "LAJE REBAIXADA"
+            lin2 = "%sCM" % val_str
+
+            # Associa ao cabecalho da laje (L... / h=...) somente se a bolinha estiver logo abaixo dele
+            laje = None
+            for lj in ctx["lajes"]:
+                if abs(lj["xc"] - b["xc"]) <= 45.0 and 0.0 <= (lj["yc"] - b["yc"]) <= 160.0:
+                    laje = lj
+                    break
+
+            if laje is not None and laje["esp"] is not None and ang_txt == 0.0:
+                esp = laje["esp"]
+                x_base = laje["xc"]
+                y_laje = laje["yc"]
+                y_esp = esp["yc"]
+
+                # Se houver uma linha de concreto vertical logo a esquerda (laje estreita como L103),
+                # aproxima levemente da borda esquerda para ganhar espaco a direita
+                for xv, yv1, yv2 in ctx["linhas_vert_concreto"]:
+                    if yv1 <= y_laje <= yv2 and 0.0 < (x_base - xv) <= 25.0:
+                        x_base = max(xv + 2.7, x_base - 14.0)
+                        break
+
+                # Posicoes relativas do bloco (Laje, h=15, LAJE REBAIXADA, 15CM)
+                dy_esp = y_esp - y_laje
+                dy_lin1 = dy_esp - (h_reb * 1.74)
+                dy_lin2 = dy_lin1 - (h_reb * 1.70)
+
+                def _testar_colisao_bloco(x_teste, y_laje_teste):
+                    boxes = [
+                        _bbox_texto(x_teste, y_laje_teste, laje["h"], 0.0, laje["nome"]),
+                        _bbox_texto(x_teste, y_laje_teste + dy_esp, esp["h"], 0.0, esp["texto"]),
+                        _bbox_texto(x_teste, y_laje_teste + dy_lin1, h_reb, 0.0, lin1),
+                        _bbox_texto(x_teste, y_laje_teste + dy_lin2, h_reb, 0.0, lin2),
+                    ]
+                    for bx in boxes:
+                        for obs in obstaculos:
+                            if _boxes_colidem(bx, obs["bbox"], margem=5.0):
+                                return True
+                    return False
+
+                # Testa a altura atual; se colidir com VIGA INVERTIDA ou linha de corte,
+                # procura um deslocamento Y livre
+                y_escolhido = y_laje
+                if _testar_colisao_bloco(x_base, y_laje):
+                    candidatos_dy = [
+                        70.0, 80.0, 88.4, 95.0, 105.0, 115.0, 55.0, 40.0,
+                        -40.0, -55.0, -70.0, -85.0, -100.0
+                    ]
+                    for delta_y in candidatos_dy:
+                        if not _testar_colisao_bloco(x_base, y_laje + delta_y):
+                            y_escolhido = y_laje + delta_y
+                            break
+
+                # Move L103 e h=15 se a posicao do bloco foi ajustada para evitar colisao
+                dx_bloco = x_base - laje["xc"]
+                dy_bloco = y_escolhido - laje["yc"]
+                if abs(dx_bloco) > 0.1 or abs(dy_bloco) > 0.1:
+                    dwg.edit.Move(laje["addr_titulo"], dx_bloco, dy_bloco)
+                    dwg.edit.Move(esp["addr"], dx_bloco, dy_bloco)
+
+                dwg.draw.level = nivel_txt
+                dwg.draw.color = -1
+                dwg.draw.style = 0
+                dwg.draw.Text(x_base, y_escolhido + dy_lin1, h_reb, 0.0, lin1)
+                dwg.draw.Text(x_base, y_escolhido + dy_lin2, h_reb, 0.0, lin2)
+                textos_criados += 1
+            else:
+                # Bolinha de Nivel 13 avulsa (ex: trocada pelo usuario para teste):
+                # escreve LAJE REBAIXADA xCM direto na posicao e orientacao da bolinha
+                dwg.draw.level = nivel_txt
+                dwg.draw.color = -1
+                dwg.draw.style = 0
+                dwg.draw.Text(b["xc"], b["yc"], h_reb, ang_txt, lin1)
+                if ang_txt == 90.0:
+                    dwg.draw.Text(b["xc"] + h_reb * 1.7, b["yc"], h_reb, ang_txt, lin2)
+                else:
+                    dwg.draw.Text(b["xc"], b["yc"] - h_reb * 1.7, h_reb, ang_txt, lin2)
+                textos_criados += 1
+
+        # Se ja houver cotas no desenho, reorganiza textos de pilares/vigas/lajes sem sobreposicao
+        try:
+            cotas_helper.organizar_textos_sem_sobreposicao(dwg)
+        except Exception:
+            pass
+
+        tqsjan.Regen()
+        eag.msg.Print(
+            "G3 Plugins: %d bolinha(s) processada(s) -> %d indicacao(oes) organizada(s) sem sobreposicao!"
+            % (bolinhas_apagadas, textos_criados)
+        )
+        eag.msg.PrintStatus("%d inversao(oes) organizada(s) com sucesso!" % textos_criados)
+
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+
+def cmd_criar_cotas(eag, tqsjan):
+    """
+    Cria automaticamente as cotas externas (em camadas) e completa as cadeias
+    de cotas internas da planta de formas sem duplicar cotas existentes.
+    (Delega para o modulo dedicado cotas_helper.py)
+    """
+    cotas_helper.cmd_criar_cotas(eag, tqsjan)
+
+
+def cmd_corrigir_vazios(eag, tqsjan):
+    """
+    Substitui o nivel de todas as linhas de representacao em X de vazios
+    do Nivel 241 para o Nivel 210 e apaga as setas/indicadores de direcao
+    de lajes no Nivel 240.
+    """
+    try:
+        dwg = tqsjan.dwg
+        addrs_241 = []
+        addrs_240 = []
+
+        dwg.iterator.Begin()
+        while True:
+            tipo = dwg.iterator.Next()
+            if tipo == TQSDwg.DWGTYPE_EOF:
+                break
+            nivel = dwg.iterator.level
+            addr = dwg.iterator.GetElementReadPosition()
+
+            if nivel == 241:
+                addrs_241.append(addr)
+            elif nivel == 240:
+                addrs_240.append(addr)
+
+        if not addrs_241 and not addrs_240:
+            eag.msg.Print("G3 Plugins: Nenhuma linha de vazio (nivel 241) ou indicador de laje (nivel 240) encontrado.")
+            eag.msg.PrintStatus("Nenhum elemento encontrado.")
+            return
+
+        for addr in addrs_241:
+            dwg.edit.ModifyLevel(addr, 210)
+
+        for addr in addrs_240:
+            dwg.edit.Erase(addr)
+
         tqsjan.Regen()
 
-        if total > 0:
-            eag.msg.Print("G3 Plugins: %d elemento(s) reorganizado(s) sem sobreposicao com sucesso!" % total)
-            eag.msg.PrintStatus("%d sobreposicao(oes) corrigida(s)!" % total)
-        else:
-            eag.msg.Print("G3 Plugins: Planta de formas ja se encontra perfeitamente organizada e limpa.")
-            eag.msg.PrintStatus("Nenhuma sobreposicao detectada.")
+        msgs = []
+        if addrs_241:
+            msgs.append("%d linha(s) de vazio (241 -> 210)" % len(addrs_241))
+        if addrs_240:
+            msgs.append("%d indicador(es)/seta(s) de laje (nivel 240 apagados)" % len(addrs_240))
+
+        resumo = " e ".join(msgs)
+        eag.msg.Print("G3 Plugins: Sucesso! %s." % resumo)
+        eag.msg.PrintStatus("Vazios e indicadores de laje corrigidos!")
 
     except Exception as e:
         try:
@@ -574,6 +827,5 @@ def cmd_corrigir_sobreposicao(eag, tqsjan):
 
 
 def meucmd(eag, tqsjan):
-    """Entry point padrao quando acionado diretamente."""
-    cmd_corrigir_sobreposicao(eag, tqsjan)
-
+    """Entry point padrao de Formas (chama Linha de Corte)."""
+    cmd_linha_de_corte(eag, tqsjan)
