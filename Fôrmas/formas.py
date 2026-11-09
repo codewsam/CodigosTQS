@@ -390,11 +390,14 @@ def coletar_contexto_inversoes(dwg):
                     "level": nivel,
                 })
             else:
-                # Outros textos (ex: P1, 25/25, etc.) sao obstaculos
+                # Outros textos (ex: P1, 25/25, etc.) sao obstaculos (pilares marcados com tipo='pilar')
+                is_pilar = nivel in (9, 12) or (txt_raw.strip().upper().startswith("P") and nivel in (8, 9, 10, 11, 12))
                 obstaculos.append({
-                    "tipo": "texto",
+                    "tipo": "pilar" if is_pilar else "texto",
+                    "nivel": nivel,
+                    "texto": txt_raw,
                     "addr": addr,
-                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                    "bbox": anti_sobreposicao._bbox_texto_exato(x1, y1, x2, y2, h)
                 })
 
     # Emparelha geometricamente cada circulo com seu texto numerico interno
@@ -597,29 +600,32 @@ def cmd_inversoes(eag, tqsjan):
 
             sec_box = (sec.get("bbox") or sec.get("box")) if sec else None
             candidatos_diretos = []
-            if sec is not None and sec_box is not None and math.hypot(sec["xc"] - xa_alvo, sec["yc"] - ya_alvo) <= 80.0:
+            if sec is not None and sec_box is not None:
                 if ang_viga == 0.0:
-                    candidatos_diretos.append((sec_box[2] + 10.0, sec["y1"], 0.0))
+                    candidatos_diretos.append((sec_box[2] + 8.0, sec["y1"], 0.0))
+                    candidatos_diretos.append((sec_box[0] - comp - 8.0, sec["y1"], 0.0))
                 else:
-                    candidatos_diretos.append((sec["x1"], sec_box[3] + 10.0, 90.0))
+                    candidatos_diretos.append((sec["x1"], sec_box[3] + 8.0, 90.0))
+                    candidatos_diretos.append((sec["x1"], sec_box[1] - comp - 8.0, 90.0))
 
             if vg is not None:
+                passos = [0.0] + [d for step in (15.0, 30.0, 50.0, 75.0, 100.0, 130.0, 160.0, 200.0) for d in (step, -step)]
                 if ang_viga == 0.0:
-                    for cy in (vg["t_max"] + 0.25 * h_txt + 4.0, vg["t_min"] - 1.15 * h_txt - 4.0):
-                        for d_local in (0.0, 15.0, -15.0, 30.0, -30.0):
+                    for cy in (vg["t_max"] + 0.25 * h_txt + 3.0, vg["t_min"] - 1.15 * h_txt - 3.0):
+                        for d_local in passos:
                             cx = xa_alvo - 0.5 * comp + d_local
-                            if cx >= vg["l_min"] + 4.0 and cx + comp <= vg["l_max"] - 4.0:
+                            if cx >= vg["l_min"] - 40.0 and cx + comp <= vg["l_max"] + 40.0:
                                 candidatos_diretos.append((cx, cy, 0.0))
                 else:
-                    for cx in (vg["t_min"] - 0.25 * h_txt - 4.0, vg["t_max"] + 1.15 * h_txt + 4.0):
-                        for d_local in (0.0, 15.0, -15.0, 30.0, -30.0):
+                    for cx in (vg["t_min"] - 0.25 * h_txt - 3.0, vg["t_max"] + 1.15 * h_txt + 3.0):
+                        for d_local in passos:
                             cy = ya_alvo - 0.5 * comp + d_local
-                            if cy >= vg["l_min"] + 4.0 and cy + comp <= vg["l_max"] - 4.0:
+                            if cy >= vg["l_min"] - 40.0 and cy + comp <= vg["l_max"] + 40.0:
                                 candidatos_diretos.append((cx, cy, 90.0))
 
             for cd_x, cd_y, cd_ang in candidatos_diretos:
                 bx = anti_sobreposicao._bbox_texto(cd_x, cd_y, h_txt, cd_ang, novo_texto)
-                if any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes):
+                if any(_boxes_colidem(bx, ob, margem=0.5) for ob in obst_boxes):
                     continue
                 if anti_sobreposicao._box_colide_com_concreto_alheio(bx, vg, lines_concreto, margem=1.0):
                     continue
@@ -627,8 +633,23 @@ def cmd_inversoes(eag, tqsjan):
                 colocou_direto = True
                 break
 
+            # Se todos colidiram, mas junto a secao na face da viga nao corta concreto e so toca pilar
+            # (que sera reposicionado pelo botao Pilar/Organizar), mantem direto na viga sem seta!
+            if not colocou_direto and sec is not None and sec_box is not None:
+                cand_sec = (sec_box[2] + 8.0, sec["y1"], 0.0) if ang_viga == 0.0 else (sec["x1"], sec_box[3] + 8.0, 90.0)
+                bx_sec = anti_sobreposicao._bbox_texto(cand_sec[0], cand_sec[1], h_txt, cand_sec[2], novo_texto)
+                if not anti_sobreposicao._box_colide_com_concreto_alheio(bx_sec, vg, lines_concreto, margem=1.0):
+                    col_fixos = any(
+                        _boxes_colidem(bx_sec, ob["bbox"], margem=0.5)
+                        for ob in obstaculos
+                        if ob.get("tipo") != "pilar" and ob.get("nivel") not in (9, 12)
+                    )
+                    if not col_fixos:
+                        x_dest, y_dest, ang_dest = cand_sec[0], cand_sec[1], cand_sec[2]
+                        colocou_direto = True
+
             precisa_seta = False
-            # 2. Se nao coube direto no trecho local, POSICIONA COM SETA DE CHAMADA!
+            # 2. Se nao coube direto no trecho local, POSICIONA COM SETA DE CHAMADA (validando linha da seta!)
             if not colocou_direto:
                 candidatos_seta = []
                 for r in (25.0, 40.0, 55.0, 75.0, 95.0, 120.0, 150.0):
@@ -647,7 +668,7 @@ def cmd_inversoes(eag, tqsjan):
 
                 for cs_x, cs_y, cs_ang in candidatos_seta:
                     bx = anti_sobreposicao._bbox_texto(cs_x, cs_y, h_txt, cs_ang, novo_texto)
-                    if any(_boxes_colidem(bx, ob, margem=3.0) for ob in obst_boxes):
+                    if any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes):
                         continue
                     corta_concreto = False
                     for lx1, ly1, lx2, ly2, _ in lines_concreto:
@@ -655,6 +676,34 @@ def cmd_inversoes(eag, tqsjan):
                             corta_concreto = True
                             break
                     if corta_concreto:
+                        continue
+
+                    # Valida linha da seta
+                    if cs_ang == 0.0:
+                        if cs_x >= xa_alvo:
+                            x_j = cs_x - 2.0
+                            y_j = cs_y - 2.0
+                            x_fp = cs_x + min(35.0, comp)
+                        else:
+                            x_j = cs_x + comp + 2.0
+                            y_j = cs_y - 2.0
+                            x_fp = cs_x + comp - min(35.0, comp)
+                    else:
+                        x_j = (cs_x - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
+                        y_j = cs_y + 0.5 * comp
+                        x_fp = None
+
+                    corta_seta = False
+                    for ob_b in obst_boxes:
+                        if abs(xa_alvo - 0.5 * (ob_b[0] + ob_b[2])) < 5.0 and abs(ya_alvo - 0.5 * (ob_b[1] + ob_b[3])) < 5.0:
+                            continue
+                        if anti_sobreposicao._segmento_colide_box(x_j, y_j, xa_alvo, ya_alvo, ob_b, margem=0.5):
+                            corta_seta = True
+                            break
+                        if x_fp is not None and anti_sobreposicao._segmento_colide_box(x_fp, y_j, x_j, y_j, ob_b, margem=0.5):
+                            corta_seta = True
+                            break
+                    if corta_seta:
                         continue
 
                     x_dest, y_dest, ang_dest = cs_x, cs_y, cs_ang
@@ -672,7 +721,7 @@ def cmd_inversoes(eag, tqsjan):
             dwg.draw.Text(x_dest, y_dest, h_txt, ang_dest, novo_texto)
             textos_criados += 1
 
-            if precisa_seta:
+            if precisa_seta and math.hypot(x_dest - xa_alvo, y_dest - ya_alvo) >= 25.0:
                 anti_sobreposicao.desenhar_seta_inversao(
                     dwg, x_dest, y_dest, comp, h_txt, ang_dest, xa_alvo, ya_alvo
                 )
