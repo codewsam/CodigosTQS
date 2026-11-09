@@ -98,22 +98,43 @@ def _boxes_colidem(b1, b2, margem=2.0):
     )
 
 
-def _segmento_colide_box(x1, y1, x2, y2, box, margem=1.0):
-    """Verifica se um segmento de reta cruza ou toca um bounding box."""
-    bx_seg = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
-    if not _boxes_colidem(bx_seg, box, margem=margem):
-        return False
-    if abs(x1 - x2) <= 3.0:  # Segmento vertical
-        xv = 0.5 * (x1 + x2)
-        if (box[0] - margem) <= xv <= (box[2] + margem):
-            return max(box[1], min(y1, y2)) <= min(box[3], max(y1, y2))
-        return False
-    elif abs(y1 - y2) <= 3.0:  # Segmento horizontal
-        yh = 0.5 * (y1 + y2)
-        if (box[1] - margem) <= yh <= (box[3] + margem):
-            return max(box[0], min(x1, x2)) <= min(box[2], max(x1, x2))
-        return False
-    return True
+def _segmento_colide_box(x1, y1, x2, y2, box, margem=0.5):
+    """
+    Verifica com precisao matematica (Liang-Barsky) se o segmento de reta (x1, y1) -> (x2, y2)
+    cruza ou toca o retangulo box expandido por 'margem'.
+    """
+    xmin = box[0] - margem
+    ymin = box[1] - margem
+    xmax = box[2] + margem
+    ymax = box[3] + margem
+
+    dx = x2 - x1
+    dy = y2 - y1
+
+    p = [-dx, dx, -dy, dy]
+    q = [x1 - xmin, xmax - x1, y1 - ymin, ymax - y1]
+
+    u1 = 0.0
+    u2 = 1.0
+
+    for i in range(4):
+        if p[i] == 0:
+            if q[i] < 0:
+                return False
+        else:
+            t = q[i] / p[i]
+            if p[i] < 0:
+                if t > u2:
+                    return False
+                if t > u1:
+                    u1 = t
+            else:
+                if t < u1:
+                    return False
+                if t < u2:
+                    u2 = t
+
+    return u1 <= u2
 
 
 def mapear_vigas_continuas(vigas_titulo, lines_concreto):
@@ -678,6 +699,32 @@ def limpar_chamadas_orfas_221(dwg, linhas_221_setas, pilares_group):
     return apagadas
 
 
+def apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40.0):
+    """
+    Apaga linhas de chamada executiva (nivel 221) associadas ao texto de inversao 'vi'
+    que esta sendo movido, evitando deixar linhas orfas/fantasmas no desenho.
+    """
+    if not linhas_221_setas:
+        return 0
+    vx, vy = vi["x1"], vi["y1"]
+    vxc, vyc = vi.get("xc", vx), vi.get("yc", vy)
+    apagadas = 0
+    restantes = []
+    for l in linhas_221_setas:
+        d1 = min(math.hypot(l["x1"] - vx, l["y1"] - vy), math.hypot(l["x1"] - vxc, l["y1"] - vyc))
+        d2 = min(math.hypot(l["x2"] - vx, l["y2"] - vy), math.hypot(l["x2"] - vxc, l["y2"] - vyc))
+        if min(d1, d2) <= raio_busca:
+            try:
+                dwg.edit.Erase(l["addr"])
+                apagadas += 1
+            except Exception:
+                pass
+        else:
+            restantes.append(l)
+    linhas_221_setas[:] = restantes
+    return apagadas
+
+
 def reposicionar_pilares_conflitantes(
     dwg, pilares_group, poly_pilares, lines_concreto, obstaculos_fixos,
     todos_obstaculos_cotas, texts_raw, linhas_242, linhas_221_setas,
@@ -733,12 +780,33 @@ def reposicionar_pilares_conflitantes(
 
         # Verifica se o pilar tem uma seta de chamada (leader line) conectada
         tem_seta = False
+        setas_do_pilar = []
         for l in linhas_221_setas + linhas_242:
             d1 = math.hypot(l["x1"] - p9["x1"], l["y1"] - p9["y1"])
             d2 = math.hypot(l["x2"] - p9["x1"], l["y2"] - p9["y1"])
             if min(d1, d2) <= 30.0:
                 tem_seta = True
-                break
+                setas_do_pilar.append(l)
+
+        # Se o texto em si nao colide, mas a SETA dele colide com algum outro texto/obstaculo:
+        # entao ha sobreposicao da seta! Marca colide = True para mover!
+        if not colide and tem_seta:
+            for l in setas_do_pilar:
+                lx1, ly1, lx2, ly2 = l["x1"], l["y1"], l["x2"], l["y2"]
+                for obs in obstaculos_pilar:
+                    if p_box and (p_box[0] - 2.0 <= 0.5 * (obs[0] + obs[2]) <= p_box[2] + 2.0) and (p_box[1] - 2.0 <= 0.5 * (obs[1] + obs[3]) <= p_box[3] + 2.0):
+                        continue
+                    if _segmento_colide_box(lx1, ly1, lx2, ly2, obs, margem=0.5):
+                        colide = True
+                        break
+                if colide:
+                    break
+                for p_outro in pilares_group:
+                    if p_outro is not p_grp and _segmento_colide_box(lx1, ly1, lx2, ly2, p_outro["box"], margem=0.5):
+                        colide = True
+                        break
+                if colide:
+                    break
 
         # Regra de ouro:
         # "ele so move se ele identificar sobreposicao, caso nn, aquele la ele deixa quieto"
@@ -791,6 +859,41 @@ def reposicionar_pilares_conflitantes(
                 if corte_concreto:
                     continue
 
+                # Calcula geometria da seta para validar se a linha nao corta textos/obstaculos
+                y_pat = cand_y - 3.0
+                if cand_x >= pcx:
+                    x_jlh = cand_x - 3.0
+                    x_fp = cand_x + larg_conj + 2.0
+                    x_st = min(p_box[2], max(p_box[0] + 5.0, pcx + 3.0))
+                    y_st = p_box[1] if y_pat < pcy else p_box[3]
+                else:
+                    x_jlh = cand_x + larg_conj + 3.0
+                    x_fp = cand_x - 2.0
+                    x_st = max(p_box[0], min(p_box[2] - 5.0, pcx - 3.0))
+                    y_st = p_box[1] if y_pat < pcy else p_box[3]
+
+                dist_s = math.hypot(x_jlh - x_st, y_pat - y_st)
+                if dist_s >= 38.0:
+                    corta_seta = False
+                    for obs_p in obstaculos_pilar:
+                        if p_box and (p_box[0] - 2.0 <= 0.5 * (obs_p[0] + obs_p[2]) <= p_box[2] + 2.0) and (p_box[1] - 2.0 <= 0.5 * (obs_p[1] + obs_p[3]) <= p_box[3] + 2.0):
+                            continue
+                        if _segmento_colide_box(x_jlh, y_pat, x_st, y_st, obs_p, margem=0.5) or \
+                           _segmento_colide_box(x_fp, y_pat, x_jlh, y_pat, obs_p, margem=0.5):
+                            corta_seta = True
+                            break
+                    if corta_seta:
+                        continue
+                    for p_outro in pilares_group:
+                        if p_outro is not p_grp and (
+                            _segmento_colide_box(x_jlh, y_pat, x_st, y_st, p_outro["box"], margem=0.5) or
+                            _segmento_colide_box(x_fp, y_pat, x_jlh, y_pat, p_outro["box"], margem=0.5)
+                        ):
+                            corta_seta = True
+                            break
+                    if corta_seta:
+                        continue
+
                 escolhido = (cand_x, cand_y, c_conj)
                 break
             if escolhido is not None:
@@ -831,7 +934,7 @@ def reposicionar_pilares_conflitantes(
                 y_seta = p_box[1] if y_patamar < pcy else p_box[3]
 
             dist_seta = math.hypot(x_joelho - x_seta, y_patamar - y_seta)
-            if dist_seta >= 20.0:
+            if dist_seta >= 38.0:
                 desenhar_seta_chamada_executiva(
                     dwg, x_fim_patamar, x_joelho, y_patamar, x_seta, y_seta, linhas_221_setas=linhas_221_setas
                 )
@@ -1248,14 +1351,29 @@ def executar_anti_sobreposicao(dwg):
         for vi in vg["inversoes_txt"]:
             _remover_box_da_lista(vi["box"], boxes_ocupados_vigas)
             comp_vi = len(vi["txt"]) * vi["h"] * 1.0
-            colide_com_secoes = any(_boxes_colidem(vi["box"], s["box"], margem=2.0) for s in vg["secoes"])
-            colide_com_nome = _boxes_colidem(vi["box"], vg["viga"]["box"], margem=2.0)
+            colide_com_secoes = any(_boxes_colidem(vi["box"], s["box"], margem=0.5) for s in vg["secoes"])
+            colide_com_nome = _boxes_colidem(vi["box"], vg["viga"]["box"], margem=0.5)
             obst_com_pilares_vi = boxes_ocupados_vigas + [pg["box"] for pg in pilares_group]
+
+            # Verifica se alguma linha de seta conectada a 'vi' colide com textos/obstaculos
+            seta_vi_colide = False
+            for l in linhas_221_setas:
+                d1 = math.hypot(l["x1"] - vi["x1"], l["y1"] - vi["y1"])
+                d2 = math.hypot(l["x2"] - vi["x1"], l["y2"] - vi["y1"])
+                if min(d1, d2) <= 30.0:
+                    for ob in obst_com_pilares_vi:
+                        if _segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], ob, margem=0.5):
+                            seta_vi_colide = True
+                            break
+                    if seta_vi_colide:
+                        break
+
             precisa_mover_vi = (
-                any(_boxes_colidem(vi["box"], obs, margem=3.0) for obs in obst_com_pilares_vi)
+                any(_boxes_colidem(vi["box"], obs, margem=0.5) for obs in obst_com_pilares_vi)
                 or colide_com_secoes
                 or colide_com_nome
                 or _box_colide_com_concreto_alheio(vi["box"], vg, lines_concreto, margem=1.0)
+                or seta_vi_colide
             )
             if precisa_mover_vi:
                 t_meio = 0.5 * (vg["t_min"] + vg["t_max"])
@@ -1269,34 +1387,46 @@ def executar_anti_sobreposicao(dwg):
                 res = None
                 precisa_seta = False
 
-                # 1o: Tenta posicionamento direto na face da viga localmente (+- 45 cm)
+                # 1o: Tenta posicionamento direto na face da viga
                 candidatos_locais = []
+                # Se tiver secao proxima, testa logo apos ou antes dela ao longo da face
+                sec_viga = vg["secoes"][0] if vg["secoes"] else None
+                sec_bx = sec_viga.get("box") if sec_viga else None
+                if sec_viga and sec_bx:
+                    if ang == 0.0:
+                        candidatos_locais.append((sec_bx[2] + 8.0, sec_viga["y1"], 0.0))
+                        candidatos_locais.append((sec_bx[0] - comp_vi - 8.0, sec_viga["y1"], 0.0))
+                    else:
+                        candidatos_locais.append((sec_viga["x1"], sec_bx[3] + 8.0, 90.0))
+                        candidatos_locais.append((sec_viga["x1"], sec_bx[1] - comp_vi - 8.0, 90.0))
+
+                passos = [0.0] + [d for step in (15.0, 30.0, 50.0, 75.0, 100.0, 130.0, 160.0, 200.0) for d in (step, -step)]
                 if ang == 0.0:
-                    for cy in (vg["t_max"] + 0.25 * vi["h"] + 4.0, vg["t_min"] - 1.15 * vi["h"] - 4.0):
-                        for d_local in (0.0, 15.0, -15.0, 30.0, -30.0):
+                    for cy in (vg["t_max"] + 0.25 * vi["h"] + 3.0, vg["t_min"] - 1.15 * vi["h"] - 3.0):
+                        for d_local in passos:
                             cx = xa_alvo - 0.5 * comp_vi + d_local
                             if cx >= vg["l_min"] + 4.0 and cx + comp_vi <= vg["l_max"] - 4.0:
                                 candidatos_locais.append((cx, cy, 0.0))
                 else:
-                    for cx in (vg["t_min"] - 0.25 * vi["h"] - 4.0, vg["t_max"] + 1.15 * vi["h"] + 4.0):
-                        for d_local in (0.0, 15.0, -15.0, 30.0, -30.0):
+                    for cx in (vg["t_min"] - 0.25 * vi["h"] - 3.0, vg["t_max"] + 1.15 * vi["h"] + 3.0):
+                        for d_local in passos:
                             cy = ya_alvo - 0.5 * comp_vi + d_local
                             if cy >= vg["l_min"] + 4.0 and cy + comp_vi <= vg["l_max"] - 4.0:
                                 candidatos_locais.append((cx, cy, 90.0))
 
                 for cd_x, cd_y, cd_ang in candidatos_locais:
                     cand_bx = _bbox_texto(cd_x, cd_y, vi["h"], cd_ang, vi["txt"])
-                    if any(_boxes_colidem(cand_bx, ob, margem=2.0) for ob in obst_com_pilares_vi):
+                    if any(_boxes_colidem(cand_bx, ob, margem=0.5) for ob in obst_com_pilares_vi):
                         continue
                     if _box_colide_com_concreto_alheio(cand_bx, vg, lines_concreto, margem=1.0):
                         continue
                     res = (cd_x, cd_y, cand_bx, cd_ang)
                     break
 
-                # 2o: Se nao coube direto, procura posicao com SETA DE CHAMADA
+                # 2o: Se nao coube direto, procura posicao com SETA DE CHAMADA (validando linha da seta!)
                 if res is None:
                     candidatos_seta = []
-                    for r in (25.0, 40.0, 55.0, 75.0, 95.0, 120.0):
+                    for r in (25.0, 40.0, 55.0, 75.0, 95.0, 120.0, 150.0):
                         for dy in (0.0, 20.0, -20.0, 40.0, -40.0):
                             candidatos_seta.append((xa_alvo + r, ya_alvo + dy - 0.5 * vi["h"], 0.0))
                             candidatos_seta.append((xa_alvo - r - comp_vi, ya_alvo + dy - 0.5 * vi["h"], 0.0))
@@ -1310,7 +1440,7 @@ def executar_anti_sobreposicao(dwg):
 
                     for cs_x, cs_y, cs_ang in candidatos_seta:
                         cand_bx = _bbox_texto(cs_x, cs_y, vi["h"], cs_ang, vi["txt"])
-                        if any(_boxes_colidem(cand_bx, ob, margem=3.0) for ob in obst_com_pilares_vi):
+                        if any(_boxes_colidem(cand_bx, ob, margem=2.0) for ob in obst_com_pilares_vi):
                             continue
                         corta_concreto = False
                         for lx1, ly1, lx2, ly2, _ in lines_concreto:
@@ -1319,6 +1449,35 @@ def executar_anti_sobreposicao(dwg):
                                 break
                         if corta_concreto:
                             continue
+
+                        # Valida linha da seta
+                        if cs_ang == 0.0:
+                            if cs_x >= xa_alvo:
+                                x_j = cs_x - 2.0
+                                y_j = cs_y - 2.0
+                                x_fp = cs_x + min(35.0, comp_vi)
+                            else:
+                                x_j = cs_x + comp_vi + 2.0
+                                y_j = cs_y - 2.0
+                                x_fp = cs_x + comp_vi - min(35.0, comp_vi)
+                        else:
+                            x_j = (cs_x - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
+                            y_j = cs_y + 0.5 * comp_vi
+                            x_fp = None
+
+                        corta_seta = False
+                        for ob_b in obst_com_pilares_vi:
+                            if abs(xa_alvo - 0.5 * (ob_b[0] + ob_b[2])) < 5.0 and abs(ya_alvo - 0.5 * (ob_b[1] + ob_b[3])) < 5.0:
+                                continue
+                            if _segmento_colide_box(x_j, y_j, xa_alvo, ya_alvo, ob_b, margem=0.5):
+                                corta_seta = True
+                                break
+                            if x_fp is not None and _segmento_colide_box(x_fp, y_j, x_j, y_j, ob_b, margem=0.5):
+                                corta_seta = True
+                                break
+                        if corta_seta:
+                            continue
+
                         res = (cs_x, cs_y, cand_bx, cs_ang)
                         precisa_seta = True
                         break
@@ -1327,7 +1486,10 @@ def executar_anti_sobreposicao(dwg):
                     nx, ny, nbox, nang = res
                     dx = nx - vi["x1"]
                     dy = ny - vi["y1"]
-                    if math.hypot(dx, dy) > 1.0:
+                    if math.hypot(dx, dy) > 1.0 or seta_vi_colide:
+                        # Apaga linhas de seta antigas conectadas a vi para nao deixar vestigios
+                        apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40.0)
+
                         dwg.edit.Move(vi["addr"], dx, dy)
                         vi["x1"] = nx
                         vi["y1"] = ny
@@ -1336,7 +1498,7 @@ def executar_anti_sobreposicao(dwg):
                         vi["box"] = nbox
                         total_ajustes += 1
 
-                        if precisa_seta:
+                        if precisa_seta and math.hypot(nx - xa_alvo, ny - ya_alvo) >= 25.0:
                             desenhar_seta_inversao(
                                 dwg, nx, ny, comp_vi, vi["h"], nang, xa_alvo, ya_alvo, linhas_221_setas
                             )
