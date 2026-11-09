@@ -576,110 +576,108 @@ def cmd_inversoes(eag, tqsjan):
             val_str = _formatar_valor_cm(val)
             novo_texto = "VIGA INVERTIDA %sCM" % val_str
             h_txt = b_ref["h"]
-            ang_txt = b_ref["ang"]
+            ang_viga = viga["ang"] if viga else b_ref["ang"]
             nivel_txt = 11
-            comp = len(novo_texto) * h_txt * 0.85
+            comp = len(novo_texto) * h_txt * 1.0
 
-            # Padrao: prioriza posicionar junto da secao 'xx/xx' ou onde estava a bolinha b_ref
-            sec_box = (sec.get("bbox") or sec.get("box")) if sec else None
-            if sec is not None and sec_box is not None and vg is not None:
-                if ang_txt == 0.0:
-                    x_dest = sec_box[2] + 12.0
-                    y_dest = sec["y1"]
+            # Ponto alvo no concreto da viga (centro do segmento de inversao)
+            xa_alvo = b_ref["xc"]
+            ya_alvo = b_ref["yc"]
+            if vg is not None:
+                if ang_viga == 0.0:
+                    ya_alvo = 0.5 * (vg["t_min"] + vg["t_max"])
                 else:
-                    x_dest = sec["x1"]
-                    y_dest = sec_box[3] + 12.0
-            else:
+                    xa_alvo = 0.5 * (vg["t_min"] + vg["t_max"])
+
+            obst_boxes = [obs["bbox"] for obs in obstaculos]
+
+            # 1. Tenta posicionamento direto na face da viga NO TRECHO LOCAL (sem pular de vao!)
+            colocou_direto = False
+            x_dest, y_dest, ang_dest = None, None, ang_viga
+
+            sec_box = (sec.get("bbox") or sec.get("box")) if sec else None
+            candidatos_diretos = []
+            if sec is not None and sec_box is not None and math.hypot(sec["xc"] - xa_alvo, sec["yc"] - ya_alvo) <= 80.0:
+                if ang_viga == 0.0:
+                    candidatos_diretos.append((sec_box[2] + 10.0, sec["y1"], 0.0))
+                else:
+                    candidatos_diretos.append((sec["x1"], sec_box[3] + 10.0, 90.0))
+
+            if vg is not None:
+                if ang_viga == 0.0:
+                    for cy in (vg["t_max"] + 0.25 * h_txt + 4.0, vg["t_min"] - 1.15 * h_txt - 4.0):
+                        for d_local in (0.0, 15.0, -15.0, 30.0, -30.0):
+                            cx = xa_alvo - 0.5 * comp + d_local
+                            if cx >= vg["l_min"] + 4.0 and cx + comp <= vg["l_max"] - 4.0:
+                                candidatos_diretos.append((cx, cy, 0.0))
+                else:
+                    for cx in (vg["t_min"] - 0.25 * h_txt - 4.0, vg["t_max"] + 1.15 * h_txt + 4.0):
+                        for d_local in (0.0, 15.0, -15.0, 30.0, -30.0):
+                            cy = ya_alvo - 0.5 * comp + d_local
+                            if cy >= vg["l_min"] + 4.0 and cy + comp <= vg["l_max"] - 4.0:
+                                candidatos_diretos.append((cx, cy, 90.0))
+
+            for cd_x, cd_y, cd_ang in candidatos_diretos:
+                bx = anti_sobreposicao._bbox_texto(cd_x, cd_y, h_txt, cd_ang, novo_texto)
+                if any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes):
+                    continue
+                if anti_sobreposicao._box_colide_com_concreto_alheio(bx, vg, lines_concreto, margem=1.0):
+                    continue
+                x_dest, y_dest, ang_dest = cd_x, cd_y, cd_ang
+                colocou_direto = True
+                break
+
+            precisa_seta = False
+            # 2. Se nao coube direto no trecho local, POSICIONA COM SETA DE CHAMADA!
+            if not colocou_direto:
+                candidatos_seta = []
+                for r in (25.0, 40.0, 55.0, 75.0, 95.0, 120.0, 150.0):
+                    # Horizontal (ang = 0)
+                    for dy in (0.0, 20.0, -20.0, 40.0, -40.0):
+                        candidatos_seta.append((xa_alvo + r, ya_alvo + dy - 0.5 * h_txt, 0.0))
+                        candidatos_seta.append((xa_alvo - r - comp, ya_alvo + dy - 0.5 * h_txt, 0.0))
+                    for dx in (0.0, 25.0, -25.0, 50.0, -50.0):
+                        candidatos_seta.append((xa_alvo - 0.5 * comp + dx, ya_alvo + r, 0.0))
+                        candidatos_seta.append((xa_alvo - 0.5 * comp + dx, ya_alvo - r - h_txt, 0.0))
+                    # Se viga for vertical, testa tambem vertical
+                    if ang_viga == 90.0:
+                        for dy in (0.0, 25.0, -25.0):
+                            candidatos_seta.append((xa_alvo + r, ya_alvo - 0.5 * comp + dy, 90.0))
+                            candidatos_seta.append((xa_alvo - r - h_txt, ya_alvo - 0.5 * comp + dy, 90.0))
+
+                for cs_x, cs_y, cs_ang in candidatos_seta:
+                    bx = anti_sobreposicao._bbox_texto(cs_x, cs_y, h_txt, cs_ang, novo_texto)
+                    if any(_boxes_colidem(bx, ob, margem=3.0) for ob in obst_boxes):
+                        continue
+                    corta_concreto = False
+                    for lx1, ly1, lx2, ly2, _ in lines_concreto:
+                        if anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, bx, margem=1.0):
+                            corta_concreto = True
+                            break
+                    if corta_concreto:
+                        continue
+
+                    x_dest, y_dest, ang_dest = cs_x, cs_y, cs_ang
+                    precisa_seta = True
+                    break
+
+            if x_dest is None:
                 x_dest = b_ref["xc"]
                 y_dest = b_ref["yc"]
-
-            # Garante que o texto nao ultrapasse os limites da viga branca
-            if vg is not None and (vg["l_max"] - vg["l_min"]) >= comp + 10.0:
-                if ang_txt == 0.0:
-                    x_dest = max(vg["l_min"] + 5.0, min(vg["l_max"] - 5.0 - comp, x_dest))
-                else:
-                    y_dest = max(vg["l_min"] + 5.0, min(vg["l_max"] - 5.0 - comp, y_dest))
-
-            cand_box = _bbox_texto(x_dest, y_dest, h_txt, ang_txt, novo_texto)
-            obst_boxes = [obs["bbox"] for obs in obstaculos]
-            colide_inicial = (
-                any(_boxes_colidem(cand_box, ob, margem=2.0) for ob in obst_boxes)
-                or anti_sobreposicao._box_colide_com_concreto_alheio(cand_box, vg, lines_concreto, margem=1.0)
-            )
-
-            if colide_inicial and vg is not None:
-                t_meio = 0.5 * (vg["t_min"] + vg["t_max"])
-                if ang_txt == 0.0:
-                    lado_pref = 1 if y_dest >= t_meio else -1
-                    pos_l_pref = x_dest
-                else:
-                    lado_pref = 1 if x_dest <= t_meio else -1
-                    pos_l_pref = y_dest
-
-                # 1o: testa pequenos deslocamentos locais ou trocar de face no mesmo local (sem pular longe!)
-                res = None
-                deltas_teste = [0.0]
-                for d in range(2, 100, 2):
-                    deltas_teste.extend([float(d), float(-d)])
-
-                for delta in deltas_teste:
-                    pos_teste = pos_l_pref + delta
-                    if ang_txt == 0.0 and (pos_teste < vg["l_min"] + 4.0 or pos_teste + comp > vg["l_max"] - 4.0):
-                        continue
-                    if ang_txt == 90.0 and (pos_teste < vg["l_min"] + 4.0 or pos_teste + comp > vg["l_max"] - 4.0):
-                        continue
-
-                    for lado in (lado_pref, -lado_pref):
-                        if ang_txt == 0.0:
-                            cand_t_list = [
-                                (vg["t_max"] + 0.25 * h_txt + 6.0),
-                                (vg["t_max"] + 0.25 * h_txt + 18.0),
-                                (vg["t_max"] + 0.25 * h_txt + 35.0)
-                            ] if lado > 0 else [
-                                (vg["t_min"] - 1.15 * h_txt - 6.0),
-                                (vg["t_min"] - 1.15 * h_txt - 18.0),
-                                (vg["t_min"] - 1.15 * h_txt - 35.0)
-                            ]
-                            for ty in cand_t_list:
-                                bx = _bbox_texto(pos_teste, ty, h_txt, 0.0, novo_texto)
-                                if not any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes) and not anti_sobreposicao._box_colide_com_concreto_alheio(bx, vg, lines_concreto, margem=1.0):
-                                    res = (pos_teste, ty, bx)
-                                    break
-                        else:
-                            cand_t_list = [
-                                (vg["t_min"] - 0.25 * h_txt - 6.0),
-                                (vg["t_min"] - 0.25 * h_txt - 18.0),
-                                (vg["t_min"] - 0.25 * h_txt - 26.0)
-                            ] if lado > 0 else [
-                                (vg["t_max"] + 1.15 * h_txt + 6.0),
-                                (vg["t_max"] + 1.15 * h_txt + 18.0),
-                                (vg["t_max"] + 1.15 * h_txt + 26.0)
-                            ]
-                            for tx in cand_t_list:
-                                bx = _bbox_texto(tx, pos_teste, h_txt, 90.0, novo_texto)
-                                if not any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes) and not anti_sobreposicao._box_colide_com_concreto_alheio(bx, vg, lines_concreto, margem=1.0):
-                                    res = (tx, pos_teste, bx)
-                                    break
-                        if res is not None:
-                            break
-                    if res is not None:
-                        break
-
-                if res is None:
-                    res = anti_sobreposicao.encontrar_posicao_livre_na_viga(
-                        vg, comp, h_txt, False,
-                        pos_l_pref, lado_pref,
-                        obst_boxes, lines_concreto
-                    )
-                if res is not None:
-                    x_dest, y_dest, cand_box = res
+                ang_dest = ang_viga
 
             dwg.draw.level = nivel_txt
             dwg.draw.color = -1
             dwg.draw.style = 0
-            dwg.draw.Text(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+            dwg.draw.Text(x_dest, y_dest, h_txt, ang_dest, novo_texto)
             textos_criados += 1
 
+            if precisa_seta:
+                anti_sobreposicao.desenhar_seta_inversao(
+                    dwg, x_dest, y_dest, comp, h_txt, ang_dest, xa_alvo, ya_alvo
+                )
+
+            cand_box = anti_sobreposicao._bbox_texto(x_dest, y_dest, h_txt, ang_dest, novo_texto)
             obstaculos.append({
                 "tipo": "viga_invertida",
                 "bbox": cand_box
@@ -872,6 +870,13 @@ def cmd_organizar(eag, tqsjan):
     import importlib
     importlib.reload(anti_sobreposicao)
     anti_sobreposicao.cmd_organizar(eag, tqsjan)
+
+
+def cmd_organizar_pilar(eag, tqsjan):
+    """Entry point dedicado para organizar exclusivamente pilares sobrepostos."""
+    import importlib
+    importlib.reload(anti_sobreposicao)
+    anti_sobreposicao.cmd_organizar_pilar(eag, tqsjan)
 
 
 def cmd_corrigir_sobreposicao(eag, tqsjan):
