@@ -16,6 +16,7 @@ Funcoes:
 import math
 from TQS import TQSUtil, TQSGeo, TQSDwg, TQSEag
 import cotas_helper
+import anti_sobreposicao
 
 
 def encontrar_pares_de_corte(dwg):
@@ -173,7 +174,7 @@ def _bbox_texto(xc, yc, h, ang, texto_str):
     Calcula o bounding box aproximado (xmin, ymin, xmax, ymax) de um texto no TQS.
     No TQS, (xc, yc) e o ponto inferior-esquerdo da linha de base.
     """
-    comp = len(texto_str) * h * 1.0
+    comp = len(texto_str) * h * 0.85
     a = _normalizar_angulo(ang)
     if a == 90.0:
         # Quando rotacionado a 90 graus, o texto cresce em +Y e tem altura para a esquerda (-X)
@@ -240,18 +241,13 @@ def coletar_contexto_inversoes(dwg):
     obstaculos = []
     linhas_vert_concreto = []
     linhas_horiz_concreto = []
+    secoes_viga_coletadas = []
 
     viga_atual = None
     laje_atual = None
 
-    # Pares de corte tambem contam como obstaculos (faixas de linha de corte)
+    # Linhas de corte (pares de corte) sao referencias visuais de fundo e nao obstaculos fisicos de texto
     pares_corte = encontrar_pares_de_corte(dwg)
-    for pt1, pt2, direcao in pares_corte:
-        xmin = min(pt1[0], pt2[0]) - 2.0
-        xmax = max(pt1[0], pt2[0]) + 2.0
-        ymin = min(pt1[1], pt2[1]) - 2.0
-        ymax = max(pt1[1], pt2[1]) + 2.0
-        obstaculos.append({"tipo": "corte", "direcao": direcao, "bbox": (xmin, ymin, xmax, ymax)})
 
     dwg.iterator.Begin()
     while True:
@@ -264,21 +260,24 @@ def coletar_contexto_inversoes(dwg):
         nivel = dwg.iterator.level
         addr = dwg.iterator.GetElementReadPosition()
 
-        # Linhas/Polylines de concreto (Nivel 1 e 2) e pilares (Nivel 4)
-        if tipo == TQSDwg.DWGTYPE_POLYLINE and nivel in (1, 2, 4):
+        # Linhas/Polylines de concreto (Nivel 1, 2, 201) e pilares (Nivel 2, 3, 4, 5)
+        if tipo == TQSDwg.DWGTYPE_POLYLINE and nivel in (1, 2, 3, 4, 5, 201):
             pts = [dwg.iterator.GetPolylinePt(i) for i in range(dwg.iterator.xySize)]
-            if nivel == 4 and pts:
+            if pts:
                 xs = [p[0] for p in pts]
                 ys = [p[1] for p in pts]
-                obstaculos.append({"tipo": "pilar", "bbox": (min(xs), min(ys), max(xs), max(ys))})
-            elif nivel in (1, 2) and len(pts) >= 2:
-                for k in range(len(pts) - 1):
-                    x1, y1 = pts[k]
-                    x2, y2 = pts[k + 1]
-                    if abs(x1 - x2) < 1.0 and abs(y1 - y2) > 20.0:
-                        linhas_vert_concreto.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
-                    elif abs(y1 - y2) < 1.0 and abs(x1 - x2) > 20.0:
-                        linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
+                dx_p = max(xs) - min(xs)
+                dy_p = max(ys) - min(ys)
+                if nivel in (2, 3, 4, 5) and 8.0 <= dx_p <= 180.0 and 8.0 <= dy_p <= 180.0 and len(pts) >= 4:
+                    obstaculos.append({"tipo": "pilar", "bbox": (min(xs), min(ys), max(xs), max(ys))})
+                elif nivel in (1, 2, 201) and len(pts) >= 2:
+                    for k in range(len(pts) - 1):
+                        x1, y1 = pts[k]
+                        x2, y2 = pts[k + 1]
+                        if abs(x1 - x2) <= 3.0 and abs(y1 - y2) > 10.0:
+                            linhas_vert_concreto.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
+                        elif abs(y1 - y2) <= 3.0 and abs(x1 - x2) > 10.0:
+                            linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, y2)))
 
         elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (200, 205):
             xmin = min(dwg.iterator.x1, dwg.iterator.x2) - 2.0
@@ -313,12 +312,14 @@ def coletar_contexto_inversoes(dwg):
 
             # 1. Titulo de Viga (Nivel 8, ex: 'V101')
             if nivel == 8 and txt_raw.upper().startswith("V"):
+                bx = _bbox_texto(xc, yc, h, ang, txt_raw)
                 viga_atual = {
                     "nome": txt_raw,
                     "addr_titulo": addr,
                     "xc": xc, "yc": yc,
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                     "h": h, "ang": ang,
+                    "bbox": bx,
                     "secao": None,
                 }
                 laje_atual = None
@@ -326,25 +327,26 @@ def coletar_contexto_inversoes(dwg):
                 obstaculos.append({
                     "tipo": "viga_titulo",
                     "addr": addr,
-                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                    "bbox": bx
                 })
                 continue
 
             # 2. Secao de Viga (Nivel 11, ex: '14/70')
             if nivel == 11 and "/" in txt_raw:
+                bx = _bbox_texto(xc, yc, h, ang, txt_raw)
                 sec_obj = {
                     "texto": txt_raw,
                     "addr": addr,
                     "xc": xc, "yc": yc,
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                     "h": h, "ang": ang,
+                    "bbox": bx,
                 }
-                if viga_atual is not None and viga_atual["secao"] is None:
-                    viga_atual["secao"] = sec_obj
+                secoes_viga_coletadas.append(sec_obj)
                 obstaculos.append({
                     "tipo": "viga_secao",
                     "addr": addr,
-                    "bbox": _bbox_texto(xc, yc, h, ang, txt_raw)
+                    "bbox": bx
                 })
                 continue
 
@@ -440,9 +442,32 @@ def coletar_contexto_inversoes(dwg):
                 "level": nivel_efetivo,  # 11 = Viga, 13 = Laje
             })
 
+    # Pareamento geometrico de secoes de viga com titulos de viga
+    for v in vigas:
+        if v["secao"] is None:
+            best_sec = None
+            min_d = float("inf")
+            for s in secoes_viga_coletadas:
+                if s["ang"] == v["ang"]:
+                    if v["ang"] == 0.0:
+                        if abs(v["y1"] - s["y1"]) <= 45.0:
+                            d = math.hypot(v["xc"] - s["xc"], v["yc"] - s["yc"])
+                            if d < 180.0 and d < min_d:
+                                min_d = d
+                                best_sec = s
+                    else:
+                        if abs(v["x1"] - s["x1"]) <= 45.0:
+                            d = math.hypot(v["xc"] - s["xc"], v["yc"] - s["yc"])
+                            if d < 180.0 and d < min_d:
+                                min_d = d
+                                best_sec = s
+            if best_sec is not None:
+                v["secao"] = best_sec
+
     return {
         "bolinhas": bolinhas,
         "vigas": vigas,
+        "secoes": secoes_viga_coletadas,
         "lajes": lajes,
         "obstaculos": obstaculos,
         "linhas_vert_concreto": linhas_vert_concreto,
@@ -450,60 +475,66 @@ def coletar_contexto_inversoes(dwg):
     }
 
 
-def _agrupar_bolinhas_vigas(bolinhas_viga, vigas):
+def _agrupar_bolinhas_vigas(bolinhas_viga, vigas, secoes, lines_concreto=None):
     """
-    Agrupa bolinhas de Nivel 11 que pertencem geometricamente ao mesmo eixo de viga
-    (mesma orientacao e mesma faixa X ou Y, com mesmo valor) para escrever apenas 1 vez por viga.
+    Agrupa bolinhas de Nivel 11 por viga usando o mapeamento da viga branca continua.
+    Se uma viga inteira tiver o mesmo valor de inversao (ex: V501-A ou V513-A com 40cm em
+    todos os vaos), gera apenas 1 unica indicacao na viga, apagando todas as bolinhas repetidas.
     """
-    grupos = []
-    usadas = set()
+    vigas_geom = anti_sobreposicao.mapear_vigas_continuas(vigas, lines_concreto or [])
+    bolinhas_por_viga = {}
+    for vg in vigas_geom:
+        bolinhas_por_viga[vg["nome"]] = {"viga": vg["viga"], "vg": vg, "bolinhas": []}
 
-    for i, b1 in enumerate(bolinhas_viga):
-        if i in usadas:
+    bolinhas_avulsas = []
+    for b in bolinhas_viga:
+        vg = anti_sobreposicao.associar_elemento_a_viga(b["xc"], b["yc"], b["ang"], vigas_geom)
+        if vg is not None:
+            bolinhas_por_viga[vg["nome"]]["bolinhas"].append(b)
+        else:
+            bolinhas_avulsas.append(b)
+
+    resultado = []
+    for v_nome, data in bolinhas_por_viga.items():
+        v = data["viga"]
+        vg = data["vg"]
+        blist = data["bolinhas"]
+        if not blist:
             continue
-        grupo = [b1]
-        usadas.add(i)
 
-        for j in range(i + 1, len(bolinhas_viga)):
-            if j in usadas:
-                continue
-            b2 = bolinhas_viga[j]
+        por_valor = {}
+        for b in blist:
+            v_key = round(b["val"], 1)
+            por_valor.setdefault(v_key, []).append(b)
 
-            mesmo_eixo_horiz = (
-                b1["ang"] == 0.0 and b2["ang"] == 0.0 and
-                abs(b1["yc"] - b2["yc"]) <= 40.0 and
-                abs(b1["val"] - b2["val"]) < 1e-3
-            )
-            mesmo_eixo_vert = (
-                b1["ang"] == 90.0 and b2["ang"] == 90.0 and
-                abs(b1["xc"] - b2["xc"]) <= 40.0 and
-                abs(b1["val"] - b2["val"]) < 1e-3
-            )
+        for val, grp in por_valor.items():
+            b_ref = grp[0]
+            ang = v["ang"]
+            cands_sec = [
+                s for s in secoes
+                if anti_sobreposicao.associar_elemento_a_viga(s["xc"], s["yc"], s["ang"], vigas_geom) is vg
+            ]
+            sec_prox = None
+            min_ds = float("inf")
+            for s in cands_sec:
+                d = math.hypot(s["xc"] - b_ref["xc"], s["yc"] - b_ref["yc"])
+                if d < min_ds:
+                    min_ds = d
+                    sec_prox = s
 
-            if mesmo_eixo_horiz or mesmo_eixo_vert:
-                grupo.append(b2)
-                usadas.add(j)
+            sec_usar = v.get("secao") if (len(por_valor) == 1 and v.get("secao") in cands_sec) else (sec_prox or v.get("secao"))
+            resultado.append((v, vg, sec_usar, grp, val))
 
-        # Associa ao cabecalho da viga (V... + b/h) se estiver na mesma faixa geometrica
-        viga_assoc = None
-        for v in vigas:
-            if v["ang"] == grupo[0]["ang"]:
-                if v["ang"] == 0.0 and any(abs(v["yc"] - b["yc"]) <= 40.0 for b in grupo):
-                    viga_assoc = v
-                    break
-                elif v["ang"] == 90.0 and any(abs(v["xc"] - b["xc"]) <= 40.0 for b in grupo):
-                    viga_assoc = v
-                    break
+    for b in bolinhas_avulsas:
+        resultado.append((None, None, None, [b], b["val"]))
 
-        grupos.append((viga_assoc, grupo))
-
-    return grupos
+    return resultado
 
 
 def cmd_inversoes(eag, tqsjan):
     """
     Identifica as bolinhas estritamente pelo seu NIVEL:
-      - Nivel 11 (Dimensoes de vigas): 'VIGA INVERTIDA xCM' (1 unico texto por viga)
+      - Nivel 11 (Dimensoes de vigas): 'VIGA INVERTIDA xCM' (1 unico texto por valor na viga branca)
       - Nivel 13 (Dimensoes de lajes): 'LAJE REBAIXADA' / 'xCM' (organizado sem sobreposicao)
     """
     try:
@@ -517,79 +548,131 @@ def cmd_inversoes(eag, tqsjan):
             return
 
         obstaculos = ctx["obstaculos"]
-        # Identificacao estritamente pelo Nivel do TQS:
-        # Nivel 11 = Dimensoes de vigas | Nivel 13 = Dimensoes de lajes
         bolinhas_viga = [b for b in bolinhas if b["level"] == 11]
         bolinhas_laje = [b for b in bolinhas if b["level"] == 13]
+
+        lines_concreto = []
+        for y, x1, x2 in ctx.get("linhas_horiz_concreto", []):
+            lines_concreto.append((x1, y, x2, y, 1))
+        for x, y1, y2 in ctx.get("linhas_vert_concreto", []):
+            lines_concreto.append((x, y1, x, y2, 1))
 
         textos_criados = 0
         bolinhas_apagadas = 0
 
         # ---------------------------------------------------------------------
-        # 1. PROCESSA VIGAS (NIVEL 11) - 1 UNICO TEXTO POR VIGA
+        # 1. PROCESSA VIGAS (NIVEL 11) - 1 UNICO TEXTO POR VIGA (SEM REPETIR)
         # ---------------------------------------------------------------------
-        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"])
+        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"], ctx.get("secoes", []), lines_concreto)
 
-        for viga, grupo in grupos_vigas:
-            # Apaga TODAS as bolinhas de Nivel 11 dessa mesma viga
+        for viga, vg, sec, grupo, val in grupos_vigas:
+            # Apaga TODAS as bolinhas desse grupo na viga
             for b in grupo:
                 dwg.edit.Erase(b["addr_circulo"])
                 dwg.edit.Erase(b["addr_texto"])
                 bolinhas_apagadas += 1
 
             b_ref = grupo[0]
-            val_str = _formatar_valor_cm(b_ref["val"])
+            val_str = _formatar_valor_cm(val)
             novo_texto = "VIGA INVERTIDA %sCM" % val_str
             h_txt = b_ref["h"]
             ang_txt = b_ref["ang"]
             nivel_txt = 11
+            comp = len(novo_texto) * h_txt * 0.85
 
-            x_dest = b_ref["xc"]
-            y_dest = b_ref["yc"]
-
-            # Se temos o titulo e a secao da viga (ex: V101 e 14/70), garante alinhamento limpo
-            if viga is not None and viga["secao"] is not None:
-                sec = viga["secao"]
+            # Padrao: prioriza posicionar junto da secao 'xx/xx' ou onde estava a bolinha b_ref
+            sec_box = (sec.get("bbox") or sec.get("box")) if sec else None
+            if sec is not None and sec_box is not None and vg is not None:
                 if ang_txt == 0.0:
-                    larg_sec = abs(sec["x2"] - sec["x1"])
-                    # Se a secao (ex: 14/70) estava desalinhada em Y do nome da viga (ex: V101),
-                    # alinha a secao na mesma linha do nome da viga para nao bater em pilares
-                    if abs(sec["yc"] - viga["yc"]) > 5.0:
-                        novo_x_sec = viga["x2"] + 15.0
-                        novo_y_sec = viga["yc"]
-                        dx_sec = novo_x_sec - sec["xc"]
-                        dy_sec = novo_y_sec - sec["yc"]
-                        dwg.edit.Move(sec["addr"], dx_sec, dy_sec)
-                        sec["xc"] = novo_x_sec
-                        sec["yc"] = novo_y_sec
-                        sec["x1"] += dx_sec
-                        sec["x2"] += dx_sec
-                        sec["y1"] += dy_sec
-                        sec["y2"] += dy_sec
-                        x_dest = novo_x_sec + larg_sec + 15.0
-                        y_dest = novo_y_sec
-                    else:
-                        x_dest = sec["x2"] + 12.0
-                        y_dest = sec["yc"]
-                elif ang_txt == 90.0:
-                    larg_sec = abs(sec["y2"] - sec["y1"])
-                    if abs(sec["xc"] - viga["xc"]) > 5.0:
-                        novo_x_sec = viga["xc"]
-                        novo_y_sec = viga["y2"] + 15.0
-                        dx_sec = novo_x_sec - sec["xc"]
-                        dy_sec = novo_y_sec - sec["yc"]
-                        dwg.edit.Move(sec["addr"], dx_sec, dy_sec)
-                        sec["xc"] = novo_x_sec
-                        sec["yc"] = novo_y_sec
-                        sec["x1"] += dx_sec
-                        sec["x2"] += dx_sec
-                        sec["y1"] += dy_sec
-                        sec["y2"] += dy_sec
-                        x_dest = novo_x_sec
-                        y_dest = novo_y_sec + larg_sec + 15.0
-                    else:
-                        x_dest = sec["xc"]
-                        y_dest = sec["y2"] + 12.0
+                    x_dest = sec_box[2] + 12.0
+                    y_dest = sec["y1"]
+                else:
+                    x_dest = sec["x1"]
+                    y_dest = sec_box[3] + 12.0
+            else:
+                x_dest = b_ref["xc"]
+                y_dest = b_ref["yc"]
+
+            # Garante que o texto nao ultrapasse os limites da viga branca
+            if vg is not None and (vg["l_max"] - vg["l_min"]) >= comp + 10.0:
+                if ang_txt == 0.0:
+                    x_dest = max(vg["l_min"] + 5.0, min(vg["l_max"] - 5.0 - comp, x_dest))
+                else:
+                    y_dest = max(vg["l_min"] + 5.0, min(vg["l_max"] - 5.0 - comp, y_dest))
+
+            cand_box = _bbox_texto(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+            obst_boxes = [obs["bbox"] for obs in obstaculos]
+            colide_inicial = (
+                any(_boxes_colidem(cand_box, ob, margem=2.0) for ob in obst_boxes)
+                or anti_sobreposicao._box_colide_com_concreto_alheio(cand_box, vg, lines_concreto, margem=1.0)
+            )
+
+            if colide_inicial and vg is not None:
+                t_meio = 0.5 * (vg["t_min"] + vg["t_max"])
+                if ang_txt == 0.0:
+                    lado_pref = 1 if y_dest >= t_meio else -1
+                    pos_l_pref = x_dest
+                else:
+                    lado_pref = 1 if x_dest <= t_meio else -1
+                    pos_l_pref = y_dest
+
+                # 1o: testa pequenos deslocamentos locais ou trocar de face no mesmo local (sem pular longe!)
+                res = None
+                deltas_teste = [0.0]
+                for d in range(2, 100, 2):
+                    deltas_teste.extend([float(d), float(-d)])
+
+                for delta in deltas_teste:
+                    pos_teste = pos_l_pref + delta
+                    if ang_txt == 0.0 and (pos_teste < vg["l_min"] + 4.0 or pos_teste + comp > vg["l_max"] - 4.0):
+                        continue
+                    if ang_txt == 90.0 and (pos_teste < vg["l_min"] + 4.0 or pos_teste + comp > vg["l_max"] - 4.0):
+                        continue
+
+                    for lado in (lado_pref, -lado_pref):
+                        if ang_txt == 0.0:
+                            cand_t_list = [
+                                (vg["t_max"] + 0.25 * h_txt + 6.0),
+                                (vg["t_max"] + 0.25 * h_txt + 18.0),
+                                (vg["t_max"] + 0.25 * h_txt + 35.0)
+                            ] if lado > 0 else [
+                                (vg["t_min"] - 1.15 * h_txt - 6.0),
+                                (vg["t_min"] - 1.15 * h_txt - 18.0),
+                                (vg["t_min"] - 1.15 * h_txt - 35.0)
+                            ]
+                            for ty in cand_t_list:
+                                bx = _bbox_texto(pos_teste, ty, h_txt, 0.0, novo_texto)
+                                if not any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes) and not anti_sobreposicao._box_colide_com_concreto_alheio(bx, vg, lines_concreto, margem=1.0):
+                                    res = (pos_teste, ty, bx)
+                                    break
+                        else:
+                            cand_t_list = [
+                                (vg["t_min"] - 0.25 * h_txt - 6.0),
+                                (vg["t_min"] - 0.25 * h_txt - 18.0),
+                                (vg["t_min"] - 0.25 * h_txt - 26.0)
+                            ] if lado > 0 else [
+                                (vg["t_max"] + 1.15 * h_txt + 6.0),
+                                (vg["t_max"] + 1.15 * h_txt + 18.0),
+                                (vg["t_max"] + 1.15 * h_txt + 26.0)
+                            ]
+                            for tx in cand_t_list:
+                                bx = _bbox_texto(tx, pos_teste, h_txt, 90.0, novo_texto)
+                                if not any(_boxes_colidem(bx, ob, margem=2.0) for ob in obst_boxes) and not anti_sobreposicao._box_colide_com_concreto_alheio(bx, vg, lines_concreto, margem=1.0):
+                                    res = (tx, pos_teste, bx)
+                                    break
+                        if res is not None:
+                            break
+                    if res is not None:
+                        break
+
+                if res is None:
+                    res = anti_sobreposicao.encontrar_posicao_livre_na_viga(
+                        vg, comp, h_txt, False,
+                        pos_l_pref, lado_pref,
+                        obst_boxes, lines_concreto
+                    )
+                if res is not None:
+                    x_dest, y_dest, cand_box = res
 
             dwg.draw.level = nivel_txt
             dwg.draw.color = -1
@@ -597,10 +680,9 @@ def cmd_inversoes(eag, tqsjan):
             dwg.draw.Text(x_dest, y_dest, h_txt, ang_txt, novo_texto)
             textos_criados += 1
 
-            # Registra o novo texto de viga invertida como obstaculo para nao sobrepor com lajes
             obstaculos.append({
                 "tipo": "viga_invertida",
-                "bbox": _bbox_texto(x_dest, y_dest, h_txt, ang_txt, novo_texto)
+                "bbox": cand_box
             })
 
         # ---------------------------------------------------------------------
@@ -702,6 +784,12 @@ def cmd_inversoes(eag, tqsjan):
         except Exception:
             pass
 
+        # Executa tambem o organizador de vigas/pilares para fechar gaps (ex: 15/60 V505-A) e garantir zero sobreposicao
+        try:
+            anti_sobreposicao.executar_anti_sobreposicao(dwg)
+        except Exception:
+            pass
+
         tqsjan.Regen()
         eag.msg.Print(
             "G3 Plugins: %d bolinha(s) processada(s) -> %d indicacao(oes) organizada(s) sem sobreposicao!"
@@ -720,25 +808,9 @@ def cmd_criar_cotas(eag, tqsjan):
     """
     Cria automaticamente as cotas externas (em camadas) e completa as cadeias
     de cotas internas da planta de formas sem duplicar cotas existentes.
+    (Delega para o modulo dedicado cotas_helper.py)
     """
-    try:
-        dwg = tqsjan.dwg
-        cotador = cotas_helper.CotadorFormas(dwg)
-        criadas = cotador.cotar_forma_completa()
-
-        if criadas > 0:
-            tqsjan.Regen()
-            eag.msg.Print("G3 Plugins: %d cota(s) gerada(s) automaticamente na planta de formas!" % criadas)
-            eag.msg.PrintStatus("%d cota(s) criada(s) com sucesso!" % criadas)
-        else:
-            eag.msg.Print("G3 Plugins: Todas as cotas da planta de formas ja existem (nenhuma cota duplicada).")
-            eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
-
-    except Exception as e:
-        try:
-            TQSUtil.ShowException(e)
-        except Exception:
-            pass
+    cotas_helper.cmd_criar_cotas(eag, tqsjan)
 
 
 def cmd_corrigir_vazios(eag, tqsjan):
@@ -793,6 +865,20 @@ def cmd_corrigir_vazios(eag, tqsjan):
             TQSUtil.ShowException(e)
         except Exception:
             pass
+
+
+def cmd_organizar(eag, tqsjan):
+    """Entry point para organizar vigas, bolinhas e pilares na planta de formas."""
+    import importlib
+    importlib.reload(anti_sobreposicao)
+    anti_sobreposicao.cmd_organizar(eag, tqsjan)
+
+
+def cmd_corrigir_sobreposicao(eag, tqsjan):
+    """Alias de compatibilidade para cmd_organizar."""
+    import importlib
+    importlib.reload(anti_sobreposicao)
+    anti_sobreposicao.cmd_organizar(eag, tqsjan)
 
 
 def meucmd(eag, tqsjan):
