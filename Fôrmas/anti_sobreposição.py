@@ -338,17 +338,13 @@ def encontrar_posicao_livre_na_viga(
         lados_testar = [t_pos, t_neg] if lado_pref >= 0 else [t_neg, t_pos]
     else:
         if ang == 0.0:
-            t_pos = vg["t_max"] + 0.25 * tam_t + 6.0
-            t_pos_alto = vg["t_max"] + 0.25 * tam_t + 35.0
-            t_neg = vg["t_min"] - 1.15 * tam_t - 6.0
-            t_neg_baixo = vg["t_min"] - 1.15 * tam_t - 35.0
-            lados_testar = [t_pos, t_pos_alto, t_neg, t_neg_baixo] if lado_pref >= 0 else [t_neg, t_neg_baixo, t_pos, t_pos_alto]
+            t_pos = vg["t_max"] + 0.25 * tam_t + 4.0
+            t_neg = vg["t_min"] - 1.15 * tam_t - 4.0
+            lados_testar = [t_pos, t_neg] if lado_pref >= 0 else [t_neg, t_pos]
         else:
-            t_pos = vg["t_min"] - 0.25 * tam_t - 6.0
-            t_pos_afast = vg["t_min"] - 0.25 * tam_t - 26.0
-            t_neg = vg["t_max"] + 1.15 * tam_t + 6.0
-            t_neg_afast = vg["t_max"] + 1.15 * tam_t + 26.0
-            lados_testar = [t_pos, t_pos_afast, t_neg, t_neg_afast] if lado_pref >= 0 else [t_neg, t_neg_afast, t_pos, t_pos_afast]
+            t_pos = vg["t_min"] - 0.25 * tam_t - 4.0
+            t_neg = vg["t_max"] + 1.15 * tam_t + 4.0
+            lados_testar = [t_pos, t_neg] if lado_pref >= 0 else [t_neg, t_pos]
 
     # Gera candidatos longitudinais dentro da mesma viga branca:
     # 1o: posicao atual (para permitir apenas trocar de lado!)
