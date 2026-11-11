@@ -674,7 +674,8 @@ def limpar_chamadas_orfas_221(dwg, linhas_221_setas, pilares_group):
             for pg in pilares_group:
                 bx = pg["box"]
                 p9_y = pg["p9"]["y1"]
-                if abs(y_lin - (p9_y - 3.0)) <= 6.0:
+                y_pat_esp = (p9_y + pg.get("dy_sec", 0.0) - 3.0) if pg.get("p12") else (p9_y - 3.0)
+                if abs(y_lin - y_pat_esp) <= 6.0 or (bx[1] - 8.0 <= y_lin <= bx[1] + 2.0):
                     if bx[2] >= xmin_lin - 10.0 and bx[0] <= xmax_lin + 10.0:
                         tem_texto_acima = True
                         break
@@ -721,6 +722,87 @@ def apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40
     return apagadas
 
 
+def _construir_pilares_group(texts_raw, poly_pilares):
+    """
+    Pareia pilares (Nivel 9) com poligonos fisicos e secoes (Nivel 12):
+      - Ordena pilares de cima para baixo (y decrescente) para evitar troca de secoes em juntas de dilatacao.
+      - Apenas pareia secoes p12 que estejam geometricamente abaixo de p9 (dy <= 2.0).
+      - Padroniza dx_sec = 0.0 e dy_sec = -18.0 para garantir que a secao nunca fique sobreposta ou acima do pilar.
+    """
+    p9_list = [tx for tx in texts_raw if tx["level"] == 9 and tx["txt"].upper().startswith("P")]
+    p12_list = [tx for tx in texts_raw if tx["level"] == 12 and "/" in tx["txt"]]
+    p9_list.sort(key=lambda p: -p["y1"])
+
+    poly_usados = set()
+    pilares_com_cands = []
+    for p9 in p9_list:
+        cands_p = []
+        for idx_pb, pb in enumerate(poly_pilares):
+            dp = math.hypot(p9["x1"] - pb["pcx"], p9["y1"] - pb["pcy"])
+            cands_p.append((dp, idx_pb, pb))
+        cands_p.sort(key=lambda x: x[0])
+        pilares_com_cands.append((p9, cands_p))
+
+    pilares_com_cands.sort(key=lambda x: x[1][0][0] if x[1] else float("inf"))
+    map_p9_poly = {}
+    for p9, cands_p in pilares_com_cands:
+        for dp, idx_pb, pb in cands_p:
+            if idx_pb not in poly_usados:
+                poly_usados.add(idx_pb)
+                map_p9_poly[id(p9)] = pb
+                break
+        if id(p9) not in map_p9_poly and cands_p:
+            map_p9_poly[id(p9)] = cands_p[0][2]
+
+    pilares_group = []
+    used_12_idx = set()
+    for p9 in p9_list:
+        best_12 = None
+        min_score = float("inf")
+        for i, p12 in enumerate(p12_list):
+            if i in used_12_idx:
+                continue
+            d = math.hypot(p9["x1"] - p12["x1"], p9["y1"] - p12["y1"])
+            dy = p12["y1"] - p9["y1"]
+            dx = p12["x1"] - p9["x1"]
+            # Secao de pilar deve ficar abaixo do nome do pilar (nunca acima!)
+            if dy > 2.0:
+                continue
+            score = d + abs(dx) * 0.5
+            if d <= 55.0 and score < min_score:
+                min_score = score
+                best_12 = (i, p12)
+
+        p12_obj = None
+        if best_12 is not None:
+            used_12_idx.add(best_12[0])
+            p12_obj = best_12[1]
+
+        bp9 = p9["box"]
+        # Padrao executivo: secao do pilar alinhada horizontalmente e abaixo do nome
+        dx_sec = 0.0
+        dy_sec = -18.0 if p12_obj else 0.0
+        if p12_obj:
+            bp12 = _bbox_texto(p9["x1"] + dx_sec, p9["y1"] + dy_sec, p12_obj["h"], p9["ang"], p12_obj["txt"])
+        else:
+            bp12 = bp9
+        bconj = (min(bp9[0], bp12[0]), min(bp9[1], bp12[1]), max(bp9[2], bp12[2]), max(bp9[3], bp12[3]))
+        p_poly = map_p9_poly.get(id(p9))
+
+        pilares_group.append({
+            "p9": p9,
+            "p12": p12_obj,
+            "dx_sec": dx_sec,
+            "dy_sec": dy_sec,
+            "box": bconj,
+            "larg_conj": bconj[2] - bconj[0],
+            "alt_conj": bconj[3] - bconj[1],
+            "p_poly": p_poly,
+        })
+
+    return pilares_group
+
+
 def reposicionar_pilares_conflitantes(
     dwg, pilares_group, poly_pilares, lines_concreto, obstaculos_fixos,
     todos_obstaculos_cotas, texts_raw, linhas_242, linhas_221_setas,
@@ -729,10 +811,9 @@ def reposicionar_pilares_conflitantes(
     """
     Reorganiza pilares com sobreposicao e permite ciclar posicoes:
       - So move se o identificador do pilar estiver em sobreposicao real (com textos, secoes, concreto).
-      - Se ja tiver sido deslocado e o usuario clicar no botao Pilar (forcar_ciclo_se_deslocado=True),
-        avanca circularmente para a proxima posicao livre em torno do pilar.
-      - Pula posicoes proximas a atual para garantir movimento perceptivel a cada clique.
-      - Desenha Seta Executiva (Nivel 221) e apaga linhas de chamada antigas.
+      - Posiciona preferencialmente EM BAIXO (270, 315, 225) em area livre e organizada.
+      - Garante que a secao (p12) fique sempre abaixo do nome (p9), sem sobreposicao.
+      - Desenha Seta Executiva (Nivel 221) com patamar sob a secao e apaga chamadas antigas.
     """
     total_ajustes = 0
     boxes_pilares_poly = [pb["box"] for pb in poly_pilares]
@@ -757,10 +838,15 @@ def reposicionar_pilares_conflitantes(
         )
 
         colide = False
-        for obs in obstaculos_pilar:
-            if _boxes_colidem(b_conj, obs, margem=5.0):
-                colide = True
-                break
+        # Se no desenho atual a secao p12 estiver sobreposta ao nome p9 (ou acima dele):
+        if p12 and p12["y1"] >= p9["y1"] - 8.0:
+            colide = True
+
+        if not colide:
+            for obs in obstaculos_pilar:
+                if _boxes_colidem(b_conj, obs, margem=5.0):
+                    colide = True
+                    break
 
         if not colide:
             for lx1, ly1, lx2, ly2, _ in lines_concreto:
@@ -778,14 +864,15 @@ def reposicionar_pilares_conflitantes(
         tem_seta = False
         setas_do_pilar = []
         for l in linhas_221_setas + linhas_242:
-            d1 = math.hypot(l["x1"] - p9["x1"], l["y1"] - p9["y1"])
-            d2 = math.hypot(l["x2"] - p9["x1"], l["y2"] - p9["y1"])
-            if min(d1, d2) <= 30.0:
+            d1_9 = math.hypot(l["x1"] - p9["x1"], l["y1"] - p9["y1"])
+            d2_9 = math.hypot(l["x2"] - p9["x1"], l["y2"] - p9["y1"])
+            d1_12 = math.hypot(l["x1"] - p12["x1"], l["y1"] - p12["y1"]) if p12 else float("inf")
+            d2_12 = math.hypot(l["x2"] - p12["x1"], l["y2"] - p12["y1"]) if p12 else float("inf")
+            if min(d1_9, d2_9, d1_12, d2_12) <= 35.0:
                 tem_seta = True
                 setas_do_pilar.append(l)
 
         # Se o texto em si nao colide, mas a SETA dele colide com algum outro texto/obstaculo:
-        # entao ha sobreposicao da seta! Marca colide = True para mover!
         if not colide and tem_seta:
             for l in setas_do_pilar:
                 lx1, ly1, lx2, ly2 = l["x1"], l["y1"], l["x2"], l["y2"]
@@ -804,35 +891,39 @@ def reposicionar_pilares_conflitantes(
                 if colide:
                     break
 
-        # Regra de ouro:
-        # "ele so move se ele identificar sobreposicao, caso nn, aquele la ele deixa quieto"
-        # Se nao colide: so move se o usuario chamou 'Pilar' (forcar_ciclo_se_deslocado) E ja tem seta
+        # Regra de ouro: so move se colidir, ou se forcar ciclo quando ja deslocado
         if not colide:
             if not (forcar_ciclo_se_deslocado and tem_seta):
                 continue
 
-        cur_x, cur_y = p9["x1"], p9["y1"]
-        cur_ang = math.atan2(cur_y - pcy, cur_x - pcx) * 180.0 / math.pi
-        if cur_ang < 0.0:
-            cur_ang += 360.0
-
-        direcoes = [
-            (0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)),
-            (45.0, lambda r: (pcx + r, pcy + r * 0.7)),
-            (90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)),
-            (135.0, lambda r: (pcx - r - larg_conj, pcy + r * 0.7)),
-            (180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)),
-            (225.0, lambda r: (pcx - r - larg_conj, pcy - r * 0.7 - alt_conj)),
-            (270.0, lambda r: (pcx - 0.5 * larg_conj, pcy - r - alt_conj - 5.0)),
-            (315.0, lambda r: (pcx + r, pcy - r * 0.7 - alt_conj)),
+        # Prioriza posicoes EM BAIXO (270, 315, 225) conforme solicitado ("ficar em baixo, dessa forma mais organizada")
+        direcoes_base = [
+            (270.0, lambda r: (pcx - 0.5 * larg_conj, pcy - r - alt_conj - 5.0)),   # Baixo
+            (315.0, lambda r: (pcx + r, pcy - r * 0.7 - alt_conj)),                 # Baixo-direita
+            (225.0, lambda r: (pcx - r - larg_conj, pcy - r * 0.7 - alt_conj)),     # Baixo-esquerda
+            (0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)),                 # Direita
+            (180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)),   # Esquerda
+            (45.0, lambda r: (pcx + r, pcy + r * 0.7)),                             # Cima-direita
+            (135.0, lambda r: (pcx - r - larg_conj, pcy + r * 0.7)),                 # Cima-esquerda
+            (90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)),               # Cima
         ]
-        direcoes_ord = sorted(direcoes, key=lambda d: (d[0] - cur_ang - 20.0) % 360.0)
+
+        cur_x, cur_y = p9["x1"], p9["y1"]
+        if forcar_ciclo_se_deslocado and tem_seta and not colide:
+            cur_ang = math.atan2(cur_y - pcy, cur_x - pcx) * 180.0 / math.pi
+            if cur_ang < 0.0:
+                cur_ang += 360.0
+            direcoes_ord = sorted(direcoes_base, key=lambda d: (d[0] - cur_ang - 20.0) % 360.0)
+            pular_proximas = True
+        else:
+            direcoes_ord = list(direcoes_base)
+            pular_proximas = False
 
         escolhido = None
         for _, fpos in direcoes_ord:
             for r in (40.0, 60.0, 80.0, 100.0, 125.0, 150.0):
                 cand_x, cand_y = fpos(r)
-                if math.hypot(cand_x - cur_x, cand_y - cur_y) < 25.0:
+                if pular_proximas and math.hypot(cand_x - cur_x, cand_y - cur_y) < 25.0:
                     continue
 
                 cb9 = _bbox_texto(cand_x, cand_y, p9["h"], p9["ang"], p9["txt"])
@@ -856,7 +947,7 @@ def reposicionar_pilares_conflitantes(
                     continue
 
                 # Calcula geometria da seta para validar se a linha nao corta textos/obstaculos
-                y_pat = cand_y - 3.0
+                y_pat = (cand_y + p_grp["dy_sec"] - 3.0) if p12 else (cand_y - 3.0)
                 if cand_x >= pcx:
                     x_jlh = cand_x - 3.0
                     x_fp = cand_x + larg_conj + 2.0
@@ -869,7 +960,7 @@ def reposicionar_pilares_conflitantes(
                     y_st = p_box[1] if y_pat < pcy else p_box[3]
 
                 dist_s = math.hypot(x_jlh - x_st, y_pat - y_st)
-                if dist_s >= 38.0:
+                if dist_s >= 35.0:
                     corta_seta = False
                     for obs_p in obstaculos_pilar:
                         if p_box and (p_box[0] - 2.0 <= 0.5 * (obs_p[0] + obs_p[2]) <= p_box[2] + 2.0) and (p_box[1] - 2.0 <= 0.5 * (obs_p[1] + obs_p[3]) <= p_box[3] + 2.0):
@@ -910,14 +1001,18 @@ def reposicionar_pilares_conflitantes(
             p9["box"] = _bbox_texto(nx, ny, p9["h"], p9["ang"], p9["txt"])
 
             if p12 is not None:
-                dwg.edit.Move(p12["addr"], dx, dy)
-                p12["x1"] += dx
-                p12["y1"] += dy
-                p12["box"] = _bbox_texto(p12["x1"], p12["y1"], p12["h"], p12["ang"], p12["txt"])
+                target_12_x = nx + p_grp["dx_sec"]
+                target_12_y = ny + p_grp["dy_sec"]
+                dx12 = target_12_x - p12["x1"]
+                dy12 = target_12_y - p12["y1"]
+                dwg.edit.Move(p12["addr"], dx12, dy12)
+                p12["x1"] = target_12_x
+                p12["y1"] = target_12_y
+                p12["box"] = _bbox_texto(target_12_x, target_12_y, p12["h"], p12["ang"], p12["txt"])
 
             p_grp["box"] = novo_box
 
-            y_patamar = ny - 3.0
+            y_patamar = (ny + p_grp["dy_sec"] - 3.0) if p12 is not None else (ny - 3.0)
             if nx >= pcx:
                 x_joelho = nx - 3.0
                 x_fim_patamar = nx + larg_conj + 2.0
@@ -930,7 +1025,7 @@ def reposicionar_pilares_conflitantes(
                 y_seta = p_box[1] if y_patamar < pcy else p_box[3]
 
             dist_seta = math.hypot(x_joelho - x_seta, y_patamar - y_seta)
-            if dist_seta >= 38.0:
+            if dist_seta >= 35.0:
                 desenhar_seta_chamada_executiva(
                     dwg, x_fim_patamar, x_joelho, y_patamar, x_seta, y_seta, linhas_221_setas=linhas_221_setas
                 )
@@ -1127,63 +1222,8 @@ def executar_anti_sobreposicao(dwg):
                 "dy_txt": tx["y1"] - c["yc"],
             })
 
-    # Pilares (Nivel 9 + Nivel 12) com pareamento 1-para-1 ao poligono fisico
-    p9_list = [tx for tx in texts_raw if tx["level"] == 9 and tx["txt"].upper().startswith("P")]
-    p12_list = [tx for tx in texts_raw if tx["level"] == 12 and "/" in tx["txt"]]
-    pilares_group = []
-    used_12_idx = set()
-
-    poly_usados = set()
-    pilares_com_cands = []
-    for p9 in p9_list:
-        cands_p = []
-        for idx_pb, pb in enumerate(poly_pilares):
-            dp = math.hypot(p9["x1"] - pb["pcx"], p9["y1"] - pb["pcy"])
-            cands_p.append((dp, idx_pb, pb))
-        cands_p.sort(key=lambda x: x[0])
-        pilares_com_cands.append((p9, cands_p))
-
-    pilares_com_cands.sort(key=lambda x: x[1][0][0] if x[1] else float("inf"))
-    map_p9_poly = {}
-    for p9, cands_p in pilares_com_cands:
-        for dp, idx_pb, pb in cands_p:
-            if idx_pb not in poly_usados:
-                poly_usados.add(idx_pb)
-                map_p9_poly[id(p9)] = pb
-                break
-        if id(p9) not in map_p9_poly and cands_p:
-            map_p9_poly[id(p9)] = cands_p[0][2]
-
-    for p9 in p9_list:
-        best_12 = None
-        min_d = float("inf")
-        for i, p12 in enumerate(p12_list):
-            if i in used_12_idx:
-                continue
-            d = math.hypot(p9["x1"] - p12["x1"], p9["y1"] - p12["y1"])
-            if d <= 45.0 and d < min_d:
-                min_d = d
-                best_12 = (i, p12)
-        p12_obj = None
-        if best_12 is not None:
-            used_12_idx.add(best_12[0])
-            p12_obj = best_12[1]
-
-        bp9 = p9["box"]
-        bp12 = p12_obj["box"] if p12_obj else bp9
-        bconj = (min(bp9[0], bp12[0]), min(bp9[1], bp12[1]), max(bp9[2], bp12[2]), max(bp9[3], bp12[3]))
-        p_poly = map_p9_poly.get(id(p9))
-
-        pilares_group.append({
-            "p9": p9,
-            "p12": p12_obj,
-            "dx_sec": (p12_obj["x1"] - p9["x1"]) if p12_obj else 0.0,
-            "dy_sec": (p12_obj["y1"] - p9["y1"]) if p12_obj else -18.0,
-            "box": bconj,
-            "larg_conj": bconj[2] - bconj[0],
-            "alt_conj": bconj[3] - bconj[1],
-            "p_poly": p_poly,
-        })
+    # Pilares (Nivel 9 + Nivel 12) com pareamento 1-para-1 ao poligono fisico e secao
+    pilares_group = _construir_pilares_group(texts_raw, poly_pilares)
 
     # Lajes (Nivel 10 + Nivel 13) para que textos de viga nao invadam textos de laje
     lajes_boxes = [tx["box"] for tx in texts_raw if tx["level"] in (10, 13) and tx["addr"] not in [b["addr_txt"] for b in bolinhas_group]]
@@ -1648,6 +1688,12 @@ def executar_anti_sobreposicao(dwg):
     )
     total_ajustes += ajustes_pilares
 
+    try:
+        import cotas_helper
+        total_ajustes += cotas_helper._organizar_cotas_apertadas(dwg)
+    except Exception:
+        pass
+
     return total_ajustes
 
 
@@ -1785,62 +1831,8 @@ def executar_organizar_apenas_pilares(dwg):
                     "xc": xc, "yc": yc, "h": h, "ang": ang, "box": b
                 })
 
-    p9_list = [tx for tx in texts_raw if tx["level"] == 9 and tx["txt"].upper().startswith("P")]
-    p12_list = [tx for tx in texts_raw if tx["level"] == 12 and "/" in tx["txt"]]
-    pilares_group = []
-    used_12_idx = set()
-
-    poly_usados = set()
-    pilares_com_cands = []
-    for p9 in p9_list:
-        cands_p = []
-        for idx_pb, pb in enumerate(poly_pilares):
-            dp = math.hypot(p9["x1"] - pb["pcx"], p9["y1"] - pb["pcy"])
-            cands_p.append((dp, idx_pb, pb))
-        cands_p.sort(key=lambda x: x[0])
-        pilares_com_cands.append((p9, cands_p))
-
-    pilares_com_cands.sort(key=lambda x: x[1][0][0] if x[1] else float("inf"))
-    map_p9_poly = {}
-    for p9, cands_p in pilares_com_cands:
-        for dp, idx_pb, pb in cands_p:
-            if idx_pb not in poly_usados:
-                poly_usados.add(idx_pb)
-                map_p9_poly[id(p9)] = pb
-                break
-        if id(p9) not in map_p9_poly and cands_p:
-            map_p9_poly[id(p9)] = cands_p[0][2]
-
-    for p9 in p9_list:
-        best_12 = None
-        min_d = float("inf")
-        for i, p12 in enumerate(p12_list):
-            if i in used_12_idx:
-                continue
-            d = math.hypot(p9["x1"] - p12["x1"], p9["y1"] - p12["y1"])
-            if d <= 45.0 and d < min_d:
-                min_d = d
-                best_12 = (i, p12)
-        p12_obj = None
-        if best_12 is not None:
-            used_12_idx.add(best_12[0])
-            p12_obj = best_12[1]
-
-        bp9 = p9["box"]
-        bp12 = p12_obj["box"] if p12_obj else bp9
-        bconj = (min(bp9[0], bp12[0]), min(bp9[1], bp12[1]), max(bp9[2], bp12[2]), max(bp9[3], bp12[3]))
-        p_poly = map_p9_poly.get(id(p9))
-
-        pilares_group.append({
-            "p9": p9,
-            "p12": p12_obj,
-            "dx_sec": (p12_obj["x1"] - p9["x1"]) if p12_obj else 0.0,
-            "dy_sec": (p12_obj["y1"] - p9["y1"]) if p12_obj else -18.0,
-            "box": bconj,
-            "larg_conj": bconj[2] - bconj[0],
-            "alt_conj": bconj[3] - bconj[1],
-            "p_poly": p_poly,
-        })
+    # Pilares (Nivel 9 + Nivel 12) com pareamento 1-para-1 ao poligono fisico e secao
+    pilares_group = _construir_pilares_group(texts_raw, poly_pilares)
 
     return reposicionar_pilares_conflitantes(
         dwg, pilares_group, poly_pilares, lines_concreto, obstaculos_fixos,
