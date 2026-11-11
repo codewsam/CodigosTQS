@@ -17,7 +17,10 @@ Principais Recursos:
 ================================================================================
 """
 
+import os
+import json
 import math
+import subprocess
 from TQS import TQSUtil, TQSDwg
 
 try:
@@ -115,7 +118,7 @@ def filtrar_e_ordenar_pontos(lista_pontos, tolerancia=0.5):
     return filtrados
 
 
-def coletar_cotas_existentes(dwg, nivel_cota=None):
+def coletar_cotas_existentes(dwg, nivel_cota=216):
     """
     Varre o DWG coletando todas as cotas inteligentes (IPOCOT) e textos de cota
     ja existentes para evitar sobreposicoes e identificar linhas de cota ativas.
@@ -182,6 +185,9 @@ def coletar_cotas_existentes(dwg, nivel_cota=None):
                         "h": txt_info["h"],
                         "ang": txt_info["ang"],
                         "texto": txt_info["texto"],
+                        "bbox_texto": _bbox_texto(
+                            txt_info["x"], txt_info["y"], txt_info["h"], txt_info["ang"], txt_info["texto"]
+                        ),
                         "lines": cur_obj["lines"],
                         "addr": cur_obj["addr"],
                     })
@@ -207,23 +213,284 @@ def coletar_cotas_existentes(dwg, nivel_cota=None):
                 if nivel_cota is not None and dwg.iterator.level == nivel_cota:
                     ang = dwg.iterator.textAngle % 360.0
                     orient = "V" if (abs(ang - 90.0) < 10.0 or abs(ang - 270.0) < 10.0) else "H"
+                    tx1 = dwg.iterator.x1
+                    ty1 = dwg.iterator.y1
+                    th = dwg.iterator.textHeight
+                    tstr = dwg.iterator.text.strip()
+                    addr = dwg.iterator.GetElementReadPosition()
                     cotas.append({
                         "tipo": "TEXT",
                         "orient": orient,
                         "p1": None,
                         "p2": None,
-                        "pos_linha": dwg.iterator.y1 if orient == "H" else dwg.iterator.x1,
-                        "x": dwg.iterator.xc,
-                        "y": dwg.iterator.yc,
-                        "h": dwg.iterator.textHeight,
+                        "pos_linha": (ty1 - 3.0) if orient == "H" else (tx1 + 3.0),
+                        "x": tx1,
+                        "y": ty1,
+                        "h": th,
                         "ang": ang,
-                        "texto": dwg.iterator.text.strip(),
+                        "texto": tstr,
+                        "bbox_texto": _bbox_texto(tx1, ty1, th, ang, tstr),
                         "lines": [],
+                        "addr": addr,
                     })
     except Exception:
         pass
 
     return cotas
+
+
+def arredondar_valor_cota(valor):
+    """
+    Regra de arredondamento personalizada:
+      - Termina em 0.1 ate 0.2 -> arredonda para .0
+      - Termina em 0.3 ate 0.7 -> arredonda para .5
+      - Termina em 0.8 ate 0.9 -> arredonda para 1.0 (inteiro seguinte)
+    """
+    v = round(float(valor), 2)
+    sinal = -1.0 if v < 0 else 1.0
+    v = abs(v)
+    inteiro = int(math.floor(v + 1e-7))
+    dec = round(v - inteiro, 2)
+
+    if dec <= 0.25:
+        res = float(inteiro)
+    elif dec <= 0.75:
+        res = float(inteiro) + 0.5
+    else:
+        res = float(inteiro + 1)
+
+    return sinal * res
+
+
+def formatar_valor_cota(valor_arr):
+    """
+    Formata o valor arredondado:
+      - Se inteiro (ex: 80.0): '80'
+      - Se meio (ex: 7.5): '7.5'
+    """
+    if abs(valor_arr - round(valor_arr)) < 1e-5:
+        return str(int(round(valor_arr)))
+    else:
+        return "%.1f" % valor_arr
+
+
+def _substituir_ipocot_por_primitivos(dwg, cota_dict, novo_x, novo_y, estender_linha=True, novo_texto=None):
+    """
+    Substitui um objeto IPOCOT especifico pelas suas linhas exatas no nivel 221 e pelo
+    texto no nivel 216 na nova posicao (novo_x, novo_y) e opcionalmente com novo_texto
+    (ex.: texto com arredondamento 80 em vez de 79.9, ou 7.5 em vez de 7.3).
+    """
+    if cota_dict.get("tipo") != "IPOCOT" or not cota_dict.get("addr"):
+        return False
+
+    try:
+        dwg.edit.Erase(cota_dict["addr"])
+    except Exception:
+        return False
+
+    old_lvl = dwg.draw.level
+    old_col = dwg.draw.color
+
+    try:
+        orient = cota_dict.get("orient", "H")
+        h = float(cota_dict.get("h", 10.0))
+        texto = str(novo_texto if novo_texto is not None else cota_dict.get("texto", ""))
+        larg_txt = max(10.0, (len(texto) - 0.25) * h)
+
+        for idx, (lvl, lx1, ly1, lx2, ly2) in enumerate(cota_dict.get("lines", [])):
+            dwg.draw.level = int(lvl)
+            dwg.draw.color = -1
+            if estender_linha and idx == 0 and int(lvl) == 221:
+                if orient == "H" and abs(ly1 - ly2) < 0.5:
+                    xmin_l = min(lx1, lx2, novo_x - 1.5)
+                    xmax_l = max(lx1, lx2, novo_x + larg_txt + 1.5)
+                    lx1, lx2 = xmin_l, xmax_l
+                elif orient == "V" and abs(lx1 - lx2) < 0.5:
+                    ymin_l = min(ly1, ly2, novo_y - 1.5)
+                    ymax_l = max(ly1, ly2, novo_y + larg_txt + 1.5)
+                    ly1, ly2 = ymin_l, ymax_l
+            dwg.draw.Line(float(lx1), float(ly1), float(lx2), float(ly2))
+
+        dwg.draw.level = 216
+        dwg.draw.color = 3
+        dwg.draw.Text(float(novo_x), float(novo_y), h, float(cota_dict.get("ang", 0.0)), texto)
+    finally:
+        dwg.draw.level = old_lvl
+        dwg.draw.color = old_col
+
+    cota_dict["tipo"] = "TEXT"
+    cota_dict["texto"] = texto
+    cota_dict["x"] = float(novo_x)
+    cota_dict["y"] = float(novo_y)
+    cota_dict["bbox_texto"] = _bbox_texto(
+        float(novo_x), float(novo_y), float(cota_dict.get("h", 10.0)), float(cota_dict.get("ang", 0.0)), texto
+    )
+    return True
+
+
+def aplicar_arredondamento_cotas(dwg, cotas_alvo=None):
+    """
+    Aplica o arredondamento (0.1..0.2 -> 0, 0.3..0.7 -> 0.5, 0.8..0.9 -> 1.0)
+    nos textos de todas as cotas geradas no DWG.
+    """
+    cotas = coletar_cotas_existentes(dwg, nivel_cota=216) if cotas_alvo is None else cotas_alvo
+    if not cotas:
+        return 0
+
+    total_arredondadas = 0
+    for c in cotas:
+        txt_orig = c.get("texto", "").strip()
+        try:
+            val = float(txt_orig.replace(",", "."))
+        except (ValueError, TypeError):
+            continue
+
+        val_arr = arredondar_valor_cota(val)
+        txt_novo = formatar_valor_cota(val_arr)
+
+        if txt_novo == txt_orig:
+            continue
+
+        h = float(c.get("h", 10.0))
+        orient = c.get("orient", "H")
+        novo_x = c["x"]
+        novo_y = c["y"]
+
+        # Recalcula a posicao para manter perfeitamente centralizado no vao da cota
+        if c.get("p1") is not None and c.get("p2") is not None:
+            meio = 0.5 * (c["p1"] + c["p2"])
+            span = abs(c["p2"] - c["p1"])
+            # Se for cota folgada (> 40cm), centraliza no meio
+            if span >= 38.0:
+                offset_centro = len(txt_novo) * (h * 0.5) - 1.0
+                if orient == "H":
+                    novo_x = meio - offset_centro
+                else:
+                    novo_y = meio - offset_centro
+
+        if c.get("tipo") == "IPOCOT" and c.get("addr"):
+            if _substituir_ipocot_por_primitivos(dwg, c, novo_x, novo_y, estender_linha=False, novo_texto=txt_novo):
+                total_arredondadas += 1
+        elif c.get("tipo") == "TEXT" and c.get("addr"):
+            # Texto primitivo avulso já no desenho
+            old_lvl = dwg.draw.level
+            old_col = dwg.draw.color
+            try:
+                dwg.edit.Erase(c["addr"])
+                dwg.draw.level = 216
+                dwg.draw.color = 3
+                dwg.draw.Text(float(novo_x), float(novo_y), h, float(c.get("ang", 0.0)), txt_novo)
+                total_arredondadas += 1
+            finally:
+                dwg.draw.level = old_lvl
+                dwg.draw.color = old_col
+
+    return total_arredondadas
+
+
+def _organizar_cotas_apertadas(dwg):
+    """
+    Corrige automaticamente a posicao dos textos de cotas em vaos apertados (< 40 cm)
+    onde o IPOCOT joga o texto para a esquerda/baixo em cima da cota vizinha
+    (ex.: cota de 79.9 seguida de 7.3 na borda do capitel/cubeta).
+    """
+    cotas = coletar_cotas_existentes(dwg, nivel_cota=216)
+    if not cotas:
+        return 0
+
+    for c in cotas:
+        h = float(c.get("h", 10.0))
+        txt = str(c.get("texto", ""))
+        c["larg_txt"] = max(10.0, (len(txt) - 0.2) * h)
+        if not c.get("bbox_texto"):
+            c["bbox_texto"] = _bbox_texto(c["x"], c["y"], h, c["ang"], txt)
+
+    ajustadas = 0
+
+    # 1. Pares de cotas horizontais adjacentes na mesma linha (c1 a esquerda, c2 a direita)
+    cotas_h = [c for c in cotas if c.get("orient") == "H" and c.get("p1") is not None and c.get("p2") is not None]
+    cotas_h.sort(key=lambda c: (round(c["pos_linha"] / 4.0), c["p1"]))
+
+    for i in range(len(cotas_h)):
+        for j in range(i + 1, len(cotas_h)):
+            c1 = cotas_h[i]
+            c2 = cotas_h[j]
+            if abs(c1["pos_linha"] - c2["pos_linha"]) > 5.0:
+                continue
+            if c1["p1"] > c2["p1"]:
+                c1, c2 = c2, c1
+            # Verifica se sao cotas vizinhas compartilhando o ponto intermediario (ex: sx2)
+            if abs(c1["p2"] - c2["p1"]) > 3.0:
+                continue
+
+            # Caso classico: c2 (a direita, ex: 7.3, 12.7, 26.1, 38.8) e estreita e o IPOCOT
+            # jogou o texto de c2 para a esquerda de c2['p1'], invadindo o trecho de c1 (ex: 79.9)
+            if c2.get("tipo") == "IPOCOT" and c2["x"] < (c2["p1"] - 1.0):
+                larg2 = c2["larg_txt"]
+                novo_x2 = max(c2["p1"] - 3.5, 0.5 * (c2["p1"] + c2["p2"]) - 0.5 * larg2)
+                if _substituir_ipocot_por_primitivos(dwg, c2, novo_x2, c2["y"], estender_linha=True):
+                    ajustadas += 1
+
+                # Se mesmo assim c1 (a esquerda) ficar muito colada em novo_x2 (< 10 cm), afasta c1 um pouco a esquerda
+                larg1 = c1["larg_txt"]
+                if c1.get("tipo") == "IPOCOT" and (c1["x"] + larg1 + 10.0) > novo_x2:
+                    novo_x1 = max(c1["p1"] + 2.0, novo_x2 - 12.0 - larg1)
+                    if novo_x1 < c1["x"] - 1.0:
+                        if _substituir_ipocot_por_primitivos(dwg, c1, novo_x1, c1["y"], estender_linha=False):
+                            ajustadas += 1
+
+    # 2. Pares de cotas verticais adjacentes na mesma linha (c1 embaixo, c2 em cima)
+    cotas_v = [c for c in cotas if c.get("orient") == "V" and c.get("p1") is not None and c.get("p2") is not None]
+    cotas_v.sort(key=lambda c: (round(c["pos_linha"] / 4.0), c["p1"]))
+
+    for i in range(len(cotas_v)):
+        for j in range(i + 1, len(cotas_v)):
+            c1 = cotas_v[i]
+            c2 = cotas_v[j]
+            if abs(c1["pos_linha"] - c2["pos_linha"]) > 5.0:
+                continue
+            if c1["p1"] > c2["p1"]:
+                c1, c2 = c2, c1
+            if abs(c1["p2"] - c2["p1"]) > 3.0:
+                continue
+
+            if c2.get("tipo") == "IPOCOT" and c2["y"] < (c2["p1"] - 1.0):
+                larg2 = c2["larg_txt"]
+                novo_y2 = max(c2["p1"] - 3.5, 0.5 * (c2["p1"] + c2["p2"]) - 0.5 * larg2)
+                if _substituir_ipocot_por_primitivos(dwg, c2, c2["x"], novo_y2, estender_linha=True):
+                    ajustadas += 1
+
+    # 3. Qualquer outra cota estreita cujo texto foi jogado para fora pelo IPOCOT e colide com outra cota
+    for idx, c in enumerate(cotas):
+        if c.get("tipo") != "IPOCOT" or c.get("p1") is None or c.get("p2") is None:
+            continue
+        span = c["p2"] - c["p1"]
+        if span <= 0.0 or span > 42.0:
+            continue
+
+        foi_jogada_fora = (
+            (c["orient"] == "H" and c["x"] < c["p1"] - 1.0) or
+            (c["orient"] == "V" and c["y"] < c["p1"] - 1.0)
+        )
+        if not foi_jogada_fora:
+            continue
+
+        colide = any(
+            k != idx and c.get("bbox_texto") and outro.get("bbox_texto") and _boxes_colidem(c["bbox_texto"], outro["bbox_texto"], 3.0)
+            for k, outro in enumerate(cotas)
+        )
+        if colide:
+            larg = c["larg_txt"]
+            if c["orient"] == "H":
+                novo_x = 0.5 * (c["p1"] + c["p2"]) - 0.5 * larg
+                if _substituir_ipocot_por_primitivos(dwg, c, novo_x, c["y"], estender_linha=False):
+                    ajustadas += 1
+            else:
+                novo_y = 0.5 * (c["p1"] + c["p2"]) - 0.5 * larg
+                if _substituir_ipocot_por_primitivos(dwg, c, c["x"], novo_y, estender_linha=False):
+                    ajustadas += 1
+
+    return ajustadas
 
 
 def cota_ja_existe(
@@ -256,8 +523,7 @@ def cota_ja_existe(
         if c.get("p1") is not None and c.get("p2") is not None:
             if abs(c["p1"] - a1) <= tolerancia and abs(c["p2"] - a2) <= tolerancia:
                 return True
-
-        if c.get("texto"):
+        elif c.get("texto"):
             try:
                 val = float(c["texto"].replace(",", "."))
                 if abs(val - comp_alvo) <= tolerancia:
@@ -1282,32 +1548,623 @@ class CotadorFormas(object):
         )
 
         # ---------------------------------------------------------------------
-        # 5. REORGANIZAR TEXTOS PARA ELIMINAR SOBREPOSICOES COM AS COTAS
+        # 5. REORGANIZAR COTAS APERTADAS E TEXTOS PARA ELIMINAR SOBREPOSICOES
         # ---------------------------------------------------------------------
+        _organizar_cotas_apertadas(self.dwg)
+        if arredondar_valores:
+            aplicar_arredondamento_cotas(self.dwg)
+        self.cotas_existentes = coletar_cotas_existentes(self.dwg)
         if organizar_textos:
             organizar_textos_sem_sobreposicao(self.dwg, geo=geo, cotas=self.cotas_existentes)
 
         return total_criadas
 
+    def cotar_forma_completa(self, organizar_textos=True, arredondar_valores=True):
+        """
+        Executa a cotagem externa em camadas e interna por completo da planta de formas.
+        """
+        return self.cotar_forma(organizar_textos=organizar_textos, arredondar_valores=arredondar_valores)
+
+    def cotar_pilares_quadrados(
+        self,
+        incluir_cadeia_horizontal=True,
+        incluir_cotas_capitel=True,
+        arredondar_valores=True
+    ):
+        """
+        Identifica automaticamente os pilares que estao dentro dos quadrados amarelos
+        (capiteis/macicos no Nivel 207, ignorando pilares soltos nas bordas) e gera:
+          1. Cadeia horizontal continua comecando la do inicio horizontal (vigas de borda/apoio)
+             e passando pelas faces dos pilares dos quadrados ao longo de cada alinhamento.
+          2. Cotas locais de cada quadrado/capitel (distancias do pilar ate as faces do
+             quadrado, folga ate as cubetas e abertura total entre cubetas na horizontal e vertical).
+        """
+        self.configurar_estilo()
+
+        quadrados_207 = []
+        pilares_poly = []
+        vigas_vert = []
+        cubetas = []
+        textos_pilar = []
+
+        self.dwg.iterator.Begin()
+        while True:
+            tipo = self.dwg.iterator.Next()
+            if tipo == TQSDwg.DWGTYPE_EOF:
+                break
+
+            nivel = self.dwg.iterator.level
+            if self.dwg.iterator.inBlock != 0:
+                if tipo == TQSDwg.DWGTYPE_POLYLINE and nivel == 208:
+                    pts = [self.dwg.iterator.GetPolylinePt(i) for i in range(self.dwg.iterator.xySize)]
+                    if pts:
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        cubetas.append((min(xs), min(ys), max(xs), max(ys)))
+                continue
+
+            if tipo == TQSDwg.DWGTYPE_POLYLINE:
+                pts = [self.dwg.iterator.GetPolylinePt(i) for i in range(self.dwg.iterator.xySize)]
+                if not pts:
+                    continue
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                bx = (min(xs), min(ys), max(xs), max(ys))
+                dx_b = bx[2] - bx[0]
+                dy_b = bx[3] - bx[1]
+
+                if nivel == 207 and len(pts) >= 4 and 80.0 <= dx_b <= 600.0 and 80.0 <= dy_b <= 600.0:
+                    quadrados_207.append((bx, pts))
+                elif nivel in (3, 4, 5) and len(pts) >= 4 and 8.0 <= dx_b <= 250.0 and 8.0 <= dy_b <= 250.0:
+                    pilares_poly.append((nivel, bx, pts))
+                elif nivel in (1, 2, 201):
+                    for k in range(len(pts) - 1):
+                        x1, y1 = pts[k]
+                        x2, y2 = pts[k + 1]
+                        dy = abs(y2 - y1)
+                        dx = abs(x2 - x1)
+                        if dy >= 15.0 and dx <= 0.15 * dy:
+                            vigas_vert.append((x1, y1, x2, y2, nivel))
+            elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (1, 2, 201):
+                x1, y1 = self.dwg.iterator.x1, self.dwg.iterator.y1
+                x2, y2 = self.dwg.iterator.x2, self.dwg.iterator.y2
+                dy = abs(y2 - y1)
+                dx = abs(x2 - x1)
+                if dy >= 15.0 and dx <= 0.15 * dy:
+                    vigas_vert.append((x1, y1, x2, y2, nivel))
+            elif tipo == TQSDwg.DWGTYPE_TEXT and nivel in (9, 12):
+                textos_pilar.append((
+                    nivel,
+                    self.dwg.iterator.text.strip(),
+                    self.dwg.iterator.x1,
+                    self.dwg.iterator.y1,
+                    self.dwg.iterator.textHeight,
+                ))
+
+        if not quadrados_207:
+            return 0
+
+        def _faces_exatas_pilar(pts):
+            u_pts = (
+                pts[:-1]
+                if len(pts) > 1 and abs(pts[0][0] - pts[-1][0]) < 0.1 and abs(pts[0][1] - pts[-1][1]) < 0.1
+                else pts
+            )
+            if len(u_pts) == 4:
+                sx = sorted(u_pts, key=lambda p: p[0])
+                sy = sorted(u_pts, key=lambda p: p[1])
+                x_esq = 0.5 * (sx[0][0] + sx[1][0])
+                x_dir = 0.5 * (sx[2][0] + sx[3][0])
+                y_inf = 0.5 * (sy[0][1] + sy[1][1])
+                y_sup = 0.5 * (sy[2][1] + sy[3][1])
+                return (x_esq, y_inf, x_dir, y_sup)
+            xs = [p[0] for p in u_pts]
+            ys = [p[1] for p in u_pts]
+            return (min(xs), min(ys), max(xs), max(ys))
+
+        # Associa cada quadrado amarelo (Nivel 207) ao pilar interno (ignorando pilares soltos)
+        capiteis = []
+        for sq_bx, sq_pts in quadrados_207:
+            sx1, sy1, sx2, sy2 = sq_bx
+            scx = 0.5 * (sx1 + sx2)
+            scy = 0.5 * (sy1 + sy2)
+            melhor_pilar = None
+            menor_d = float("inf")
+            for _, pbx, ppts in pilares_poly:
+                pcx = 0.5 * (pbx[0] + pbx[2])
+                pcy = 0.5 * (pbx[1] + pbx[3])
+                if sx1 <= pcx <= sx2 and sy1 <= pcy <= sy2:
+                    d = math.hypot(pcx - scx, pcy - scy)
+                    if d < menor_d:
+                        menor_d = d
+                        melhor_pilar = _faces_exatas_pilar(ppts)
+
+            if melhor_pilar is not None:
+                txs = [
+                    t for t in textos_pilar
+                    if (sx1 - 30.0) <= t[2] <= (sx2 + 30.0) and (sy1 - 30.0) <= t[3] <= (sy2 + 30.0)
+                ]
+                y_txt_min = min(t[3] for t in txs) if txs else melhor_pilar[1]
+                capiteis.append({
+                    "sq": sq_bx,
+                    "pilar": melhor_pilar,
+                    "y_txt_min": y_txt_min,
+                })
+
+        if not capiteis:
+            return 0
+
+        total_criadas = 0
+
+        # Agrupa os quadrados em linhas horizontais (mesma faixa Y, tolerancia 200 cm)
+        capiteis_ord = sorted(capiteis, key=lambda c: -0.5 * (c["sq"][1] + c["sq"][3]))
+        linhas_capiteis = []
+        for c in capiteis_ord:
+            cy = 0.5 * (c["sq"][1] + c["sq"][3])
+            if not linhas_capiteis or abs(cy - linhas_capiteis[-1]["cy"]) > 200.0:
+                linhas_capiteis.append({"cy": cy, "caps": [c]})
+            else:
+                linhas_capiteis[-1]["caps"].append(c)
+                linhas_capiteis[-1]["cy"] = (
+                    sum(0.5 * (x["sq"][1] + x["sq"][3]) for x in linhas_capiteis[-1]["caps"])
+                    / float(len(linhas_capiteis[-1]["caps"]))
+                )
+
+        for row in linhas_capiteis:
+            caps_row = row["caps"]
+            y_cota_row = min(c["y_txt_min"] for c in caps_row) - 18.0
+            row["y_cota"] = y_cota_row
+            for c in caps_row:
+                c["y_cota_row"] = y_cota_row
+
+        # ---------------------------------------------------------------------
+        # 1. COTAS LOCAIS DE CADA QUADRADO / CAPITEL (PADRAO IMAGEM 2)
+        # ---------------------------------------------------------------------
+        if incluir_cotas_capitel:
+            for c in capiteis:
+                sx1, sy1, sx2, sy2 = c["sq"]
+                px1, py1, px2, py2 = c["pilar"]
+                y_cota_r = c.get("y_cota_row", c["y_txt_min"] - 18.0)
+
+                c_esq = [
+                    cb[2] for cb in cubetas
+                    if not (cb[3] < sy1 + 45.0 or cb[1] > sy2 - 45.0) and (sx1 - 120.0) <= cb[2] <= (sx1 + 0.5)
+                ]
+                c_dir = [
+                    cb[0] for cb in cubetas
+                    if not (cb[3] < sy1 + 45.0 or cb[1] > sy2 - 45.0) and (sx2 - 0.5) <= cb[0] <= (sx2 + 120.0)
+                ]
+                c_inf = [
+                    cb[3] for cb in cubetas
+                    if not (cb[2] < sx1 + 45.0 or cb[0] > sx2 - 45.0) and (sy1 - 120.0) <= cb[3] <= (sy1 + 0.5)
+                ]
+                c_sup = [
+                    cb[1] for cb in cubetas
+                    if not (cb[2] < sx1 + 45.0 or cb[0] > sx2 - 45.0) and (sy2 - 0.5) <= cb[1] <= (sy2 + 120.0)
+                ]
+
+                xe = max(c_esq) if c_esq else None
+                xd = min(c_dir) if c_dir else None
+                yi = max(c_inf) if c_inf else None
+                ys = min(c_sup) if c_sup else None
+
+                # A) Cotas verticais a esquerda do pilar (109.9 | 110.1, 334.2 e 37.7)
+                x_v1 = px1 - 22.0
+                if (py1 - sy1) >= 2.0 and not cota_ja_existe(sy1, py1, self.cotas_existentes, orient="V", pos_linha=x_v1, tol_linha=12.0):
+                    self.dwg.dim.DimVertical(px1, sy1, px1, py1, x_v1, 0.5 * (sy1 + py1))
+                    _registrar_cota_em_memoria(self.cotas_existentes, "V", sy1, py1, x_v1)
+                    total_criadas += 1
+
+                if (sy2 - py2) >= 2.0 and not cota_ja_existe(py2, sy2, self.cotas_existentes, orient="V", pos_linha=x_v1, tol_linha=12.0):
+                    self.dwg.dim.DimVertical(px1, py2, px1, sy2, x_v1, 0.5 * (py2 + sy2))
+                    _registrar_cota_em_memoria(self.cotas_existentes, "V", py2, sy2, x_v1)
+                    total_criadas += 1
+
+                x_v2 = px1 - 52.0
+                if yi is not None and ys is not None and (ys - yi) >= 10.0:
+                    if not cota_ja_existe(yi, ys, self.cotas_existentes, orient="V", pos_linha=x_v2, tol_linha=12.0):
+                        self.dwg.dim.DimVertical(x_v2, yi, x_v2, ys, x_v2, 0.5 * (yi + ys))
+                        _registrar_cota_em_memoria(self.cotas_existentes, "V", yi, ys, x_v2)
+                        total_criadas += 1
+
+                x_v3 = sx1 + 12.0
+                if ys is not None and (ys - sy2) >= 2.0:
+                    if not cota_ja_existe(sy2, ys, self.cotas_existentes, orient="V", pos_linha=x_v3, tol_linha=12.0):
+                        self.dwg.dim.DimVertical(sx1, sy2, sx1, ys, x_v3, 0.5 * (sy2 + ys))
+                        _registrar_cota_em_memoria(self.cotas_existentes, "V", sy2, ys, x_v3)
+                        total_criadas += 1
+
+                # B) Cotas horizontais locais do quadrado (115.1 | 47.1 e 334.3)
+                y_h1 = min(c["y_txt_min"] - 14.0, py1 - 48.0)
+                if incluir_cadeia_horizontal and abs(y_h1 - y_cota_r) < 18.0:
+                    y_h1 = y_cota_r - 20.0
+
+                if (sx2 - px2) >= 2.0 and not cota_ja_existe(px2, sx2, self.cotas_existentes, orient="H", pos_linha=y_h1, tol_linha=12.0):
+                    self.dwg.dim.DimHorizontal(px2, py1, sx2, y_h1, 0.5 * (px2 + sx2), y_h1)
+                    _registrar_cota_em_memoria(self.cotas_existentes, "H", px2, sx2, y_h1)
+                    total_criadas += 1
+
+                if xd is not None and (xd - sx2) >= 2.0:
+                    if not cota_ja_existe(sx2, xd, self.cotas_existentes, orient="H", pos_linha=y_h1, tol_linha=12.0):
+                        self.dwg.dim.DimHorizontal(sx2, y_h1, xd, y_h1, 0.5 * (sx2 + xd), y_h1)
+                        _registrar_cota_em_memoria(self.cotas_existentes, "H", sx2, xd, y_h1)
+                        total_criadas += 1
+
+                y_h2 = sy1 + 14.0
+                if incluir_cadeia_horizontal and abs(y_h2 - y_cota_r) < 18.0:
+                    y_h2 = min(sy1 + 10.0, y_cota_r - 20.0)
+                if abs(y_h2 - y_h1) < 18.0:
+                    y_h2 = y_h1 - 20.0
+
+                if xe is not None and xd is not None and (xd - xe) >= 10.0:
+                    if not cota_ja_existe(xe, xd, self.cotas_existentes, orient="H", pos_linha=y_h2, tol_linha=12.0):
+                        self.dwg.dim.DimHorizontal(xe, y_h2, xd, y_h2, 0.5 * (xe + xd), y_h2)
+                        _registrar_cota_em_memoria(self.cotas_existentes, "H", xe, xd, y_h2)
+                        total_criadas += 1
+
+        # ---------------------------------------------------------------------
+        # 2. CADEIA HORIZONTAL CONTINUA DO INICIO HORIZONTAL PASSANDO PELOS PILARES (IMAGENS 3 E 4)
+        # ---------------------------------------------------------------------
+        if incluir_cadeia_horizontal:
+            for row in linhas_capiteis:
+                caps = sorted(row["caps"], key=lambda c: c["sq"][0])
+                y_cota = row["y_cota"]
+
+                pts_chain = []
+                # Vigas verticais de borda/apoio que cruzam a linha horizontal y_cota (inicio horizontal ate o fim)
+                for x1, y1, x2, y2, _ in vigas_vert:
+                    ymin_v = min(y1, y2)
+                    ymax_v = max(y1, y2)
+                    if (ymin_v - 10.0) <= y_cota <= (ymax_v + 10.0):
+                        x_at = x1 + (y_cota - y1) / (y2 - y1) * (x2 - x1) if abs(y2 - y1) > 0.1 else x1
+                        pts_chain.append((x_at, y_cota, "viga"))
+
+                # Faces esquerda e direita dos pilares dentro dos quadrados desta linha
+                for c in caps:
+                    px1, py1, px2, py2 = c["pilar"]
+                    pts_chain.append((px1, py1, "pilar_esq"))
+                    pts_chain.append((px2, py1, "pilar_dir"))
+
+                pts_chain.sort(key=lambda item: item[0])
+
+                # Remove pontos duplicados (< 1.0 cm), priorizando o ponto do pilar
+                filtrados = []
+                for pt in pts_chain:
+                    if not filtrados or abs(pt[0] - filtrados[-1][0]) >= 1.0:
+                        filtrados.append(pt)
+                    elif pt[2].startswith("pilar") and filtrados[-1][2] == "viga":
+                        filtrados[-1] = pt
+
+                for i in range(len(filtrados) - 1):
+                    x1, y1, t1 = filtrados[i]
+                    x2, y2, t2 = filtrados[i + 1]
+                    # Ignora frestas de junta de dilatacao (< 5.0 cm)
+                    if (x2 - x1) < 5.0:
+                        continue
+
+                    if cota_ja_existe(x1, x2, self.cotas_existentes, orient="H", pos_linha=y_cota, tol_linha=12.0):
+                        continue
+
+                    if t1 == "pilar_esq" and t2 == "pilar_dir":
+                        yr1, yr2 = y1, y2
+                    else:
+                        yr1, yr2 = y_cota, y_cota
+
+                    dx = x2 - x1
+                    x1_d, x2_d = x1, x2
+                    if 19.85 <= dx < 20.02 or 29.85 <= dx < 30.02 or 39.85 <= dx < 40.02:
+                        x1_d -= 0.015
+                        x2_d += 0.015
+
+                    self.dwg.dim.DimHorizontal(x1_d, yr1, x2_d, yr2, 0.5 * (x1_d + x2_d), y_cota)
+                    _registrar_cota_em_memoria(self.cotas_existentes, "H", x1, x2, y_cota)
+                    total_criadas += 1
+
+        ajustadas = _organizar_cotas_apertadas(self.dwg)
+        if arredondar_valores:
+            ajustadas += aplicar_arredondamento_cotas(self.dwg)
+        self.cotas_existentes = coletar_cotas_existentes(self.dwg)
+
+        return total_criadas + ajustadas
+
+
+def pedir_modo_cotas():
+    """
+    Exibe uma janela HTA perguntando ao usuario se deseja gerar:
+      - Cota Geral (cotas externas em camadas e cadeias internas gerais da forma)
+      - Cota de Pilar (cotagem automatica dos pilares nos quadrados/capiteis)
+    Retorna um dicionario com a escolha ou None se cancelado.
+    """
+    pasta_temp = os.environ.get("TEMP", os.path.dirname(os.path.abspath(__file__)))
+    hta_path = os.path.join(pasta_temp, "g3_modo_cotas.hta")
+    json_path = os.path.join(pasta_temp, "g3_modo_cotas.json")
+    json_js = json_path.replace("\\", "\\\\")
+
+    if os.path.exists(json_path):
+        try:
+            os.remove(json_path)
+        except Exception:
+            pass
+
+    hta_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta http-equiv="x-ua-compatible" content="ie=edge" />
+    <title>G3 Plugins - Criar Cotas</title>
+    <HTA:APPLICATION ID="oHTA" APPLICATIONNAME="G3CriarCotas" BORDER="dialog" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no" INNERBORDER="no" SCROLL="no" SINGLEINSTANCE="yes" WINDOWSTATE="normal" CONTEXTMENU="no" />
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            font-size: 13px;
+            user-select: none;
+        }}
+        .topbar {{
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: #ffffff;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .topbar-icon {{
+            width: 34px;
+            height: 34px;
+            background: #2563eb;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            font-weight: bold;
+        }}
+        .topbar h1 {{ font-size: 16px; font-weight: 700; }}
+        .topbar p {{ font-size: 11px; color: #93c5fd; margin-top: 2px; }}
+        .container {{ padding: 16px 20px 10px 20px; }}
+        .subtitle {{ font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 9px; text-transform: uppercase; letter-spacing: 0.4px; }}
+        .card-option {{
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 9px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+        .card-option.active {{
+            border-color: #2563eb;
+            background: #eff6ff;
+        }}
+        .card-title {{
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 3px;
+        }}
+        .card-desc {{
+            font-size: 11.5px;
+            color: #475569;
+            line-height: 1.35;
+        }}
+        .sub-options {{
+            margin-top: 9px;
+            padding-top: 8px;
+            border-top: 1px solid #bfdbfe;
+            display: none;
+        }}
+        .card-option.active .sub-options {{
+            display: block;
+        }}
+        .chk-row {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11.5px;
+            color: #1e3a8a;
+            font-weight: 600;
+            margin-top: 4px;
+            cursor: pointer;
+        }}
+        .panel-round {{
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 9px;
+            padding: 10px 14px;
+            margin-top: 6px;
+        }}
+        .panel-round-header {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #0f172a;
+            cursor: pointer;
+        }}
+        .panel-round-desc {{
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 3px;
+            margin-left: 21px;
+            line-height: 1.35;
+        }}
+        .panel-round-desc strong {{
+            color: #1e3a8a;
+        }}
+        .footer {{
+            padding: 12px 20px;
+            background: #f1f5f9;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }}
+        button {{
+            padding: 8px 18px;
+            border-radius: 7px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #334155;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }}
+        .btn-primary {{
+            background: #2563eb;
+            border-color: #1d4ed8;
+            color: #ffffff;
+        }}
+    </style>
+    <script language="javascript">
+        var modoSelecionado = "pilar";
+
+        function initDialog() {{
+            try {{
+                window.resizeTo(480, 500);
+                window.moveTo((screen.availWidth - 480) / 2, (screen.availHeight - 500) / 2);
+            }} catch(e) {{}}
+            selecionarModo("pilar");
+        }}
+
+        function selecionarModo(modo) {{
+            modoSelecionado = modo;
+            document.getElementById("card-geral").className = (modo === "geral") ? "card-option active" : "card-option";
+            document.getElementById("card-pilar").className = (modo === "pilar") ? "card-option active" : "card-option";
+        }}
+
+        function confirmar() {{
+            try {{
+                var incH = document.getElementById("chk-horiz").checked ? "true" : "false";
+                var incC = document.getElementById("chk-capitel").checked ? "true" : "false";
+                var arrV = document.getElementById("chk-arredondar").checked ? "true" : "false";
+                var fso = new ActiveXObject("Scripting.FileSystemObject");
+                var a = fso.CreateTextFile("{json_js}", true);
+                var jsonStr = '{{"modo":"' + modoSelecionado + '","cadeia_horizontal":' + incH + ',"cotas_capitel":' + incC + ',"arredondar_valores":' + arrV + '}}';
+                a.WriteLine(jsonStr);
+                a.Close();
+                window.close();
+            }} catch(e) {{
+                alert("Erro: " + e.message);
+            }}
+        }}
+    </script>
+</head>
+<body onload="initDialog();">
+    <div class="topbar">
+        <div class="topbar-icon">&#8660;</div>
+        <div>
+            <h1>Criar Cotas da F&ocirc;rma</h1>
+            <p>G3 Plugins &bull; Selecione o tipo de cotagem desejada</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="subtitle">Modo de Cotagem</div>
+
+        <div id="card-pilar" class="card-option active" onclick="selecionarModo('pilar')" ondblclick="selecionarModo('pilar'); confirmar();">
+            <div class="card-title">1. Cota de Pilar (Quadrados / Capit&eacute;is)</div>
+            <div class="card-desc">Identifica apenas os pilares nos quadrados (maci&ccedil;os), puxando a cota do in&iacute;cio horizontal passando pelos pilares.</div>
+            <div class="sub-options" onclick="event.cancelBubble = true;">
+                <label class="chk-row">
+                    <input type="checkbox" id="chk-horiz" checked />
+                    Cadeia horizontal cont&iacute;nua (passando pelos pilares)
+                </label>
+                <label class="chk-row">
+                    <input type="checkbox" id="chk-capitel" checked />
+                    Cotas locais do quadrado / capitel (dist&acirc;ncias e cubetas)
+                </label>
+            </div>
+        </div>
+
+        <div id="card-geral" class="card-option" onclick="selecionarModo('geral')" ondblclick="selecionarModo('geral'); confirmar();">
+            <div class="card-title">2. Cota Geral da F&ocirc;rma</div>
+            <div class="card-desc">Gera as cotas externas em 3 camadas (parciais, eixos e total) e completa as cadeias internas da estrutura.</div>
+        </div>
+
+        <div class="panel-round">
+            <label class="panel-round-header">
+                <input type="checkbox" id="chk-arredondar" checked />
+                Arredondar valores das cotas
+            </label>
+            <div class="panel-round-desc">
+                Final <strong>0.1 a 0.2 &rarr; 0</strong> &bull; Final <strong>0.3 a 0.7 &rarr; 0.5</strong> &bull; Final <strong>0.8 a 0.9 &rarr; 1.0</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button onclick="window.close()">Cancelar</button>
+        <button class="btn-primary" onclick="confirmar()">Gerar Cotas</button>
+    </div>
+</body>
+</html>"""
+
+    with open(hta_path, "w", encoding="utf-8-sig") as f:
+        f.write(hta_content)
+
+    subprocess.call(["mshta", hta_path])
+
+    dados = None
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+            os.remove(json_path)
+        except Exception:
+            pass
+
+    if os.path.exists(hta_path):
+        try:
+            os.remove(hta_path)
+        except Exception:
+            pass
+
+    return dados
+
 
 def cmd_criar_cotas(eag, tqsjan):
     """
     Entry point do comando Criar Cotas para o EAG do TQS.
-    Cria automaticamente as cotas externas (em camadas) e completa as cadeias
-    de cotas internas da planta de formas sem duplicar cotas existentes.
+    Pergunta se o usuario deseja Cota Geral ou Cota de Pilar (quadrados/capiteis)
+    e executa automaticamente a cotagem escolhida.
     """
     try:
+        escolha = pedir_modo_cotas()
+        if not escolha:
+            return
+
+        modo = escolha.get("modo", "geral")
+        arredondar = bool(escolha.get("arredondar_valores", True))
         dwg = tqsjan.dwg
         cotador = CotadorFormas(dwg)
-        criadas = cotador.cotar_forma_completa()
 
-        if criadas > 0:
-            tqsjan.Regen()
-            eag.msg.Print("G3 Plugins: %d cota(s) gerada(s) automaticamente na planta de formas!" % criadas)
-            eag.msg.PrintStatus("%d cota(s) criada(s) com sucesso!" % criadas)
+        if modo == "pilar":
+            inc_h = bool(escolha.get("cadeia_horizontal", True))
+            inc_c = bool(escolha.get("cotas_capitel", True))
+            criadas = cotador.cotar_pilares_quadrados(
+                incluir_cadeia_horizontal=inc_h,
+                incluir_cotas_capitel=inc_c,
+                arredondar_valores=arredondar,
+            )
+            if criadas > 0:
+                tqsjan.Regen()
+                eag.msg.Print("G3 Plugins: %d cota(s) de pilar (quadrados) gerada(s) com sucesso!" % criadas)
+                eag.msg.PrintStatus("%d cota(s) de pilar criada(s)!" % criadas)
+            else:
+                eag.msg.Print("G3 Plugins: Nenhum pilar com quadrado (nivel 207) sem cota encontrado.")
+                eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
         else:
-            eag.msg.Print("G3 Plugins: Todas as cotas da planta de formas ja existem (nenhuma cota duplicada).")
-            eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
+            criadas = cotador.cotar_forma_completa(arredondar_valores=arredondar)
+            if criadas > 0:
+                tqsjan.Regen()
+                eag.msg.Print("G3 Plugins: %d cota(s) geral(is) gerada(s) automaticamente na planta de formas!" % criadas)
+                eag.msg.PrintStatus("%d cota(s) criada(s) com sucesso!" % criadas)
+            else:
+                eag.msg.Print("G3 Plugins: Todas as cotas da planta de formas ja existem (nenhuma cota duplicada).")
+                eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
 
     except Exception as e:
         try:
