@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-""" 
+"""
 ================================================================================
 G3 PLUGINS - COTAS HELPER (TQS EAG)
 ================================================================================
@@ -274,13 +274,74 @@ def formatar_valor_cota(valor_arr):
         return "%.1f" % valor_arr
 
 
-def _substituir_ipocot_por_primitivos(dwg, cota_dict, novo_x, novo_y, estender_linha=True, novo_texto=None):
+def criar_dim_horizontal(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
     """
-    Substitui um objeto IPOCOT especifico pelas suas linhas exatas no nivel 221 e pelo
-    texto no nivel 216 na nova posicao (novo_x, novo_y) e opcionalmente com novo_texto
-    (ex.: texto com arredondamento 80 em vez de 79.9, ou 7.5 em vez de 7.3).
+    Cria uma cota horizontal IPOCOT REAL no TQS.
+    Se arredondar=True, calcula o valor arredondado pela regra (0.1..0.2->0, 0.3..0.7->0.5, 0.8..0.9->1.0)
+    e define em dwg.dim.dimtxu, garantindo que o objeto continue sendo uma COTA REAL associativa do TQS
+    e nao linhas/textos soltos.
+    """
+    if arredondar:
+        dist = abs(x2 - x1)
+        val_arr = arredondar_valor_cota(dist)
+        dwg.dim.dimtxu = formatar_valor_cota(val_arr)
+    else:
+        dwg.dim.dimtxu = ""
+    try:
+        dwg.dim.DimHorizontal(x1, y1, x2, y2, x3, y3)
+    finally:
+        dwg.dim.dimtxu = ""
+
+
+def criar_dim_vertical(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
+    """
+    Cria uma cota vertical IPOCOT REAL no TQS.
+    Se arredondar=True, calcula o valor arredondado pela regra (0.1..0.2->0, 0.3..0.7->0.5, 0.8..0.9->1.0)
+    e define em dwg.dim.dimtxu, garantindo que o objeto continue sendo uma COTA REAL associativa do TQS
+    e nao linhas/textos soltos.
+    """
+    if arredondar:
+        dist = abs(y2 - y1)
+        val_arr = arredondar_valor_cota(dist)
+        dwg.dim.dimtxu = formatar_valor_cota(val_arr)
+    else:
+        dwg.dim.dimtxu = ""
+    try:
+        dwg.dim.DimVertical(x1, y1, x2, y2, x3, y3)
+    finally:
+        dwg.dim.dimtxu = ""
+
+
+def re_criar_cota_ipocot(dwg, cota_dict, novo_texto):
+    """
+    Recria uma cota existente como um objeto IPOCOT REAL com o novo texto (arredondado),
+    mantendo os pontos originais de definicao e a linha de cota.
+    Garante que a cota continue sendo uma COTA REAL do TQS, permitindo mover/esticar normalmente.
     """
     if cota_dict.get("tipo") != "IPOCOT" or not cota_dict.get("addr"):
+        return False
+
+    orient = cota_dict.get("orient", "H")
+    pos_linha = float(cota_dict.get("pos_linha", 0.0))
+
+    pts_orig = [
+        ln for ln in cota_dict.get("lines", [])
+        if abs(ln[1] - ln[3]) < 0.05 and abs(ln[2] - ln[4]) < 0.05
+    ]
+
+    if len(pts_orig) >= 2:
+        pt1 = (float(pts_orig[0][1]), float(pts_orig[0][2]))
+        pt2 = (float(pts_orig[1][1]), float(pts_orig[1][2]))
+    elif cota_dict.get("p1") is not None and cota_dict.get("p2") is not None:
+        p1 = float(cota_dict["p1"])
+        p2 = float(cota_dict["p2"])
+        if orient == "H":
+            pt1 = (p1, pos_linha)
+            pt2 = (p2, pos_linha)
+        else:
+            pt1 = (pos_linha, p1)
+            pt2 = (pos_linha, p2)
+    else:
         return False
 
     try:
@@ -288,50 +349,23 @@ def _substituir_ipocot_por_primitivos(dwg, cota_dict, novo_x, novo_y, estender_l
     except Exception:
         return False
 
-    old_lvl = dwg.draw.level
-    old_col = dwg.draw.color
-
     try:
-        orient = cota_dict.get("orient", "H")
-        h = float(cota_dict.get("h", 10.0))
-        texto = str(novo_texto if novo_texto is not None else cota_dict.get("texto", ""))
-        larg_txt = max(10.0, (len(texto) - 0.25) * h)
-
-        for idx, (lvl, lx1, ly1, lx2, ly2) in enumerate(cota_dict.get("lines", [])):
-            dwg.draw.level = int(lvl)
-            dwg.draw.color = -1
-            if estender_linha and idx == 0 and int(lvl) == 221:
-                if orient == "H" and abs(ly1 - ly2) < 0.5:
-                    xmin_l = min(lx1, lx2, novo_x - 1.5)
-                    xmax_l = max(lx1, lx2, novo_x + larg_txt + 1.5)
-                    lx1, lx2 = xmin_l, xmax_l
-                elif orient == "V" and abs(lx1 - lx2) < 0.5:
-                    ymin_l = min(ly1, ly2, novo_y - 1.5)
-                    ymax_l = max(ly1, ly2, novo_y + larg_txt + 1.5)
-                    ly1, ly2 = ymin_l, ymax_l
-            dwg.draw.Line(float(lx1), float(ly1), float(lx2), float(ly2))
-
-        dwg.draw.level = 216
-        dwg.draw.color = 3
-        dwg.draw.Text(float(novo_x), float(novo_y), h, float(cota_dict.get("ang", 0.0)), texto)
+        dwg.dim.dimtxu = str(novo_texto)
+        if orient == "H":
+            dwg.dim.DimHorizontal(pt1[0], pt1[1], pt2[0], pt2[1], 0.5 * (pt1[0] + pt2[0]), pos_linha)
+        else:
+            dwg.dim.DimVertical(pt1[0], pt1[1], pt2[0], pt2[1], pos_linha, 0.5 * (pt1[1] + pt2[1]))
     finally:
-        dwg.draw.level = old_lvl
-        dwg.draw.color = old_col
+        dwg.dim.dimtxu = ""
 
-    cota_dict["tipo"] = "TEXT"
-    cota_dict["texto"] = texto
-    cota_dict["x"] = float(novo_x)
-    cota_dict["y"] = float(novo_y)
-    cota_dict["bbox_texto"] = _bbox_texto(
-        float(novo_x), float(novo_y), float(cota_dict.get("h", 10.0)), float(cota_dict.get("ang", 0.0)), texto
-    )
+    cota_dict["texto"] = str(novo_texto)
     return True
 
 
 def aplicar_arredondamento_cotas(dwg, cotas_alvo=None):
     """
     Aplica o arredondamento (0.1..0.2 -> 0, 0.3..0.7 -> 0.5, 0.8..0.9 -> 1.0)
-    nos textos de todas as cotas geradas no DWG.
+    nas cotas mantendo-as 100% como objetos IPOCOT REAIS do TQS.
     """
     cotas = coletar_cotas_existentes(dwg, nivel_cota=216) if cotas_alvo is None else cotas_alvo
     if not cotas:
@@ -351,35 +385,17 @@ def aplicar_arredondamento_cotas(dwg, cotas_alvo=None):
         if txt_novo == txt_orig:
             continue
 
-        h = float(c.get("h", 10.0))
-        orient = c.get("orient", "H")
-        novo_x = c["x"]
-        novo_y = c["y"]
-
-        # Recalcula a posicao para manter perfeitamente centralizado no vao da cota
-        if c.get("p1") is not None and c.get("p2") is not None:
-            meio = 0.5 * (c["p1"] + c["p2"])
-            span = abs(c["p2"] - c["p1"])
-            # Se for cota folgada (> 40cm), centraliza no meio
-            if span >= 38.0:
-                offset_centro = len(txt_novo) * (h * 0.5) - 1.0
-                if orient == "H":
-                    novo_x = meio - offset_centro
-                else:
-                    novo_y = meio - offset_centro
-
         if c.get("tipo") == "IPOCOT" and c.get("addr"):
-            if _substituir_ipocot_por_primitivos(dwg, c, novo_x, novo_y, estender_linha=False, novo_texto=txt_novo):
+            if re_criar_cota_ipocot(dwg, c, txt_novo):
                 total_arredondadas += 1
         elif c.get("tipo") == "TEXT" and c.get("addr"):
-            # Texto primitivo avulso já no desenho
             old_lvl = dwg.draw.level
             old_col = dwg.draw.color
             try:
                 dwg.edit.Erase(c["addr"])
                 dwg.draw.level = 216
                 dwg.draw.color = 3
-                dwg.draw.Text(float(novo_x), float(novo_y), h, float(c.get("ang", 0.0)), txt_novo)
+                dwg.draw.Text(float(c["x"]), float(c["y"]), float(c.get("h", 10.0)), float(c.get("ang", 0.0)), txt_novo)
                 total_arredondadas += 1
             finally:
                 dwg.draw.level = old_lvl
@@ -388,107 +404,118 @@ def aplicar_arredondamento_cotas(dwg, cotas_alvo=None):
     return total_arredondadas
 
 
+def _substituir_ipocot_por_primitivos(dwg, cota_dict, novo_x, novo_y, estender_linha=True):
+    """
+    Substitui APENAS o objeto IPOCOT estreito especifico (cujo texto foi jogado
+    para fora pelo TQS por ter vao < 40 cm) pelas suas linhas/ticks exatos
+    no nivel 221 e pelo texto no nivel 216 na nova posicao (novo_x, novo_y),
+    mantendo-o limpo dentro do vao sem sobrepor cotas vizinhas.
+    NUNCA toca nem explode a cota vizinha (ex: 115, 50, etc.), preservando-a como IPOCOT real.
+    """
+    if cota_dict.get("tipo") != "IPOCOT" or not cota_dict.get("addr"):
+        return False
+
+    try:
+        dwg.edit.Erase(cota_dict["addr"])
+    except Exception:
+        return False
+
+    old_lvl = dwg.draw.level
+    old_col = dwg.draw.color
+
+    try:
+        orient = cota_dict.get("orient", "H")
+        h = float(cota_dict.get("h", 10.0))
+        texto = str(cota_dict.get("texto", ""))
+        larg_txt = max(8.0, (len(texto) - 0.2) * 5.0)
+
+        for idx, (lvl, lx1, ly1, lx2, ly2) in enumerate(cota_dict.get("lines", [])):
+            dwg.draw.level = int(lvl)
+            dwg.draw.color = -1
+            if estender_linha and idx == 0 and int(lvl) == 221:
+                if orient == "H" and abs(ly1 - ly2) < 0.5:
+                    xmin_l = min(lx1, lx2, novo_x - 1.0)
+                    xmax_l = max(lx1, lx2, novo_x + larg_txt + 1.0)
+                    lx1, lx2 = xmin_l, xmax_l
+                elif orient == "V" and abs(lx1 - lx2) < 0.5:
+                    ymin_l = min(ly1, ly2, novo_y - 1.0)
+                    ymax_l = max(ly1, ly2, novo_y + larg_txt + 1.0)
+                    ly1, ly2 = ymin_l, ymax_l
+            dwg.draw.Line(float(lx1), float(ly1), float(lx2), float(ly2))
+
+        dwg.draw.level = 216
+        dwg.draw.color = 3
+        dwg.draw.Text(float(novo_x), float(novo_y), h, float(cota_dict.get("ang", 0.0)), texto)
+    finally:
+        dwg.draw.level = old_lvl
+        dwg.draw.color = old_col
+
+    cota_dict["tipo"] = "TEXT"
+    cota_dict["x"] = float(novo_x)
+    cota_dict["y"] = float(novo_y)
+    cota_dict["bbox_texto"] = _bbox_texto(
+        float(novo_x), float(novo_y), float(cota_dict.get("h", 10.0)), float(cota_dict.get("ang", 0.0)), str(cota_dict.get("texto", ""))
+    )
+    return True
+
+
 def _organizar_cotas_apertadas(dwg):
     """
-    Corrige automaticamente a posicao dos textos de cotas em vaos apertados (< 40 cm)
-    onde o IPOCOT joga o texto para a esquerda/baixo em cima da cota vizinha
-    (ex.: cota de 79.9 seguida de 7.3 na borda do capitel/cubeta).
+    Corrige a posicao do texto de cotas em vaos estreitos (< 40 cm, ex: 8.5, 12.5),
+    onde o TQS joga o texto para fora/esquerda em cima da cota vizinha (ex: 115 ou 75).
+    Posiciona o texto exatamente dentro do espacinho da cota (ou logo apos o primeiro tick),
+    preservando 100% a cota vizinha maior como cota IPOCOT real e interativa.
     """
     cotas = coletar_cotas_existentes(dwg, nivel_cota=216)
     if not cotas:
         return 0
 
-    for c in cotas:
-        h = float(c.get("h", 10.0))
-        txt = str(c.get("texto", ""))
-        c["larg_txt"] = max(10.0, (len(txt) - 0.2) * h)
-        if not c.get("bbox_texto"):
-            c["bbox_texto"] = _bbox_texto(c["x"], c["y"], h, c["ang"], txt)
-
     ajustadas = 0
-
-    # 1. Pares de cotas horizontais adjacentes na mesma linha (c1 a esquerda, c2 a direita)
-    cotas_h = [c for c in cotas if c.get("orient") == "H" and c.get("p1") is not None and c.get("p2") is not None]
-    cotas_h.sort(key=lambda c: (round(c["pos_linha"] / 4.0), c["p1"]))
-
-    for i in range(len(cotas_h)):
-        for j in range(i + 1, len(cotas_h)):
-            c1 = cotas_h[i]
-            c2 = cotas_h[j]
-            if abs(c1["pos_linha"] - c2["pos_linha"]) > 5.0:
-                continue
-            if c1["p1"] > c2["p1"]:
-                c1, c2 = c2, c1
-            # Verifica se sao cotas vizinhas compartilhando o ponto intermediario (ex: sx2)
-            if abs(c1["p2"] - c2["p1"]) > 3.0:
-                continue
-
-            # Caso classico: c2 (a direita, ex: 7.3, 12.7, 26.1, 38.8) e estreita e o IPOCOT
-            # jogou o texto de c2 para a esquerda de c2['p1'], invadindo o trecho de c1 (ex: 79.9)
-            if c2.get("tipo") == "IPOCOT" and c2["x"] < (c2["p1"] - 1.0):
-                larg2 = c2["larg_txt"]
-                novo_x2 = max(c2["p1"] - 3.5, 0.5 * (c2["p1"] + c2["p2"]) - 0.5 * larg2)
-                if _substituir_ipocot_por_primitivos(dwg, c2, novo_x2, c2["y"], estender_linha=True):
-                    ajustadas += 1
-
-                # Se mesmo assim c1 (a esquerda) ficar muito colada em novo_x2 (< 10 cm), afasta c1 um pouco a esquerda
-                larg1 = c1["larg_txt"]
-                if c1.get("tipo") == "IPOCOT" and (c1["x"] + larg1 + 10.0) > novo_x2:
-                    novo_x1 = max(c1["p1"] + 2.0, novo_x2 - 12.0 - larg1)
-                    if novo_x1 < c1["x"] - 1.0:
-                        if _substituir_ipocot_por_primitivos(dwg, c1, novo_x1, c1["y"], estender_linha=False):
-                            ajustadas += 1
-
-    # 2. Pares de cotas verticais adjacentes na mesma linha (c1 embaixo, c2 em cima)
-    cotas_v = [c for c in cotas if c.get("orient") == "V" and c.get("p1") is not None and c.get("p2") is not None]
-    cotas_v.sort(key=lambda c: (round(c["pos_linha"] / 4.0), c["p1"]))
-
-    for i in range(len(cotas_v)):
-        for j in range(i + 1, len(cotas_v)):
-            c1 = cotas_v[i]
-            c2 = cotas_v[j]
-            if abs(c1["pos_linha"] - c2["pos_linha"]) > 5.0:
-                continue
-            if c1["p1"] > c2["p1"]:
-                c1, c2 = c2, c1
-            if abs(c1["p2"] - c2["p1"]) > 3.0:
-                continue
-
-            if c2.get("tipo") == "IPOCOT" and c2["y"] < (c2["p1"] - 1.0):
-                larg2 = c2["larg_txt"]
-                novo_y2 = max(c2["p1"] - 3.5, 0.5 * (c2["p1"] + c2["p2"]) - 0.5 * larg2)
-                if _substituir_ipocot_por_primitivos(dwg, c2, c2["x"], novo_y2, estender_linha=True):
-                    ajustadas += 1
-
-    # 3. Qualquer outra cota estreita cujo texto foi jogado para fora pelo IPOCOT e colide com outra cota
-    for idx, c in enumerate(cotas):
-        if c.get("tipo") != "IPOCOT" or c.get("p1") is None or c.get("p2") is None:
+    for c in cotas:
+        if c.get("tipo") != "IPOCOT":
             continue
-        span = c["p2"] - c["p1"]
-        if span <= 0.0 or span > 42.0:
+        p1 = c.get("p1")
+        p2 = c.get("p2")
+        if p1 is None or p2 is None:
+            continue
+        span = abs(p2 - p1)
+        if span >= 40.0:
             continue
 
-        foi_jogada_fora = (
-            (c["orient"] == "H" and c["x"] < c["p1"] - 1.0) or
-            (c["orient"] == "V" and c["y"] < c["p1"] - 1.0)
-        )
-        if not foi_jogada_fora:
+        orient = c.get("orient", "H")
+        kicked_out = False
+        if orient == "H":
+            if c["x"] < (p1 - 1.0) or c["x"] > (p2 + 1.0):
+                kicked_out = True
+        else:
+            if c["y"] < (p1 - 1.0) or c["y"] > (p2 + 1.0):
+                kicked_out = True
+
+        if not kicked_out:
             continue
 
-        colide = any(
-            k != idx and c.get("bbox_texto") and outro.get("bbox_texto") and _boxes_colidem(c["bbox_texto"], outro["bbox_texto"], 3.0)
-            for k, outro in enumerate(cotas)
-        )
-        if colide:
-            larg = c["larg_txt"]
-            if c["orient"] == "H":
-                novo_x = 0.5 * (c["p1"] + c["p2"]) - 0.5 * larg
-                if _substituir_ipocot_por_primitivos(dwg, c, novo_x, c["y"], estender_linha=False):
-                    ajustadas += 1
+        txt = str(c.get("texto", ""))
+        h = float(c.get("h", 10.0))
+        larg_txt = max(8.0, (len(txt) - 0.2) * 5.0)
+        meio = 0.5 * (p1 + p2)
+
+        if orient == "H":
+            # No vao estreito, posiciona o texto no espacinho entre p1 e p2
+            # garantindo que nao invada a cota a esquerda (>= p1 + 0.8)
+            if span <= larg_txt:
+                novo_x = p1 + 0.8
             else:
-                novo_y = 0.5 * (c["p1"] + c["p2"]) - 0.5 * larg
-                if _substituir_ipocot_por_primitivos(dwg, c, c["x"], novo_y, estender_linha=False):
-                    ajustadas += 1
+                novo_x = meio - 0.5 * larg_txt
+            novo_y = c["y"]
+        else:
+            if span <= larg_txt:
+                novo_y = p1 + 0.8
+            else:
+                novo_y = meio - 0.5 * larg_txt
+            novo_x = c["x"]
+
+        if _substituir_ipocot_por_primitivos(dwg, c, novo_x, novo_y, estender_linha=True):
+            ajustadas += 1
 
     return ajustadas
 
@@ -557,7 +584,7 @@ def _registrar_cota_em_memoria(cotas_existentes, orient, p1, p2, pos_linha):
     })
 
 
-def cotar_cadeia_horizontal(dwg, pontos_x, y_ref, y_cota, cotas_existentes=None, tolerancia=0.5):
+def cotar_cadeia_horizontal(dwg, pontos_x, y_ref, y_cota, cotas_existentes=None, tolerancia=0.5, arredondar_valores=False):
     """
     Gera uma sequencia continua de cotas horizontais entre os pontos de pontos_x.
     """
@@ -575,14 +602,14 @@ def cotar_cadeia_horizontal(dwg, pontos_x, y_ref, y_cota, cotas_existentes=None,
         ):
             continue
 
-        dwg.dim.DimHorizontal(x1, y_ref, x2, y_ref, 0.5 * (x1 + x2), y_cota)
+        criar_dim_horizontal(dwg, x1, y_ref, x2, y_ref, 0.5 * (x1 + x2), y_cota, arredondar=arredondar_valores)
         _registrar_cota_em_memoria(cotas_existentes, "H", x1, x2, y_cota)
         criadas += 1
 
     return criadas
 
 
-def cotar_cadeia_vertical(dwg, pontos_y, x_ref, x_cota, cotas_existentes=None, tolerancia=0.5):
+def cotar_cadeia_vertical(dwg, pontos_y, x_ref, x_cota, cotas_existentes=None, tolerancia=0.5, arredondar_valores=False):
     """
     Gera uma sequencia continua de cotas verticais entre os pontos de pontos_y.
     """
@@ -600,7 +627,7 @@ def cotar_cadeia_vertical(dwg, pontos_y, x_ref, x_cota, cotas_existentes=None, t
         ):
             continue
 
-        dwg.dim.DimVertical(x_ref, y1, x_ref, y2, x_cota, 0.5 * (y1 + y2))
+        criar_dim_vertical(dwg, x_ref, y1, x_ref, y2, x_cota, 0.5 * (y1 + y2), arredondar=arredondar_valores)
         _registrar_cota_em_memoria(cotas_existentes, "V", y1, y2, x_cota)
         criadas += 1
 
@@ -615,7 +642,8 @@ def cotar_lado_tres_camadas(
     pontos_eixos=None,
     incluir_total=True,
     offsets=(40.0, 64.0, 99.4),
-    cotas_existentes=None
+    cotas_existentes=None,
+    arredondar_valores=False
 ):
     """
     Cria a hierarquia de cotas em 3 camadas para um dos lados da forma:
@@ -632,52 +660,52 @@ def cotar_lado_tres_camadas(
     if lado_upper == "TOPO":
         y_ref = y_max
         if pontos_parciais:
-            total_criadas += cotar_cadeia_horizontal(dwg, pontos_parciais, y_ref, y_max + off1, cotas_existentes)
+            total_criadas += cotar_cadeia_horizontal(dwg, pontos_parciais, y_ref, y_max + off1, cotas_existentes, arredondar_valores=arredondar_valores)
         if pontos_eixos:
-            total_criadas += cotar_cadeia_horizontal(dwg, pontos_eixos, y_ref, y_max + off2, cotas_existentes)
+            total_criadas += cotar_cadeia_horizontal(dwg, pontos_eixos, y_ref, y_max + off2, cotas_existentes, arredondar_valores=arredondar_valores)
         if incluir_total:
             y_tot = y_max + off3
             if not (cotas_existentes is not None and cota_ja_existe(x_min, x_max, cotas_existentes, orient="H", pos_linha=y_tot)):
-                dwg.dim.DimHorizontal(x_min, y_ref, x_max, y_ref, 0.5 * (x_min + x_max), y_tot)
+                criar_dim_horizontal(dwg, x_min, y_ref, x_max, y_ref, 0.5 * (x_min + x_max), y_tot, arredondar=arredondar_valores)
                 _registrar_cota_em_memoria(cotas_existentes, "H", x_min, x_max, y_tot)
                 total_criadas += 1
 
     elif lado_upper == "BASE":
         y_ref = y_min
         if pontos_parciais:
-            total_criadas += cotar_cadeia_horizontal(dwg, pontos_parciais, y_ref, y_min - off1, cotas_existentes)
+            total_criadas += cotar_cadeia_horizontal(dwg, pontos_parciais, y_ref, y_min - off1, cotas_existentes, arredondar_valores=arredondar_valores)
         if pontos_eixos:
-            total_criadas += cotar_cadeia_horizontal(dwg, pontos_eixos, y_ref, y_min - off2, cotas_existentes)
+            total_criadas += cotar_cadeia_horizontal(dwg, pontos_eixos, y_ref, y_min - off2, cotas_existentes, arredondar_valores=arredondar_valores)
         if incluir_total:
             y_tot = y_min - off3
             if not (cotas_existentes is not None and cota_ja_existe(x_min, x_max, cotas_existentes, orient="H", pos_linha=y_tot)):
-                dwg.dim.DimHorizontal(x_min, y_ref, x_max, y_ref, 0.5 * (x_min + x_max), y_tot)
+                criar_dim_horizontal(dwg, x_min, y_ref, x_max, y_ref, 0.5 * (x_min + x_max), y_tot, arredondar=arredondar_valores)
                 _registrar_cota_em_memoria(cotas_existentes, "H", x_min, x_max, y_tot)
                 total_criadas += 1
 
     elif lado_upper == "ESQUERDA":
         x_ref = x_min
         if pontos_parciais:
-            total_criadas += cotar_cadeia_vertical(dwg, pontos_parciais, x_ref, x_min - off1, cotas_existentes)
+            total_criadas += cotar_cadeia_vertical(dwg, pontos_parciais, x_ref, x_min - off1, cotas_existentes, arredondar_valores=arredondar_valores)
         if pontos_eixos:
-            total_criadas += cotar_cadeia_vertical(dwg, pontos_eixos, x_ref, x_min - off2, cotas_existentes)
+            total_criadas += cotar_cadeia_vertical(dwg, pontos_eixos, x_ref, x_min - off2, cotas_existentes, arredondar_valores=arredondar_valores)
         if incluir_total:
             x_tot = x_min - off3
             if not (cotas_existentes is not None and cota_ja_existe(y_min, y_max, cotas_existentes, orient="V", pos_linha=x_tot)):
-                dwg.dim.DimVertical(x_ref, y_min, x_ref, y_max, x_tot, 0.5 * (y_min + y_max))
+                criar_dim_vertical(dwg, x_ref, y_min, x_ref, y_max, x_tot, 0.5 * (y_min + y_max), arredondar=arredondar_valores)
                 _registrar_cota_em_memoria(cotas_existentes, "V", y_min, y_max, x_tot)
                 total_criadas += 1
 
     elif lado_upper == "DIREITA":
         x_ref = x_max
         if pontos_parciais:
-            total_criadas += cotar_cadeia_vertical(dwg, pontos_parciais, x_ref, x_max + off1, cotas_existentes)
+            total_criadas += cotar_cadeia_vertical(dwg, pontos_parciais, x_ref, x_max + off1, cotas_existentes, arredondar_valores=arredondar_valores)
         if pontos_eixos:
-            total_criadas += cotar_cadeia_vertical(dwg, pontos_eixos, x_ref, x_max + off2, cotas_existentes)
+            total_criadas += cotar_cadeia_vertical(dwg, pontos_eixos, x_ref, x_max + off2, cotas_existentes, arredondar_valores=arredondar_valores)
         if incluir_total:
             x_tot = x_max + off3
             if not (cotas_existentes is not None and cota_ja_existe(y_min, y_max, cotas_existentes, orient="V", pos_linha=x_tot)):
-                dwg.dim.DimVertical(x_ref, y_min, x_ref, y_max, x_tot, 0.5 * (y_min + y_max))
+                criar_dim_vertical(dwg, x_ref, y_min, x_ref, y_max, x_tot, 0.5 * (y_min + y_max), arredondar=arredondar_valores)
                 _registrar_cota_em_memoria(cotas_existentes, "V", y_min, y_max, x_tot)
                 total_criadas += 1
 
@@ -1394,7 +1422,8 @@ class CotadorFormas(object):
         pontos_parciais=None,
         pontos_eixos=None,
         incluir_total=True,
-        offsets=(40.0, 64.0, 99.4)
+        offsets=(40.0, 64.0, 99.4),
+        arredondar_valores=False
     ):
         """Cota um lado completo da forma respeitando as 3 camadas."""
         return cotar_lado_tres_camadas(
@@ -1405,10 +1434,11 @@ class CotadorFormas(object):
             pontos_eixos=pontos_eixos,
             incluir_total=incluir_total,
             offsets=offsets,
-            cotas_existentes=self.cotas_existentes
+            cotas_existentes=self.cotas_existentes,
+            arredondar_valores=arredondar_valores
         )
 
-    def cotar_forma_completa(self, organizar_textos=True):
+    def cotar_forma(self, organizar_textos=True, arredondar_valores=True):
         """
         Executa a cotagem automatica completa da planta de formas:
           1. Extrai a geometria da estrutura (vigas, pilares, lajes e bordas).
@@ -1449,7 +1479,7 @@ class CotadorFormas(object):
             y_linha_h = y_min + 0.78 * (y_max - y_min)
 
         total_criadas += cotar_cadeia_horizontal(
-            self.dwg, pts_x_todos, y_linha_h, y_linha_h, self.cotas_existentes
+            self.dwg, pts_x_todos, y_linha_h, y_linha_h, self.cotas_existentes, arredondar_valores=arredondar_valores
         )
 
         cotas_v_internas = [
@@ -1462,7 +1492,7 @@ class CotadorFormas(object):
             x_linha_v_dir = x_min + 0.76 * (x_max - x_min)
 
         total_criadas += cotar_cadeia_vertical(
-            self.dwg, pts_y_todos, x_linha_v_dir, x_linha_v_dir, self.cotas_existentes
+            self.dwg, pts_y_todos, x_linha_v_dir, x_linha_v_dir, self.cotas_existentes, arredondar_valores=arredondar_valores
         )
 
         # ---------------------------------------------------------------------
@@ -1473,7 +1503,7 @@ class CotadorFormas(object):
             x_linha_v_esq = x_pilar_esq_int + 32.4  # ex: 182.9
             if abs(x_linha_v_esq - x_linha_v_dir) > 60.0:
                 total_criadas += cotar_cadeia_vertical(
-                    self.dwg, pts_y_todos, x_linha_v_esq, x_linha_v_esq, self.cotas_existentes
+                    self.dwg, pts_y_todos, x_linha_v_esq, x_linha_v_esq, self.cotas_existentes, arredondar_valores=arredondar_valores
                 )
 
         # ---------------------------------------------------------------------
@@ -1491,7 +1521,7 @@ class CotadorFormas(object):
                     y_max
                 )
                 total_criadas += cotar_cadeia_vertical(
-                    self.dwg, pts_y_bordas, x_bal_esq, x_bal_esq, self.cotas_existentes
+                    self.dwg, pts_y_bordas, x_bal_esq, x_bal_esq, self.cotas_existentes, arredondar_valores=arredondar_valores
                 )
 
             # Balanco direito (entre ultimo pilar e borda externa direita)
@@ -1505,7 +1535,7 @@ class CotadorFormas(object):
                     y_max
                 )
                 total_criadas += cotar_cadeia_vertical(
-                    self.dwg, pts_y_bordas, x_bal_dir, x_bal_dir, self.cotas_existentes
+                    self.dwg, pts_y_bordas, x_bal_dir, x_bal_dir, self.cotas_existentes, arredondar_valores=arredondar_valores
                 )
 
         # ---------------------------------------------------------------------
@@ -1517,7 +1547,8 @@ class CotadorFormas(object):
             pontos_parciais=None,
             pontos_eixos=pts_x_pilares if len(pts_x_pilares) > 2 else None,
             incluir_total=True,
-            offsets=(35.0, 64.1, 99.4)
+            offsets=(35.0, 64.1, 99.4),
+            arredondar_valores=arredondar_valores
         )
 
         total_criadas += self.cotar_lado(
@@ -1526,7 +1557,8 @@ class CotadorFormas(object):
             pontos_parciais=None,
             pontos_eixos=None,
             incluir_total=True,
-            offsets=(25.0, 35.0, 48.6)
+            offsets=(25.0, 35.0, 48.6),
+            arredondar_valores=arredondar_valores
         )
 
         total_criadas += self.cotar_lado(
@@ -1535,7 +1567,8 @@ class CotadorFormas(object):
             pontos_parciais=None,
             pontos_eixos=None,
             incluir_total=True,
-            offsets=(25.0, 40.0, 56.5)
+            offsets=(25.0, 40.0, 56.5),
+            arredondar_valores=arredondar_valores
         )
 
         total_criadas += self.cotar_lado(
@@ -1544,7 +1577,8 @@ class CotadorFormas(object):
             pontos_parciais=None,
             pontos_eixos=None,
             incluir_total=True,
-            offsets=(25.0, 40.0, 50.4)
+            offsets=(25.0, 40.0, 50.4),
+            arredondar_valores=arredondar_valores
         )
 
         # ---------------------------------------------------------------------
@@ -1759,26 +1793,26 @@ class CotadorFormas(object):
                 # A) Cotas verticais a esquerda do pilar (109.9 | 110.1, 334.2 e 37.7)
                 x_v1 = px1 - 22.0
                 if (py1 - sy1) >= 2.0 and not cota_ja_existe(sy1, py1, self.cotas_existentes, orient="V", pos_linha=x_v1, tol_linha=12.0):
-                    self.dwg.dim.DimVertical(px1, sy1, px1, py1, x_v1, 0.5 * (sy1 + py1))
+                    criar_dim_vertical(self.dwg, px1, sy1, px1, py1, x_v1, 0.5 * (sy1 + py1), arredondar=arredondar_valores)
                     _registrar_cota_em_memoria(self.cotas_existentes, "V", sy1, py1, x_v1)
                     total_criadas += 1
 
                 if (sy2 - py2) >= 2.0 and not cota_ja_existe(py2, sy2, self.cotas_existentes, orient="V", pos_linha=x_v1, tol_linha=12.0):
-                    self.dwg.dim.DimVertical(px1, py2, px1, sy2, x_v1, 0.5 * (py2 + sy2))
+                    criar_dim_vertical(self.dwg, px1, py2, px1, sy2, x_v1, 0.5 * (py2 + sy2), arredondar=arredondar_valores)
                     _registrar_cota_em_memoria(self.cotas_existentes, "V", py2, sy2, x_v1)
                     total_criadas += 1
 
                 x_v2 = px1 - 52.0
                 if yi is not None and ys is not None and (ys - yi) >= 10.0:
                     if not cota_ja_existe(yi, ys, self.cotas_existentes, orient="V", pos_linha=x_v2, tol_linha=12.0):
-                        self.dwg.dim.DimVertical(x_v2, yi, x_v2, ys, x_v2, 0.5 * (yi + ys))
+                        criar_dim_vertical(self.dwg, x_v2, yi, x_v2, ys, x_v2, 0.5 * (yi + ys), arredondar=arredondar_valores)
                         _registrar_cota_em_memoria(self.cotas_existentes, "V", yi, ys, x_v2)
                         total_criadas += 1
 
                 x_v3 = sx1 + 12.0
                 if ys is not None and (ys - sy2) >= 2.0:
                     if not cota_ja_existe(sy2, ys, self.cotas_existentes, orient="V", pos_linha=x_v3, tol_linha=12.0):
-                        self.dwg.dim.DimVertical(sx1, sy2, sx1, ys, x_v3, 0.5 * (sy2 + ys))
+                        criar_dim_vertical(self.dwg, sx1, sy2, sx1, ys, x_v3, 0.5 * (sy2 + ys), arredondar=arredondar_valores)
                         _registrar_cota_em_memoria(self.cotas_existentes, "V", sy2, ys, x_v3)
                         total_criadas += 1
 
@@ -1788,13 +1822,13 @@ class CotadorFormas(object):
                     y_h1 = y_cota_r - 20.0
 
                 if (sx2 - px2) >= 2.0 and not cota_ja_existe(px2, sx2, self.cotas_existentes, orient="H", pos_linha=y_h1, tol_linha=12.0):
-                    self.dwg.dim.DimHorizontal(px2, py1, sx2, y_h1, 0.5 * (px2 + sx2), y_h1)
+                    criar_dim_horizontal(self.dwg, px2, py1, sx2, y_h1, 0.5 * (px2 + sx2), y_h1, arredondar=arredondar_valores)
                     _registrar_cota_em_memoria(self.cotas_existentes, "H", px2, sx2, y_h1)
                     total_criadas += 1
 
                 if xd is not None and (xd - sx2) >= 2.0:
                     if not cota_ja_existe(sx2, xd, self.cotas_existentes, orient="H", pos_linha=y_h1, tol_linha=12.0):
-                        self.dwg.dim.DimHorizontal(sx2, y_h1, xd, y_h1, 0.5 * (sx2 + xd), y_h1)
+                        criar_dim_horizontal(self.dwg, sx2, y_h1, xd, y_h1, 0.5 * (sx2 + xd), y_h1, arredondar=arredondar_valores)
                         _registrar_cota_em_memoria(self.cotas_existentes, "H", sx2, xd, y_h1)
                         total_criadas += 1
 
@@ -1806,7 +1840,7 @@ class CotadorFormas(object):
 
                 if xe is not None and xd is not None and (xd - xe) >= 10.0:
                     if not cota_ja_existe(xe, xd, self.cotas_existentes, orient="H", pos_linha=y_h2, tol_linha=12.0):
-                        self.dwg.dim.DimHorizontal(xe, y_h2, xd, y_h2, 0.5 * (xe + xd), y_h2)
+                        criar_dim_horizontal(self.dwg, xe, y_h2, xd, y_h2, 0.5 * (xe + xd), y_h2, arredondar=arredondar_valores)
                         _registrar_cota_em_memoria(self.cotas_existentes, "H", xe, xd, y_h2)
                         total_criadas += 1
 
@@ -1864,7 +1898,7 @@ class CotadorFormas(object):
                         x1_d -= 0.015
                         x2_d += 0.015
 
-                    self.dwg.dim.DimHorizontal(x1_d, yr1, x2_d, yr2, 0.5 * (x1_d + x2_d), y_cota)
+                    criar_dim_horizontal(self.dwg, x1_d, yr1, x2_d, yr2, 0.5 * (x1_d + x2_d), y_cota, arredondar=arredondar_valores)
                     _registrar_cota_em_memoria(self.cotas_existentes, "H", x1, x2, y_cota)
                     total_criadas += 1
 
@@ -1963,7 +1997,7 @@ class CotadorFormas(object):
                     y_cota_sob = py2 + 18.0
                     x1_c, x2_c = min(x_face_v, x_sob), max(x_face_v, x_sob)
                     if (x2_c - x1_c) >= 3.0 and not cota_ja_existe(x1_c, x2_c, self.cotas_existentes, orient="H", pos_linha=y_cota_sob, tol_linha=10.0):
-                        self.dwg.dim.DimHorizontal(x1_c, py2, x2_c, py2, 0.5 * (x1_c + x2_c), y_cota_sob)
+                        criar_dim_horizontal(self.dwg, x1_c, py2, x2_c, py2, 0.5 * (x1_c + x2_c), y_cota_sob, arredondar=arredondar_valores)
                         _registrar_cota_em_memoria(self.cotas_existentes, "H", x1_c, x2_c, y_cota_sob)
                         total_criadas += 1
 
@@ -1979,7 +2013,7 @@ class CotadorFormas(object):
                         x_ref_int = p_atual[2] if lado == "D" else p_atual[0]
                         x_cota_vao = (x_ref_int + 22.0) if lado == "D" else (x_ref_int - 22.0)
                         if not cota_ja_existe(y1_vao, y2_vao, self.cotas_existentes, orient="V", pos_linha=x_cota_vao, tol_linha=15.0):
-                            self.dwg.dim.DimVertical(x_ref_int, y1_vao, x_ref_int, y2_vao, x_cota_vao, 0.5 * (y1_vao + y2_vao))
+                            criar_dim_vertical(self.dwg, x_ref_int, y1_vao, x_ref_int, y2_vao, x_cota_vao, 0.5 * (y1_vao + y2_vao), arredondar=arredondar_valores)
                             _registrar_cota_em_memoria(self.cotas_existentes, "V", y1_vao, y2_vao, x_cota_vao)
                             total_criadas += 1
 
@@ -2054,7 +2088,7 @@ class CotadorFormas(object):
                     x_cota_sob = px2 + 18.0
                     y1_c, y2_c = min(y_face_v, y_sob), max(y_face_v, y_sob)
                     if (y2_c - y1_c) >= 3.0 and not cota_ja_existe(y1_c, y2_c, self.cotas_existentes, orient="V", pos_linha=x_cota_sob, tol_linha=10.0):
-                        self.dwg.dim.DimVertical(px2, y1_c, px2, y2_c, x_cota_sob, 0.5 * (y1_c + y2_c))
+                        criar_dim_vertical(self.dwg, px2, y1_c, px2, y2_c, x_cota_sob, 0.5 * (y1_c + y2_c), arredondar=arredondar_valores)
                         _registrar_cota_em_memoria(self.cotas_existentes, "V", y1_c, y2_c, x_cota_sob)
                         total_criadas += 1
 
@@ -2070,16 +2104,16 @@ class CotadorFormas(object):
                         y_ref_int = p_atual[1] if lado == "I" else p_atual[3]
                         y_cota_vao = (y_ref_int - 22.0) if lado == "I" else (y_ref_int + 22.0)
                         if not cota_ja_existe(x1_vao, x2_vao, self.cotas_existentes, orient="H", pos_linha=y_cota_vao, tol_linha=15.0):
-                            self.dwg.dim.DimHorizontal(x1_vao, y_ref_int, x2_vao, y_ref_int, 0.5 * (x1_vao + x2_vao), y_cota_vao)
+                            criar_dim_horizontal(self.dwg, x1_vao, y_ref_int, x2_vao, y_ref_int, 0.5 * (x1_vao + x2_vao), y_cota_vao, arredondar=arredondar_valores)
                             _registrar_cota_em_memoria(self.cotas_existentes, "H", x1_vao, x2_vao, y_cota_vao)
                             total_criadas += 1
 
-        ajustadas = _organizar_cotas_apertadas(self.dwg)
+        _organizar_cotas_apertadas(self.dwg)
         if arredondar_valores:
-            ajustadas += aplicar_arredondamento_cotas(self.dwg)
+            aplicar_arredondamento_cotas(self.dwg)
         self.cotas_existentes = coletar_cotas_existentes(self.dwg)
 
-        return total_criadas + ajustadas
+        return total_criadas
 
 
 def pedir_modo_cotas():
