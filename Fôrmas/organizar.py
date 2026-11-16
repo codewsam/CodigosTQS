@@ -161,7 +161,28 @@ def _n_cortes_concreto(box, lines_concreto):
 
 def _par_pilar_secao(tA, tB):
     if {tA["level"], tB["level"]} == {9, 12}:
-        return math.hypot(tA["x1"] - tB["x1"], tA["y1"] - tB["y1"]) < 30.0
+        t9 = tA if tA["level"] == 9 else tB
+        t12 = tB if tA["level"] == 9 else tA
+        dy = t12["y1"] - t9["y1"]
+        dx = abs(t12["x1"] - t9["x1"])
+        return -24.0 <= dy <= -8.0 and dx <= 15.0
+    return False
+
+
+def _par_laje_espessura(tA, tB):
+    if {tA["level"], tB["level"]} == {10, 13}:
+        t10 = tA if tA["level"] == 10 else tB
+        t13 = tB if tA["level"] == 10 else tA
+        if abs(t10["ang"] - t13["ang"]) > 1.0:
+            return False
+        if t10["ang"] == 0.0:
+            dy = t13["y1"] - t10["y1"]
+            dx = abs(t13["x1"] - t10["x1"])
+            return -35.0 <= dy <= -8.0 and dx <= 25.0
+        else:
+            dx = t13["x1"] - t10["x1"]
+            dy = abs(t13["y1"] - t10["y1"])
+            return abs(dx) <= 35.0 and dy <= 25.0
     return False
 
 
@@ -235,7 +256,7 @@ def _grupo_valido(moves, outro, gap, texts_raw, lines_concreto, obstaculos_fixos
         if _sobrepoe(cbox, outro["rbox"], gap * 0.5 - 0.01):
             return False
         for tO in texts_raw:
-            if id(tO) in moves or _par_pilar_secao(t, tO):
+            if id(tO) in moves or _par_pilar_secao(t, tO) or _par_laje_espessura(t, tO):
                 continue
             if _sobrepoe(cbox, tO["rbox"], FOLGA_VALIDACAO):
                 return False
@@ -288,13 +309,15 @@ def _planos_de_afastamento(alvo, outro, gap, texts_raw, tipo):
     return [p[2] for p in planos if p[0] == tipo]
 
 
-def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares):
+def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas=None, cubetas_boxes=None):
     """
     Varre todo o projeto identificando textos sobrepostos e os afasta SEGUINDO A ORIENTACAO:
       - Desliza ao longo da direcao de leitura (vertical -> em Y, horizontal -> em X),
         empurrando junto os textos da mesma linha (ex: 'V510-A  15/60  (20)').
       - Tenta primeiro uma folga confortavel (10 cm) e reduz so se faltar espaco.
       - Se nao couber ao longo da linha, empilha perpendicularmente (exceto titulos).
+      - Pareia atômico: Pilares (9+12) e Lajes (10+13) andam sempre juntos.
+      - Fallback de desempate: se titulo de viga (8) continuar sobreposto, usa seta executiva.
     """
     total_ajustes = 0
     boxes_pilares = [pb["box"] for pb in poly_pilares]
@@ -302,8 +325,9 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
     for t in texts_raw:
         t["rbox"] = _rbox(t)
 
-    # Nome do pilar (9) e sua secao (12) andam sempre juntos
+    # 1. Pareamento atômico de textos
     parceiros = {}
+    # Nome do pilar (9) e sua secao (12)
     for t9 in texts_raw:
         if t9["level"] != 9:
             continue
@@ -312,6 +336,16 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
             t12 = min(cands, key=lambda t: math.hypot(t["x1"] - t9["x1"], t["y1"] - t9["y1"]))
             parceiros[id(t9)] = t12
             parceiros[id(t12)] = t9
+
+    # Nome da laje (10) e sua espessura (13)
+    for t10 in texts_raw:
+        if t10["level"] != 10:
+            continue
+        cands = [t for t in texts_raw if _par_laje_espessura(t10, t)]
+        if cands:
+            t13 = min(cands, key=lambda t: math.hypot(t["x1"] - t10["x1"], t["y1"] - t10["y1"]))
+            parceiros[id(t10)] = t13
+            parceiros[id(t13)] = t10
 
     def _com_parceiros(moves):
         for t, dx, dy in list(moves.values()):
@@ -325,7 +359,7 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
         for i in range(len(texts_raw)):
             for j in range(i + 1, len(texts_raw)):
                 tA, tB = texts_raw[i], texts_raw[j]
-                if _par_pilar_secao(tA, tB):
+                if _par_pilar_secao(tA, tB) or _par_laje_espessura(tA, tB):
                     continue
                 if not _colisao_real(tA["rbox"], tB["rbox"]):
                     continue
@@ -369,6 +403,48 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
         if not mudou:
             break
 
+    # 2. Desempate / Fallback: se algum titulo de viga (8) continuar sobreposto a outro texto
+    # (ex: V214-B sobre L204-B onde micro-deslocamento nao cabe no vao), resolve com seta executiva!
+    for t in texts_raw:
+        if t["level"] == 8 and t["txt"].upper().startswith("V"):
+            colide = False
+            for tO in texts_raw:
+                if tO is not t and _colisao_real(t["rbox"], tO["rbox"]):
+                    colide = True
+                    break
+            if colide:
+                try:
+                    if anti_sobreposicao.resolver_sobreposicao_viga_com_seta(
+                        dwg, t, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas
+                    ):
+                        total_ajustes += 1
+                except Exception:
+                    pass
+
+    # 3. Textos de inversao/rebaixo de viga/laje sobre cubetas ou cortando linha branca de viga:
+    # move para um local livre (sem cubeta nem concreto) e puxa seta apontando.
+    cubetas_chk = cubetas_boxes or []
+    for t in texts_raw:
+        txt_up = t["txt"].upper()
+        eh_inv = (t["level"] == 11 and "VIGA INVERTIDA" in txt_up) or (
+            t["level"] == 13 and "LAJE REBAIXADA" in txt_up
+        )
+        if not eh_inv:
+            continue
+        bate_cubeta = any(_colisao_real(t["rbox"], cb) for cb in cubetas_chk)
+        corta_viga = any(
+            anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, t["box"], margem=-2.0)
+            for lx1, ly1, lx2, ly2, _ in lines_concreto
+        )
+        if bate_cubeta or corta_viga:
+            try:
+                if anti_sobreposicao.resolver_sobreposicao_viga_com_seta(
+                    dwg, t, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas
+                ):
+                    total_ajustes += 1
+            except Exception:
+                pass
+
     return total_ajustes
 
 
@@ -382,6 +458,7 @@ def executar_organizar_tudo(dwg):
     """
     lines_concreto = []
     obstaculos_fixos = []
+    cubetas_boxes = []
     todos_obstaculos_cotas = []
     texts_raw = []
     poly_pilares = []
@@ -394,6 +471,22 @@ def executar_organizar_tudo(dwg):
         if tipo == TQSDwg.DWGTYPE_EOF:
             break
         if dwg.iterator.inBlock != 0:
+            if tipo == TQSDwg.DWGTYPE_POLYLINE and dwg.iterator.level == 208:
+                pts_b = [dwg.iterator.GetPolylinePt(i) for i in range(dwg.iterator.xySize)]
+                if pts_b:
+                    xs_b = [p[0] for p in pts_b]
+                    ys_b = [p[1] for p in pts_b]
+                    cb = (min(xs_b), min(ys_b), max(xs_b), max(ys_b))
+                    obstaculos_fixos.append(cb)
+                    cubetas_boxes.append(cb)
+            continue
+        if dwg.iterator.isOpenObject != 0:
+            if tipo == TQSDwg.DWGTYPE_TEXT and dwg.iterator.level in (122, 216):
+                b = _bbox_texto_exato(
+                    dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2, dwg.iterator.textHeight
+                )
+                todos_obstaculos_cotas.append(b)
+                obstaculos_fixos.append(b)
             continue
 
         l = dwg.iterator.level
@@ -439,12 +532,18 @@ def executar_organizar_tudo(dwg):
                         "pcx": 0.5 * (min(xs) + max(xs)),
                         "pcy": 0.5 * (min(ys) + max(ys)),
                     })
+                elif l in (1, 2, 201):
+                    for i in range(len(pts) - 1):
+                        lines_concreto.append((pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], l))
+                elif l in (208, 200, 205):
+                    obstaculos_fixos.append((min(xs), min(ys), max(xs), max(ys)))
 
     total_ajustes = 0
 
     # 1. Resolve sobreposicoes gerais de textos (titulos, secoes, lajes, nervuras)
     ajustes_textos = resolver_micro_sobreposicoes_textos(
-        dwg, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares
+        dwg, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas,
+        cubetas_boxes=cubetas_boxes
     )
     total_ajustes += ajustes_textos
 
@@ -461,17 +560,17 @@ def executar_organizar_tudo(dwg):
             ids = set(id(x) for x in proprios)
             for x in proprios:
                 for tO in texts_raw:
-                    if id(tO) in ids or _par_pilar_secao(x, tO):
+                    if id(tO) in ids:
                         continue
                     if _colisao_real(x["rbox"], tO["rbox"]):
                         return True
             return False
 
-        pilares_group = [g for g in pilares_group if _grupo_sobreposto(g)]
+        ids_sobrepostos = set(id(g) for g in pilares_group if _grupo_sobreposto(g))
         ajustes_pilares = anti_sobreposicao.reposicionar_pilares_conflitantes(
             dwg, pilares_group, poly_pilares, lines_concreto, obstaculos_fixos,
             todos_obstaculos_cotas, texts_raw, linhas_242, linhas_221_setas,
-            forcar_ciclo_se_deslocado=False
+            forcar_ciclo_se_deslocado=False, apenas_grupos_ids=ids_sobrepostos
         )
         total_ajustes += ajustes_pilares
     except Exception:
