@@ -274,6 +274,14 @@ def formatar_valor_cota(valor_arr):
         return "%.1f" % valor_arr
 
 
+def _desativar_texto_manual_cota(dwg):
+    """Desativa o modo de texto manual (COTETX) no TQS para nao abrir o popup em cotagens futuras."""
+    try:
+        dwg.m_mdwg.COTDTX()
+    except Exception:
+        pass
+
+
 def criar_dim_horizontal(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
     """
     Cria uma cota horizontal IPOCOT REAL no TQS.
@@ -286,11 +294,11 @@ def criar_dim_horizontal(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
         val_arr = arredondar_valor_cota(dist)
         dwg.dim.dimtxu = formatar_valor_cota(val_arr)
     else:
-        dwg.dim.dimtxu = ""
+        _desativar_texto_manual_cota(dwg)
     try:
         dwg.dim.DimHorizontal(x1, y1, x2, y2, x3, y3)
     finally:
-        dwg.dim.dimtxu = ""
+        _desativar_texto_manual_cota(dwg)
 
 
 def criar_dim_vertical(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
@@ -305,11 +313,11 @@ def criar_dim_vertical(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
         val_arr = arredondar_valor_cota(dist)
         dwg.dim.dimtxu = formatar_valor_cota(val_arr)
     else:
-        dwg.dim.dimtxu = ""
+        _desativar_texto_manual_cota(dwg)
     try:
         dwg.dim.DimVertical(x1, y1, x2, y2, x3, y3)
     finally:
-        dwg.dim.dimtxu = ""
+        _desativar_texto_manual_cota(dwg)
 
 
 def re_criar_cota_ipocot(dwg, cota_dict, novo_texto):
@@ -356,7 +364,7 @@ def re_criar_cota_ipocot(dwg, cota_dict, novo_texto):
         else:
             dwg.dim.DimVertical(pt1[0], pt1[1], pt2[0], pt2[1], pos_linha, 0.5 * (pt1[1] + pt2[1]))
     finally:
-        dwg.dim.dimtxu = ""
+        _desativar_texto_manual_cota(dwg)
 
     cota_dict["texto"] = str(novo_texto)
     return True
@@ -1593,7 +1601,7 @@ class CotadorFormas(object):
 
         return total_criadas
 
-    def cotar_forma_completa(self, organizar_textos=True, arredondar_valores=True):
+    def cotar_forma_completa(self, organizar_textos=False, arredondar_valores=True):
         """
         Executa a cotagem externa em camadas e interna por completo da planta de formas.
         """
@@ -2421,6 +2429,29 @@ def cmd_criar_cotas(eag, tqsjan):
                 eag.msg.Print("G3 Plugins: Todas as cotas da planta de formas ja existem (nenhuma cota duplicada).")
                 eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
 
+    except Exception as e:
+        try:
+            TQSUtil.ShowException(e)
+        except Exception:
+            pass
+
+
+def cmd_arredondar_cotas(eag, tqsjan):
+    """Arredonda apenas cotas reais (IPOCOT) existentes no desenho (0..2->.0, 3..7->.5, 8..9->1.0)."""
+    try:
+        dwg = tqsjan.dwg
+        cotas_ipocot = [
+            c for c in coletar_cotas_existentes(dwg, nivel_cota=None)
+            if c.get("tipo") == "IPOCOT"
+        ]
+        total = aplicar_arredondamento_cotas(dwg, cotas_alvo=cotas_ipocot)
+        if total > 0:
+            tqsjan.Regen()
+            eag.msg.Print("G3 Plugins: %d cota(s) arredondada(s) com sucesso!" % total)
+            eag.msg.PrintStatus("%d cota(s) arredondada(s)!" % total)
+        else:
+            eag.msg.Print("G3 Plugins: Todas as cotas ja estao arredondadas.")
+            eag.msg.PrintStatus("Nenhuma cota precisou ser arredondada.")
     except Exception as e:
         try:
             TQSUtil.ShowException(e)
