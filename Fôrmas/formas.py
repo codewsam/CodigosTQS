@@ -241,6 +241,7 @@ def coletar_contexto_inversoes(dwg):
     obstaculos = []
     linhas_vert_concreto = []
     linhas_horiz_concreto = []
+    lines_concreto_exatas = []
     secoes_viga_coletadas = []
 
     viga_atual = None
@@ -255,6 +256,12 @@ def coletar_contexto_inversoes(dwg):
         if tipo == TQSDwg.DWGTYPE_EOF:
             break
         if dwg.iterator.inBlock != 0:
+            if tipo == TQSDwg.DWGTYPE_POLYLINE and dwg.iterator.level == 208:
+                pts_c = [dwg.iterator.GetPolylinePt(i) for i in range(dwg.iterator.xySize)]
+                if pts_c:
+                    xs_c = [p[0] for p in pts_c]
+                    ys_c = [p[1] for p in pts_c]
+                    obstaculos.append({"tipo": "cubeta", "bbox": (min(xs_c), min(ys_c), max(xs_c), max(ys_c))})
             continue
 
         nivel = dwg.iterator.level
@@ -268,16 +275,25 @@ def coletar_contexto_inversoes(dwg):
                 ys = [p[1] for p in pts]
                 dx_p = max(xs) - min(xs)
                 dy_p = max(ys) - min(ys)
-                if nivel in (2, 3, 4, 5) and 8.0 <= dx_p <= 180.0 and 8.0 <= dy_p <= 180.0 and len(pts) >= 4:
+                if nivel in (2, 3, 4, 5) and 5.0 <= dx_p <= 450.0 and 5.0 <= dy_p <= 450.0 and len(pts) >= 4:
                     obstaculos.append({"tipo": "pilar", "bbox": (min(xs), min(ys), max(xs), max(ys))})
                 elif nivel in (1, 2, 201) and len(pts) >= 2:
                     for k in range(len(pts) - 1):
                         x1, y1 = pts[k]
                         x2, y2 = pts[k + 1]
-                        if abs(x1 - x2) <= 3.0 and abs(y1 - y2) > 10.0:
+                        lines_concreto_exatas.append((x1, y1, x2, y2, nivel))
+                        if abs(x1 - x2) <= 8.0 and abs(y1 - y2) > 10.0:
                             linhas_vert_concreto.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
-                        elif abs(y1 - y2) <= 3.0 and abs(x1 - x2) > 10.0:
-                            linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, y2)))
+                        elif abs(y1 - y2) <= 8.0 and abs(x1 - x2) > 10.0:
+                            linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
+
+        elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (1, 2, 201):
+            x1, y1, x2, y2 = dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2
+            lines_concreto_exatas.append((x1, y1, x2, y2, nivel))
+            if abs(x1 - x2) <= 8.0 and abs(y1 - y2) > 10.0:
+                linhas_vert_concreto.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
+            elif abs(y1 - y2) <= 8.0 and abs(x1 - x2) > 10.0:
+                linhas_horiz_concreto.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
 
         elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (200, 205):
             xmin = min(dwg.iterator.x1, dwg.iterator.x2) - 2.0
@@ -475,6 +491,7 @@ def coletar_contexto_inversoes(dwg):
         "obstaculos": obstaculos,
         "linhas_vert_concreto": linhas_vert_concreto,
         "linhas_horiz_concreto": linhas_horiz_concreto,
+        "lines_concreto_exatas": lines_concreto_exatas,
     }
 
 
@@ -554,11 +571,12 @@ def cmd_inversoes(eag, tqsjan):
         bolinhas_viga = [b for b in bolinhas if b["level"] == 11]
         bolinhas_laje = [b for b in bolinhas if b["level"] == 13]
 
-        lines_concreto = []
+        lines_concreto_map = []
         for y, x1, x2 in ctx.get("linhas_horiz_concreto", []):
-            lines_concreto.append((x1, y, x2, y, 1))
+            lines_concreto_map.append((x1, y, x2, y, 1))
         for x, y1, y2 in ctx.get("linhas_vert_concreto", []):
-            lines_concreto.append((x, y1, x, y2, 1))
+            lines_concreto_map.append((x, y1, x, y2, 1))
+        lines_concreto = list(ctx.get("lines_concreto_exatas", [])) or lines_concreto_map
 
         textos_criados = 0
         bolinhas_apagadas = 0
@@ -566,7 +584,7 @@ def cmd_inversoes(eag, tqsjan):
         # ---------------------------------------------------------------------
         # 1. PROCESSA VIGAS (NIVEL 11) - 1 UNICO TEXTO POR VIGA (SEM REPETIR)
         # ---------------------------------------------------------------------
-        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"], ctx.get("secoes", []), lines_concreto)
+        grupos_vigas = _agrupar_bolinhas_vigas(bolinhas_viga, ctx["vigas"], ctx.get("secoes", []), lines_concreto_map)
 
         for viga, vg, sec, grupo, val in grupos_vigas:
             # Apaga TODAS as bolinhas desse grupo na viga
@@ -636,35 +654,42 @@ def cmd_inversoes(eag, tqsjan):
             # Se todos colidiram, mas junto a secao na face da viga nao corta concreto e so toca pilar
             # (que sera reposicionado pelo botao Pilar/Organizar), mantem direto na viga sem seta!
             if not colocou_direto and sec is not None and sec_box is not None:
-                cand_sec = (sec_box[2] + 8.0, sec["y1"], 0.0) if ang_viga == 0.0 else (sec["x1"], sec_box[3] + 8.0, 90.0)
-                bx_sec = anti_sobreposicao._bbox_texto(cand_sec[0], cand_sec[1], h_txt, cand_sec[2], novo_texto)
-                if not anti_sobreposicao._box_colide_com_concreto_alheio(bx_sec, vg, lines_concreto, margem=1.0):
-                    col_fixos = any(
-                        _boxes_colidem(bx_sec, ob["bbox"], margem=0.5)
-                        for ob in obstaculos
-                        if ob.get("tipo") != "pilar" and ob.get("nivel") not in (9, 12)
-                    )
-                    if not col_fixos:
-                        x_dest, y_dest, ang_dest = cand_sec[0], cand_sec[1], cand_sec[2]
-                        colocou_direto = True
+                for d_sec in (8.0, 20.0, 35.0, 50.0, 65.0, 80.0):
+                    cand_sec = (sec_box[2] + d_sec, sec["y1"], 0.0) if ang_viga == 0.0 else (sec["x1"], sec_box[3] + d_sec, 90.0)
+                    bx_sec = anti_sobreposicao._bbox_texto(cand_sec[0], cand_sec[1], h_txt, cand_sec[2], novo_texto)
+                    if not anti_sobreposicao._box_colide_com_concreto_alheio(bx_sec, vg, lines_concreto, margem=1.0):
+                        col_fixos = any(
+                            _boxes_colidem(bx_sec, ob["bbox"], margem=0.5)
+                            for ob in obstaculos
+                            if ob.get("tipo") != "pilar" and ob.get("nivel") not in (9, 12)
+                        )
+                        if not col_fixos:
+                            x_dest, y_dest, ang_dest = cand_sec[0], cand_sec[1], cand_sec[2]
+                            colocou_direto = True
+                            break
 
             precisa_seta = False
             # 2. Se nao coube direto no trecho local, POSICIONA COM SETA DE CHAMADA (validando linha da seta!)
             if not colocou_direto:
                 candidatos_seta = []
-                for r in (25.0, 40.0, 55.0, 75.0, 95.0, 120.0, 150.0):
+                raios_seta = (12.0, 20.0, 30.0, 42.0, 55.0, 75.0, 95.0, 120.0, 150.0)
+                if ang_viga == 90.0:
+                    for r in raios_seta:
+                        for dy in (0.0, 15.0, -15.0, 30.0, -30.0, 50.0, -50.0, 80.0, -80.0, 110.0, -110.0):
+                            candidatos_seta.append((xa_alvo + r + h_txt, ya_alvo - 0.5 * comp + dy, 90.0))
+                            candidatos_seta.append((xa_alvo - r, ya_alvo - 0.5 * comp + dy, 90.0))
+                        for dx in (0.0, 15.0, -15.0, 30.0, -30.0, 50.0, -50.0):
+                            candidatos_seta.append((xa_alvo + dx, ya_alvo + r, 90.0))
+                            candidatos_seta.append((xa_alvo + dx, ya_alvo - r - comp, 90.0))
+
+                for r in raios_seta:
                     # Horizontal (ang = 0)
-                    for dy in (0.0, 20.0, -20.0, 40.0, -40.0):
+                    for dy in (0.0, 12.0, -12.0, 24.0, -24.0, 40.0, -40.0):
                         candidatos_seta.append((xa_alvo + r, ya_alvo + dy - 0.5 * h_txt, 0.0))
                         candidatos_seta.append((xa_alvo - r - comp, ya_alvo + dy - 0.5 * h_txt, 0.0))
-                    for dx in (0.0, 25.0, -25.0, 50.0, -50.0):
+                    for dx in (0.0, 15.0, -15.0, 30.0, -30.0, 50.0, -50.0):
                         candidatos_seta.append((xa_alvo - 0.5 * comp + dx, ya_alvo + r, 0.0))
                         candidatos_seta.append((xa_alvo - 0.5 * comp + dx, ya_alvo - r - h_txt, 0.0))
-                    # Se viga for vertical, testa tambem vertical
-                    if ang_viga == 90.0:
-                        for dy in (0.0, 25.0, -25.0):
-                            candidatos_seta.append((xa_alvo + r, ya_alvo - 0.5 * comp + dy, 90.0))
-                            candidatos_seta.append((xa_alvo - r - h_txt, ya_alvo - 0.5 * comp + dy, 90.0))
 
                 for cs_x, cs_y, cs_ang in candidatos_seta:
                     bx = anti_sobreposicao._bbox_texto(cs_x, cs_y, h_txt, cs_ang, novo_texto)
@@ -678,19 +703,31 @@ def cmd_inversoes(eag, tqsjan):
                     if corta_concreto:
                         continue
 
-                    # Valida linha da seta
+                    # Valida linha da seta (sem sublinhado, apontando direto da borda do texto)
                     if cs_ang == 0.0:
-                        if cs_x >= xa_alvo:
+                        if cs_x > xa_alvo + 5.0:
                             x_j = cs_x - 2.0
-                            y_j = cs_y - 2.0
-                            x_fp = cs_x + min(35.0, comp)
-                        else:
+                            y_j = cs_y + 0.5 * h_txt
+                        elif cs_x + comp < xa_alvo - 5.0:
                             x_j = cs_x + comp + 2.0
+                            y_j = cs_y + 0.5 * h_txt
+                        elif cs_y > ya_alvo + 2.0:
+                            x_j = max(cs_x, min(cs_x + comp, xa_alvo))
                             y_j = cs_y - 2.0
-                            x_fp = cs_x + comp - min(35.0, comp)
+                        else:
+                            x_j = max(cs_x, min(cs_x + comp, xa_alvo))
+                            y_j = cs_y + h_txt + 2.0
+                        x_fp = None
                     else:
-                        x_j = (cs_x - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
-                        y_j = cs_y + 0.5 * comp
+                        if cs_y + comp < ya_alvo - 5.0:
+                            x_j = cs_x - 0.5 * h_txt
+                            y_j = cs_y + comp + 2.0
+                        elif cs_y > ya_alvo + 5.0:
+                            x_j = cs_x - 0.5 * h_txt
+                            y_j = cs_y - 2.0
+                        else:
+                            x_j = (cs_x - h_txt - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
+                            y_j = cs_y + 0.5 * comp
                         x_fp = None
 
                     corta_seta = False
@@ -721,7 +758,7 @@ def cmd_inversoes(eag, tqsjan):
             dwg.draw.Text(x_dest, y_dest, h_txt, ang_dest, novo_texto)
             textos_criados += 1
 
-            if precisa_seta and math.hypot(x_dest - xa_alvo, y_dest - ya_alvo) >= 25.0:
+            if precisa_seta and math.hypot(x_dest - xa_alvo, y_dest - ya_alvo) >= 10.0:
                 anti_sobreposicao.desenhar_seta_inversao(
                     dwg, x_dest, y_dest, comp, h_txt, ang_dest, xa_alvo, ya_alvo
                 )
@@ -782,7 +819,12 @@ def cmd_inversoes(eag, tqsjan):
                     ]
                     for bx in boxes:
                         for obs in obstaculos:
+                            if obs.get("nivel") in (9, 12):
+                                continue
                             if _boxes_colidem(bx, obs["bbox"], margem=5.0):
+                                return True
+                        for lx1, ly1, lx2, ly2, _ in lines_concreto:
+                            if anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, bx, margem=1.0):
                                 return True
                     return False
 
@@ -825,15 +867,12 @@ def cmd_inversoes(eag, tqsjan):
                     dwg.draw.Text(b["xc"], b["yc"] - h_reb * 1.7, h_reb, ang_txt, lin2)
                 textos_criados += 1
 
-        # Se ja houver cotas no desenho, reorganiza textos de pilares/vigas/lajes sem sobreposicao
+        # Se alguma nova inversao sobrepos o identificador/secao de algum pilar,
+        # organiza automaticamente os pilares conflitantes com a regra de 10 cm para seta
         try:
-            cotas_helper.organizar_textos_sem_sobreposicao(dwg)
-        except Exception:
-            pass
-
-        # Executa tambem o organizador de vigas/pilares para fechar gaps (ex: 15/60 V505-A) e garantir zero sobreposicao
-        try:
-            anti_sobreposicao.executar_anti_sobreposicao(dwg)
+            import importlib
+            importlib.reload(anti_sobreposicao)
+            anti_sobreposicao.executar_organizar_apenas_pilares(dwg)
         except Exception:
             pass
 
@@ -853,23 +892,28 @@ def cmd_inversoes(eag, tqsjan):
 
 def cmd_criar_cotas(eag, tqsjan):
     """
-    Cria automaticamente as cotas externas (em camadas) e completa as cadeias
-    de cotas internas da planta de formas sem duplicar cotas existentes.
+    Cria automaticamente as cotas externas (em camadas) ou cotas de pilares
+    nos quadrados/capiteis da planta de formas sem duplicar cotas existentes.
     (Delega para o modulo dedicado cotas_helper.py)
     """
+    import importlib
+    importlib.reload(cotas_helper)
     cotas_helper.cmd_criar_cotas(eag, tqsjan)
 
 
 def cmd_corrigir_vazios(eag, tqsjan):
     """
     Substitui o nivel de todas as linhas de representacao em X de vazios
-    do Nivel 241 para o Nivel 210 e apaga as setas/indicadores de direcao
-    de lajes no Nivel 240.
+    do Nivel 241 para o Nivel 210, apaga as setas/indicadores de direcao
+    de lajes no Nivel 240 e cria o retangulo de fechamento (Nivel 237,
+    cor/estilo por nivel) em volta de cada shaft em X que ainda nao possua.
     """
     try:
         dwg = tqsjan.dwg
         addrs_241 = []
         addrs_240 = []
+        diags_vazio = []
+        lines_237 = []
 
         dwg.iterator.Begin()
         while True:
@@ -884,16 +928,89 @@ def cmd_corrigir_vazios(eag, tqsjan):
             elif nivel == 240:
                 addrs_240.append(addr)
 
-        if not addrs_241 and not addrs_240:
-            eag.msg.Print("G3 Plugins: Nenhuma linha de vazio (nivel 241) ou indicador de laje (nivel 240) encontrado.")
-            eag.msg.PrintStatus("Nenhum elemento encontrado.")
-            return
+            if dwg.iterator.inBlock != 0:
+                continue
+
+            if tipo == TQSDwg.DWGTYPE_LINE:
+                x1, y1 = dwg.iterator.x1, dwg.iterator.y1
+                x2, y2 = dwg.iterator.x2, dwg.iterator.y2
+                if nivel in (241, 210) and abs(x2 - x1) >= 3.0 and abs(y2 - y1) >= 3.0:
+                    diags_vazio.append((x1, y1, x2, y2))
+                elif nivel == 237:
+                    lines_237.append((x1, y1, x2, y2))
 
         for addr in addrs_241:
             dwg.edit.ModifyLevel(addr, 210)
 
         for addr in addrs_240:
             dwg.edit.Erase(addr)
+
+        # Pareia as diagonais em X dos shafts/vazios e cria retangulo no Nivel 237
+        usados_diag = set()
+        retangulos_criados = 0
+        old_lvl = dwg.draw.level
+        old_col = dwg.draw.color
+        old_sty = dwg.draw.style
+        try:
+            dwg.draw.level = 237
+            dwg.draw.color = -1
+            dwg.draw.style = -1
+
+            def _seg_237_existe(ax1, ay1, ax2, ay2):
+                for bx1, by1, bx2, by2 in lines_237:
+                    if (math.hypot(ax1 - bx1, ay1 - by1) <= 1.0 and math.hypot(ax2 - bx2, ay2 - by2) <= 1.0) or \
+                       (math.hypot(ax1 - bx2, ay1 - by2) <= 1.0 and math.hypot(ax2 - bx1, ay2 - by1) <= 1.0):
+                        return True
+                return False
+
+            for i in range(len(diags_vazio)):
+                if i in usados_diag:
+                    continue
+                x1a, y1a, x2a, y2a = diags_vazio[i]
+                sa = (x2a - x1a) * (y2a - y1a)
+                mxa, mya = 0.5 * (x1a + x2a), 0.5 * (y1a + y2a)
+                for j in range(i + 1, len(diags_vazio)):
+                    if j in usados_diag:
+                        continue
+                    x1b, y1b, x2b, y2b = diags_vazio[j]
+                    sb = (x2b - x1b) * (y2b - y1b)
+                    if sa * sb >= 0.0:
+                        continue
+                    mxb, myb = 0.5 * (x1b + x2b), 0.5 * (y1b + y2b)
+                    if math.hypot(mxa - mxb, mya - myb) <= 5.0:
+                        usados_diag.add(i)
+                        usados_diag.add(j)
+                        xmin = min(x1a, x2a, x1b, x2b)
+                        ymin = min(y1a, y2a, y1b, y2b)
+                        xmax = max(x1a, x2a, x1b, x2b)
+                        ymax = max(y1a, y2a, y1b, y2b)
+                        # Apenas shafts estreitos/pequenos (menor dimensao <= 50 cm); aberturas grandes de laje ficam de fora
+                        if min(xmax - xmin, ymax - ymin) > 50.0:
+                            break
+                        lados = [
+                            (xmin, ymin, xmax, ymin),
+                            (xmax, ymin, xmax, ymax),
+                            (xmax, ymax, xmin, ymax),
+                            (xmin, ymax, xmin, ymin),
+                        ]
+                        criou_lado = False
+                        for lx1, ly1, lx2, ly2 in lados:
+                            if not _seg_237_existe(lx1, ly1, lx2, ly2):
+                                dwg.draw.Line(lx1, ly1, lx2, ly2)
+                                lines_237.append((lx1, ly1, lx2, ly2))
+                                criou_lado = True
+                        if criou_lado:
+                            retangulos_criados += 1
+                        break
+        finally:
+            dwg.draw.level = old_lvl
+            dwg.draw.color = old_col
+            dwg.draw.style = old_sty
+
+        if not addrs_241 and not addrs_240 and retangulos_criados == 0:
+            eag.msg.Print("G3 Plugins: Nenhuma linha de vazio (nivel 241), indicador (nivel 240) ou shaft sem fechamento encontrado.")
+            eag.msg.PrintStatus("Nenhum elemento encontrado.")
+            return
 
         tqsjan.Regen()
 
@@ -902,6 +1019,8 @@ def cmd_corrigir_vazios(eag, tqsjan):
             msgs.append("%d linha(s) de vazio (241 -> 210)" % len(addrs_241))
         if addrs_240:
             msgs.append("%d indicador(es)/seta(s) de laje (nivel 240 apagados)" % len(addrs_240))
+        if retangulos_criados:
+            msgs.append("%d retangulo(s) de fechamento de shaft (nivel 237)" % retangulos_criados)
 
         resumo = " e ".join(msgs)
         eag.msg.Print("G3 Plugins: Sucesso! %s." % resumo)
@@ -915,10 +1034,11 @@ def cmd_corrigir_vazios(eag, tqsjan):
 
 
 def cmd_organizar(eag, tqsjan):
-    """Entry point para organizar vigas, bolinhas e pilares na planta de formas."""
+    """Entry point para organizar vigas, secoes, bolinhas, pilares e cotas na planta de formas."""
     import importlib
-    importlib.reload(anti_sobreposicao)
-    anti_sobreposicao.cmd_organizar(eag, tqsjan)
+    import organizar
+    importlib.reload(organizar)
+    organizar.cmd_organizar(eag, tqsjan)
 
 
 def cmd_organizar_pilar(eag, tqsjan):
@@ -928,11 +1048,32 @@ def cmd_organizar_pilar(eag, tqsjan):
     anti_sobreposicao.cmd_organizar_pilar(eag, tqsjan)
 
 
+def cmd_inverter_e_organizar(eag, tqsjan):
+    """
+    Executa em sequencia os comandos Inversoes e Organizar.
+    Prioriza micro-ajustes de ate 5 cm sem seta e limita o alcance maximo
+    de reposicionamento de pilares sobrepostos para nunca sairem de perto do proprio pilar.
+    """
+    import os
+    chave = "G3_MAX_DESLOC_PILAR"
+    valor_anterior = os.environ.get(chave)
+    os.environ[chave] = "75.0"
+    try:
+        cmd_inversoes(eag, tqsjan)
+        cmd_organizar(eag, tqsjan)
+    finally:
+        if valor_anterior is None:
+            os.environ.pop(chave, None)
+        else:
+            os.environ[chave] = valor_anterior
+
+
 def cmd_corrigir_sobreposicao(eag, tqsjan):
     """Alias de compatibilidade para cmd_organizar."""
     import importlib
-    importlib.reload(anti_sobreposicao)
-    anti_sobreposicao.cmd_organizar(eag, tqsjan)
+    import organizar
+    importlib.reload(organizar)
+    organizar.cmd_organizar(eag, tqsjan)
 
 
 def meucmd(eag, tqsjan):
