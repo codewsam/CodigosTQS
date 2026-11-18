@@ -24,7 +24,9 @@ Logica Estrutural de Formas:
 ================================================================================
 """
 
+import os
 import math
+import re
 from TQS import TQSUtil, TQSDwg
 
 try:
@@ -147,9 +149,9 @@ def mapear_vigas_continuas(vigas_titulo, lines_concreto):
     segs_h = []
     segs_v = []
     for x1, y1, x2, y2, _ in lines_concreto:
-        if abs(y1 - y2) <= 3.0 and abs(x1 - x2) > 10.0:
+        if abs(y1 - y2) <= 8.0 and abs(x1 - x2) > 10.0:
             segs_h.append((0.5 * (y1 + y2), min(x1, x2), max(x1, x2)))
-        elif abs(x1 - x2) <= 3.0 and abs(y1 - y2) > 10.0:
+        elif abs(x1 - x2) <= 8.0 and abs(y1 - y2) > 10.0:
             segs_v.append((0.5 * (x1 + x2), min(y1, y2), max(y1, y2)))
 
     vigas_geom = []
@@ -164,13 +166,27 @@ def mapear_vigas_continuas(vigas_titulo, lines_concreto):
             if not perto:
                 perto = [s for s in segs_h if abs(s[0] - vy) <= 45.0]
             ys = sorted(list(set(round(s[0], 1) for s in perto)))
-            y_inf = min(ys) if ys else vy - 15.0
-            y_sup = max(ys) if ys else vy
-            if abs(y_sup - y_inf) < 5.0:
-                if vy >= y_sup:
-                    y_inf = y_sup - 15.0
-                else:
-                    y_sup = y_inf + 15.0
+            # Encontra o par de faces paralelas que define a viga (espessura tipica 9 a 40 cm) mais proximo do centro
+            par_faces_h = None
+            menor_d_h = float("inf")
+            for i in range(len(ys)):
+                for j in range(i + 1, len(ys)):
+                    w = ys[j] - ys[i]
+                    if 9.0 <= w <= 40.0:
+                        d_c = abs(0.5 * (ys[i] + ys[j]) - vy)
+                        if d_c < menor_d_h:
+                            menor_d_h = d_c
+                            par_faces_h = (ys[i], ys[j])
+            if par_faces_h:
+                y_inf, y_sup = par_faces_h
+            else:
+                y_inf = min(ys) if ys else vy - 15.0
+                y_sup = max(ys) if ys else vy
+                if abs(y_sup - y_inf) < 5.0:
+                    if vy >= y_sup:
+                        y_inf = y_sup - 15.0
+                    else:
+                        y_sup = y_inf + 15.0
 
             faixa_segs = sorted([s for s in segs_h if y_inf - 12.0 <= s[0] <= y_sup + 12.0], key=lambda x: x[1])
             clusters = []
@@ -202,13 +218,27 @@ def mapear_vigas_continuas(vigas_titulo, lines_concreto):
             if not perto:
                 perto = [s for s in segs_v if abs(s[0] - vx) <= 45.0]
             xs = sorted(list(set(round(s[0], 1) for s in perto)))
-            x_esq = min(xs) if xs else vx
-            x_dir = max(xs) if xs else vx + 15.0
-            if abs(x_dir - x_esq) < 5.0:
-                if vx <= x_esq:
-                    x_dir = x_esq + 15.0
-                else:
-                    x_esq = x_dir - 15.0
+            # Encontra o par de faces paralelas que define a viga (espessura tipica 9 a 40 cm) mais proximo do centro
+            par_faces_v = None
+            menor_d_v = float("inf")
+            for i in range(len(xs)):
+                for j in range(i + 1, len(xs)):
+                    w = xs[j] - xs[i]
+                    if 9.0 <= w <= 40.0:
+                        d_c = abs(0.5 * (xs[i] + xs[j]) - vx)
+                        if d_c < menor_d_v:
+                            menor_d_v = d_c
+                            par_faces_v = (xs[i], xs[j])
+            if par_faces_v:
+                x_esq, x_dir = par_faces_v
+            else:
+                x_esq = min(xs) if xs else vx
+                x_dir = max(xs) if xs else vx + 15.0
+                if abs(x_dir - x_esq) < 5.0:
+                    if vx <= x_esq:
+                        x_dir = x_esq + 15.0
+                    else:
+                        x_esq = x_dir - 15.0
 
             faixa_segs = sorted([s for s in segs_v if x_esq - 12.0 <= s[0] <= x_dir + 12.0], key=lambda x: x[1])
             clusters = []
@@ -299,11 +329,11 @@ def _box_colide_com_concreto_alheio(box, vg, lines_concreto, margem=1.0):
     """
     for lx1, ly1, lx2, ly2, _ in lines_concreto:
         if vg is not None:
-            if vg["ang"] == 0.0 and abs(ly1 - ly2) <= 3.0:
+            if vg["ang"] == 0.0 and abs(ly1 - ly2) <= 8.0:
                 ym = 0.5 * (ly1 + ly2)
                 if vg["t_min"] - 12.0 <= ym <= vg["t_max"] + 12.0:
                     continue
-            elif vg["ang"] == 90.0 and abs(lx1 - lx2) <= 3.0:
+            elif vg["ang"] == 90.0 and abs(lx1 - lx2) <= 8.0:
                 xm = 0.5 * (lx1 + lx2)
                 if vg["t_min"] - 12.0 <= xm <= vg["t_max"] + 12.0:
                     continue
@@ -488,22 +518,18 @@ def desenhar_seta_inversao(dwg, xt, yt, comp, h, ang_txt, xa, ya, linhas_221_set
     dwg.draw.style = 0
 
     if ang_txt == 0.0:
-        if xt >= xa:
+        if xt > xa + 5.0:
             x_joelho = xt - 2.0
-            y_joelho = yt - 2.0
-            x_fim_patamar = xt + min(35.0, comp)
-        else:
+            y_joelho = yt + 0.5 * h
+        elif xt + comp < xa - 5.0:
             x_joelho = xt + comp + 2.0
+            y_joelho = yt + 0.5 * h
+        elif yt > ya + 2.0:
+            x_joelho = max(xt, min(xt + comp, xa))
             y_joelho = yt - 2.0
-            x_fim_patamar = xt + comp - min(35.0, comp)
-
-        dwg.draw.Line(x_fim_patamar, y_joelho, x_joelho, y_joelho)
-        if linhas_221_setas is not None:
-            try:
-                a1 = dwg.iterator.GetElementWritePosition()
-                linhas_221_setas.append({"addr": a1, "x1": x_fim_patamar, "y1": y_joelho, "x2": x_joelho, "y2": y_joelho})
-            except Exception:
-                pass
+        else:
+            x_joelho = max(xt, min(xt + comp, xa))
+            y_joelho = yt + h + 2.0
 
         dwg.draw.Line(x_joelho, y_joelho, xa, ya)
         if linhas_221_setas is not None:
@@ -514,8 +540,15 @@ def desenhar_seta_inversao(dwg, xt, yt, comp, h, ang_txt, xa, ya, linhas_221_set
                 pass
         start_x, start_y = x_joelho, y_joelho
     else:
-        x_joelho = (xt - 2.0) if xt >= xa else (xt + 2.0)
-        y_joelho = yt + 0.5 * comp
+        if yt + comp < ya - 5.0:
+            x_joelho = xt - 0.5 * h
+            y_joelho = yt + comp + 2.0
+        elif yt > ya + 5.0:
+            x_joelho = xt - 0.5 * h
+            y_joelho = yt - 2.0
+        else:
+            x_joelho = (xt - h - 2.0) if xt >= xa else (xt + 2.0)
+            y_joelho = max(yt + 2.0, min(yt + comp - 2.0, ya))
         dwg.draw.Line(x_joelho, y_joelho, xa, ya)
         if linhas_221_setas is not None:
             try:
@@ -581,14 +614,16 @@ def apagar_chamadas_antigas_do_pilar(dwg, pcx, pcy, p_box, old_box, linhas_242, 
     # 2. Linhas Nivel 221 (Seta executiva: patamar + leader + asas)
     selecionadas = set()
     for i, l221 in enumerate(linhas_221_setas):
-        # Toca concreto do pilar
-        d1 = math.hypot(l221["x1"] - pcx, l221["y1"] - pcy)
-        d2 = math.hypot(l221["x2"] - pcx, l221["y2"] - pcy)
-        toca_poly = min(d1, d2) <= raio_busca
+        # Toca concreto do pilar (apenas borda proxima ao poligono do pilar, sem invadir setas de vigas vizinhas)
+        toca_poly = False
         if p_box is not None:
-            if (p_box[0] - 15.0 <= l221["x1"] <= p_box[2] + 15.0 and p_box[1] - 15.0 <= l221["y1"] <= p_box[3] + 15.0) or \
-               (p_box[0] - 15.0 <= l221["x2"] <= p_box[2] + 15.0 and p_box[1] - 15.0 <= l221["y2"] <= p_box[3] + 15.0):
+            if (p_box[0] - 4.0 <= l221["x1"] <= p_box[2] + 4.0 and p_box[1] - 4.0 <= l221["y1"] <= p_box[3] + 4.0) or \
+               (p_box[0] - 4.0 <= l221["x2"] <= p_box[2] + 4.0 and p_box[1] - 4.0 <= l221["y2"] <= p_box[3] + 4.0):
                 toca_poly = True
+        else:
+            d1 = math.hypot(l221["x1"] - pcx, l221["y1"] - pcy)
+            d2 = math.hypot(l221["x2"] - pcx, l221["y2"] - pcy)
+            toca_poly = min(d1, d2) <= raio_busca
 
         # Toca caixa do texto anterior do pilar (patamar horizontal no lugar antigo)
         toca_old = False
@@ -601,7 +636,7 @@ def apagar_chamadas_antigas_do_pilar(dwg, pcx, pcy, p_box, old_box, linhas_242, 
             else:
                 d_old1 = math.hypot(l221["x1"] - old_box[0], l221["y1"] - old_box[1])
                 d_old2 = math.hypot(l221["x2"] - old_box[0], l221["y2"] - old_box[1])
-                if min(d_old1, d_old2) <= 25.0:
+                if min(d_old1, d_old2) <= 8.0:
                     toca_old = True
 
         if toca_poly or toca_old:
@@ -625,6 +660,16 @@ def apagar_chamadas_antigas_do_pilar(dwg, pcx, pcy, p_box, old_box, linhas_242, 
                     mudou = True
                     break
 
+    # So apaga o grupo de nivel 221 se contiver asa de seta executiva (comp ~ 6.0 cm),
+    # protegendo 100% linhas primitivas de cotas apertadas no nivel 221.
+    tem_asa_seta = any(
+        5.2 <= math.hypot(linhas_221_setas[idx]["x2"] - linhas_221_setas[idx]["x1"],
+                          linhas_221_setas[idx]["y2"] - linhas_221_setas[idx]["y1"]) <= 6.8
+        for idx in selecionadas
+    )
+    if not tem_asa_seta:
+        return apagadas
+
     remover_221 = []
     for idx in sorted(selecionadas, reverse=True):
         l221 = linhas_221_setas[idx]
@@ -644,56 +689,9 @@ def apagar_chamadas_antigas_do_pilar(dwg, pcx, pcy, p_box, old_box, linhas_242, 
 
 def limpar_chamadas_orfas_221(dwg, linhas_221_setas, pilares_group):
     """
-    Varre as linhas no Nivel 221 e apaga quaisquer patamares horizontais orfaos:
-    linhas horizontais que nao tem leader diagonal conectado e nao tem nenhum texto
-    de pilar logo acima delas no desenho.
+    Preserva todas as linhas horizontais de cotas no Nivel 221.
     """
-    apagadas = 0
-    remover = []
-    for i, l in enumerate(linhas_221_setas):
-        # Verifica se e horizontal (patamar)
-        if abs(l["y1"] - l["y2"]) <= 1.5:
-            # Verifica se tem algum leader diagonal conectado a ela
-            tem_leader = False
-            for j, other in enumerate(linhas_221_setas):
-                if i == j:
-                    continue
-                d11 = math.hypot(l["x1"] - other["x1"], l["y1"] - other["y1"])
-                d12 = math.hypot(l["x1"] - other["x2"], l["y1"] - other["y2"])
-                d21 = math.hypot(l["x2"] - other["x1"], l["y2"] - other["y1"])
-                d22 = math.hypot(l["x2"] - other["x2"], l["y2"] - other["y2"])
-                if min(d11, d12, d21, d22) <= 3.0:
-                    tem_leader = True
-                    break
-
-            # Verifica se algum pilar esta imediatamente acima deste patamar
-            y_lin = 0.5 * (l["y1"] + l["y2"])
-            xmin_lin = min(l["x1"], l["x2"])
-            xmax_lin = max(l["x1"], l["x2"])
-            tem_texto_acima = False
-            for pg in pilares_group:
-                bx = pg["box"]
-                p9_y = pg["p9"]["y1"]
-                y_pat_esp = (p9_y + pg.get("dy_sec", 0.0) - 3.0) if pg.get("p12") else (p9_y - 3.0)
-                if abs(y_lin - y_pat_esp) <= 6.0 or (bx[1] - 8.0 <= y_lin <= bx[1] + 2.0):
-                    if bx[2] >= xmin_lin - 10.0 and bx[0] <= xmax_lin + 10.0:
-                        tem_texto_acima = True
-                        break
-
-            # Se for um patamar isolado sem leader e sem texto de pilar em cima, e orfao!
-            if not tem_leader and not tem_texto_acima:
-                try:
-                    dwg.edit.Erase(l["addr"])
-                    apagadas += 1
-                except Exception:
-                    pass
-                remover.append(l)
-
-    for r in remover:
-        if r in linhas_221_setas:
-            linhas_221_setas.remove(r)
-
-    return apagadas
+    return 0
 
 
 def apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40.0):
@@ -705,20 +703,46 @@ def apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40
         return 0
     vx, vy = vi["x1"], vi["y1"]
     vxc, vyc = vi.get("xc", vx), vi.get("yc", vy)
-    apagadas = 0
-    restantes = []
-    for l in linhas_221_setas:
+    selecionadas = set()
+    for i, l in enumerate(linhas_221_setas):
         d1 = min(math.hypot(l["x1"] - vx, l["y1"] - vy), math.hypot(l["x1"] - vxc, l["y1"] - vyc))
         d2 = min(math.hypot(l["x2"] - vx, l["y2"] - vy), math.hypot(l["x2"] - vxc, l["y2"] - vyc))
         if min(d1, d2) <= raio_busca:
-            try:
-                dwg.edit.Erase(l["addr"])
-                apagadas += 1
-            except Exception:
-                pass
-        else:
-            restantes.append(l)
-    linhas_221_setas[:] = restantes
+            selecionadas.add(i)
+
+    mudou = True
+    while mudou:
+        mudou = False
+        for i, cand in enumerate(linhas_221_setas):
+            if i in selecionadas:
+                continue
+            for sel_idx in list(selecionadas):
+                sel = linhas_221_setas[sel_idx]
+                d11 = math.hypot(cand["x1"] - sel["x1"], cand["y1"] - sel["y1"])
+                d12 = math.hypot(cand["x1"] - sel["x2"], cand["y1"] - sel["y2"])
+                d21 = math.hypot(cand["x2"] - sel["x1"], cand["y2"] - sel["y1"])
+                d22 = math.hypot(cand["x2"] - sel["x2"], cand["y2"] - sel["y2"])
+                if min(d11, d12, d21, d22) <= 3.0:
+                    selecionadas.add(i)
+                    mudou = True
+                    break
+
+    tem_asa_seta = any(
+        5.2 <= math.hypot(linhas_221_setas[idx]["x2"] - linhas_221_setas[idx]["x1"],
+                          linhas_221_setas[idx]["y2"] - linhas_221_setas[idx]["y1"]) <= 6.8
+        for idx in selecionadas
+    )
+    if not tem_asa_seta:
+        return 0
+
+    apagadas = 0
+    for idx in sorted(selecionadas, reverse=True):
+        try:
+            dwg.edit.Erase(linhas_221_setas[idx]["addr"])
+            apagadas += 1
+        except Exception:
+            pass
+    linhas_221_setas[:] = [l for i, l in enumerate(linhas_221_setas) if i not in selecionadas]
     return apagadas
 
 
@@ -738,7 +762,10 @@ def _construir_pilares_group(texts_raw, poly_pilares):
     for p9 in p9_list:
         cands_p = []
         for idx_pb, pb in enumerate(poly_pilares):
-            dp = math.hypot(p9["x1"] - pb["pcx"], p9["y1"] - pb["pcy"])
+            b_pb = pb["box"]
+            dx_b = max(0.0, b_pb[0] - p9["x1"], p9["x1"] - b_pb[2])
+            dy_b = max(0.0, b_pb[1] - p9["y1"], p9["y1"] - b_pb[3])
+            dp = math.hypot(dx_b, dy_b) + 0.05 * math.hypot(p9["x1"] - pb["pcx"], p9["y1"] - pb["pcy"])
             cands_p.append((dp, idx_pb, pb))
         cands_p.sort(key=lambda x: x[0])
         pilares_com_cands.append((p9, cands_p))
@@ -753,6 +780,77 @@ def _construir_pilares_group(texts_raw, poly_pilares):
                 break
         if id(p9) not in map_p9_poly and cands_p:
             map_p9_poly[id(p9)] = cands_p[0][2]
+
+    # Passada de Otimizacao e Desentrelacamento Topologico (2-opt uncrossing):
+    # Previne que pilares vizinhos (ex: juntas de dilatacao como P15/P16, P59/P61, etc.)
+    # tenham seus poligonos fisicos invertidos por proximidade euclidiana gananciosa.
+    def _extrair_num_pilar(txt):
+        m = re.search(r'\d+', txt)
+        return int(m.group()) if m else 0
+
+    improved = True
+    pass_num = 0
+    while improved and pass_num < 10:
+        improved = False
+        pass_num += 1
+        for i in range(len(p9_list)):
+            pA = p9_list[i]
+            if id(pA) not in map_p9_poly:
+                continue
+            pbA = map_p9_poly[id(pA)]
+            for j in range(i + 1, len(p9_list)):
+                pB = p9_list[j]
+                if id(pB) not in map_p9_poly:
+                    continue
+                pbB = map_p9_poly[id(pB)]
+
+                dist_p = math.hypot(pA["x1"] - pB["x1"], pA["y1"] - pB["y1"])
+                dist_pb = math.hypot(pbA["pcx"] - pbB["pcx"], pbA["pcy"] - pbB["pcy"])
+                if dist_p > 120.0 or dist_pb > 120.0:
+                    continue
+
+                cur_cost = math.hypot(pA["x1"] - pbA["pcx"], pA["y1"] - pbA["pcy"]) + \
+                           math.hypot(pB["x1"] - pbB["pcx"], pB["y1"] - pbB["pcy"])
+                swap_cost = math.hypot(pA["x1"] - pbB["pcx"], pA["y1"] - pbB["pcy"]) + \
+                            math.hypot(pB["x1"] - pbA["pcx"], pB["y1"] - pbA["pcy"])
+
+                # 1. Cruzamento topologico em X
+                cross_x = False
+                dx_p = pA["x1"] - pB["x1"]
+                dx_pb = pbA["pcx"] - pbB["pcx"]
+                if abs(dx_p) > 5.0 and abs(dx_pb) > 5.0 and (dx_p * dx_pb < 0):
+                    cross_x = True
+
+                # 2. Cruzamento topologico em Y
+                cross_y = False
+                dy_p = pA["y1"] - pB["y1"]
+                dy_pb = pbA["pcy"] - pbB["pcy"]
+                if abs(dy_p) > 5.0 and abs(dy_pb) > 5.0 and (dy_p * dy_pb < 0):
+                    cross_y = True
+
+                # 3. Cruzamento de ordem numerica (ex: P15 e P16 em junta)
+                numA = _extrair_num_pilar(pA["txt"])
+                numB = _extrair_num_pilar(pB["txt"])
+                num_cross = False
+                if numA != numB and (abs(dx_pb) > 5.0 or abs(dy_pb) > 5.0):
+                    if abs(dx_pb) >= abs(dy_pb):
+                        if (numA < numB and pbA["pcx"] > pbB["pcx"]) or (numA > numB and pbA["pcx"] < pbB["pcx"]):
+                            num_cross = True
+                    else:
+                        if (numA < numB and pbA["pcy"] < pbB["pcy"]) or (numA > numB and pbA["pcy"] > pbB["pcy"]):
+                            num_cross = True
+
+                should_swap = False
+                if cross_x or cross_y or num_cross:
+                    should_swap = True
+                elif swap_cost < cur_cost - 1e-4:
+                    should_swap = True
+
+                if should_swap:
+                    if swap_cost < cur_cost + 25.0:
+                        map_p9_poly[id(pA)] = pbB
+                        map_p9_poly[id(pB)] = pbA
+                        improved = True
 
     pilares_group = []
     used_12_idx = set()
@@ -781,12 +879,23 @@ def _construir_pilares_group(texts_raw, poly_pilares):
         bp9 = p9["box"]
         # Padrao executivo: secao do pilar alinhada horizontalmente e abaixo do nome
         dx_sec = 0.0
-        dy_sec = -18.0 if p12_obj else 0.0
+        dy_sec = -16.0 if p12_obj else 0.0
         if p12_obj:
-            bp12 = _bbox_texto(p9["x1"] + dx_sec, p9["y1"] + dy_sec, p12_obj["h"], p9["ang"], p12_obj["txt"])
+            bp12_atual = p12_obj["box"]
         else:
-            bp12 = bp9
-        bconj = (min(bp9[0], bp12[0]), min(bp9[1], bp12[1]), max(bp9[2], bp12[2]), max(bp9[3], bp12[3]))
+            bp12_atual = bp9
+        bconj_atual = (
+            min(bp9[0], bp12_atual[0]), min(bp9[1], bp12_atual[1]),
+            max(bp9[2], bp12_atual[2]), max(bp9[3], bp12_atual[3])
+        )
+        if p12_obj:
+            bp12_pad = _bbox_texto(p9["x1"] + dx_sec, p9["y1"] + dy_sec, p12_obj["h"], p9["ang"], p12_obj["txt"])
+        else:
+            bp12_pad = bp9
+        bconj_pad = (
+            min(bp9[0], bp12_pad[0]), min(bp9[1], bp12_pad[1]),
+            max(bp9[2], bp12_pad[2]), max(bp9[3], bp12_pad[3])
+        )
         p_poly = map_p9_poly.get(id(p9))
 
         pilares_group.append({
@@ -794,31 +903,63 @@ def _construir_pilares_group(texts_raw, poly_pilares):
             "p12": p12_obj,
             "dx_sec": dx_sec,
             "dy_sec": dy_sec,
-            "box": bconj,
-            "larg_conj": bconj[2] - bconj[0],
-            "alt_conj": bconj[3] - bconj[1],
+            "box": bconj_atual,
+            "larg_conj": bconj_pad[2] - bconj_pad[0],
+            "alt_conj": bconj_pad[3] - bconj_pad[1],
             "p_poly": p_poly,
         })
 
     return pilares_group
 
 
+def _limite_desloc_pilar():
+    """
+    Limite maximo (cm) de deslocamento dos identificadores de pilar, definido pela
+    variavel de ambiente G3_MAX_DESLOC_PILAR (usada pelo botao 'Inverter e Organizar').
+    """
+    val = os.environ.get("G3_MAX_DESLOC_PILAR", "").strip()
+    if not val:
+        return None
+    try:
+        return max(0.0, float(val))
+    except ValueError:
+        return None
+
+
 def reposicionar_pilares_conflitantes(
     dwg, pilares_group, poly_pilares, lines_concreto, obstaculos_fixos,
     todos_obstaculos_cotas, texts_raw, linhas_242, linhas_221_setas,
-    forcar_ciclo_se_deslocado=False
+    forcar_ciclo_se_deslocado=False, apenas_grupos_ids=None
 ):
     """
-    Reorganiza pilares com sobreposicao e permite ciclar posicoes:
-      - So move se o identificador do pilar estiver em sobreposicao real (com textos, secoes, concreto).
-      - Posiciona preferencialmente EM BAIXO (270, 315, 225) em area livre e organizada.
-      - Garante que a secao (p12) fique sempre abaixo do nome (p9), sem sobreposicao.
-      - Desenha Seta Executiva (Nivel 221) com patamar sob a secao e apaga chamadas antigas.
+    Reorganiza pilares com sobreposicao em 2 estagios inteligentes:
+      1. Estagio 1 (Micro-Deslocamento sem Seta): tenta afastar apenas alguns cm (0 a 30 cm)
+         mantendo o texto colado ao pilar sem precisar de seta de chamada.
+      2. Estagio 2 (Seta Executiva): somente se nao couber perto do pilar, afasta para
+         uma regiao livre (40 a 150 cm) e desenha a Seta Executiva no Nivel 221.
     """
     total_ajustes = 0
     boxes_pilares_poly = [pb["box"] for pb in poly_pilares]
 
+    # Mapeia pilares gemeos (juntas de dilatacao com distancia <= 45 cm entre poligonos)
+    map_twins = {}
+    for i in range(len(pilares_group)):
+        pA = pilares_group[i]
+        if not pA.get("p_poly"):
+            continue
+        for j in range(i + 1, len(pilares_group)):
+            pB = pilares_group[j]
+            if not pB.get("p_poly"):
+                continue
+            d_poly = math.hypot(pA["p_poly"]["pcx"] - pB["p_poly"]["pcx"], pA["p_poly"]["pcy"] - pB["p_poly"]["pcy"])
+            if d_poly <= 45.0:
+                map_twins[id(pA)] = pB
+                map_twins[id(pB)] = pA
+
     for p_grp in pilares_group:
+        if apenas_grupos_ids is not None and id(p_grp) not in apenas_grupos_ids:
+            continue
+
         p9 = p_grp["p9"]
         p12 = p_grp["p12"]
         p_poly = p_grp["p_poly"]
@@ -828,6 +969,12 @@ def reposicionar_pilares_conflitantes(
         pcx = p_poly["pcx"] if p_poly else p9["x1"]
         pcy = p_poly["pcy"] if p_poly else p9["y1"]
         p_box = p_poly["box"] if p_poly else (pcx - 12.5, pcy - 12.5, pcx + 12.5, pcy + 12.5)
+
+        tw = map_twins.get(id(p_grp))
+        dx_gem = (pcx - tw["p_poly"]["pcx"]) if tw else 0.0
+        dy_gem = (pcy - tw["p_poly"]["pcy"]) if tw else 0.0
+        mid_x = 0.5 * (pcx + tw["p_poly"]["pcx"]) if tw else pcx
+        mid_y = 0.5 * (pcy + tw["p_poly"]["pcy"]) if tw else pcy
 
         addr_p12 = p12["addr"] if p12 else -1
         obstaculos_pilar = (
@@ -842,23 +989,38 @@ def reposicionar_pilares_conflitantes(
         if p12 and p12["y1"] >= p9["y1"] - 8.0:
             colide = True
 
+        # Se for pilar de junta de dilatacao e o texto atual estiver invadindo o lado do pilar irmao:
+        if tw:
+            if abs(dx_gem) >= abs(dy_gem):
+                if dx_gem < 0 and p9["x1"] > mid_x + 5.0:
+                    colide = True
+                elif dx_gem > 0 and (p9["x1"] + larg_conj) < mid_x - 5.0:
+                    colide = True
+            else:
+                if dy_gem < 0 and p9["y1"] > mid_y + 5.0:
+                    colide = True
+                elif dy_gem > 0 and p9["y1"] < mid_y - 5.0:
+                    colide = True
+
         if not colide:
             for obs in obstaculos_pilar:
-                if _boxes_colidem(b_conj, obs, margem=5.0):
+                if _boxes_colidem(b_conj, obs, margem=0.5):
                     colide = True
                     break
 
         if not colide:
             for lx1, ly1, lx2, ly2, _ in lines_concreto:
-                if _segmento_colide_box(lx1, ly1, lx2, ly2, b_conj, margem=1.0):
+                if _segmento_colide_box(lx1, ly1, lx2, ly2, b_conj, margem=0.5):
                     colide = True
                     break
 
         if not colide:
             for p_outro in pilares_group:
-                if p_outro is not p_grp and _boxes_colidem(b_conj, p_outro["box"], margem=5.0):
+                if p_outro is not p_grp and _boxes_colidem(b_conj, p_outro["box"], margem=0.5):
                     colide = True
                     break
+
+        colisoes_iniciais = [obs for obs in obstaculos_pilar if _boxes_colidem(b_conj, obs, margem=0.5)]
 
         # Verifica se o pilar tem uma seta de chamada (leader line) conectada
         tem_seta = False
@@ -896,17 +1058,47 @@ def reposicionar_pilares_conflitantes(
             if not (forcar_ciclo_se_deslocado and tem_seta):
                 continue
 
-        # Prioriza posicoes EM BAIXO (270, 315, 225) conforme solicitado ("ficar em baixo, dessa forma mais organizada")
-        direcoes_base = [
-            (270.0, lambda r: (pcx - 0.5 * larg_conj, pcy - r - alt_conj - 5.0)),   # Baixo
-            (315.0, lambda r: (pcx + r, pcy - r * 0.7 - alt_conj)),                 # Baixo-direita
-            (225.0, lambda r: (pcx - r - larg_conj, pcy - r * 0.7 - alt_conj)),     # Baixo-esquerda
-            (0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)),                 # Direita
-            (180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)),   # Esquerda
-            (45.0, lambda r: (pcx + r, pcy + r * 0.7)),                             # Cima-direita
-            (135.0, lambda r: (pcx - r - larg_conj, pcy + r * 0.7)),                 # Cima-esquerda
-            (90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)),               # Cima
-        ]
+        # Prioriza posicoes EM BAIXO (270) respeitando o territorio de cada pilar da junta
+        direcoes_base = []
+        direcoes_base.append((270.0, lambda r: (pcx - 0.5 * larg_conj, pcy - r - alt_conj - 5.0)))
+        if tw and abs(dx_gem) >= abs(dy_gem):
+            if dx_gem < 0:
+                # Pilar da esquerda: movimentos para esquerda e baixo-esquerda
+                direcoes_base.append((225.0, lambda r: (pcx - r - larg_conj, pcy - r * 0.7 - alt_conj)))
+                direcoes_base.append((180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)))
+                direcoes_base.append((135.0, lambda r: (pcx - r - larg_conj, pcy + r * 0.7)))
+                direcoes_base.append((90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)))
+            else:
+                # Pilar da direita: movimentos para direita e baixo-direita
+                direcoes_base.append((315.0, lambda r: (pcx + r, pcy - r * 0.7 - alt_conj)))
+                direcoes_base.append((0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)))
+                direcoes_base.append((45.0, lambda r: (pcx + r, pcy + r * 0.7)))
+                direcoes_base.append((90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)))
+        elif tw and abs(dy_gem) > abs(dx_gem):
+            if dy_gem < 0:
+                # Pilar de baixo: movimentos para baixo
+                direcoes_base.append((315.0, lambda r: (pcx + r, pcy - r * 0.7 - alt_conj)))
+                direcoes_base.append((225.0, lambda r: (pcx - r - larg_conj, pcy - r * 0.7 - alt_conj)))
+                direcoes_base.append((0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)))
+                direcoes_base.append((180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)))
+            else:
+                # Pilar de cima: movimentos para cima
+                direcoes_base.append((90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)))
+                direcoes_base.append((45.0, lambda r: (pcx + r, pcy + r * 0.7)))
+                direcoes_base.append((135.0, lambda r: (pcx - r - larg_conj, pcy + r * 0.7)))
+                direcoes_base.append((0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)))
+                direcoes_base.append((180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)))
+        else:
+            direcoes_base = [
+                (270.0, lambda r: (pcx - 0.5 * larg_conj, pcy - r - alt_conj - 5.0)),
+                (315.0, lambda r: (pcx + r, pcy - r * 0.7 - alt_conj)),
+                (225.0, lambda r: (pcx - r - larg_conj, pcy - r * 0.7 - alt_conj)),
+                (0.0, lambda r: (pcx + r + 5.0, pcy - 0.5 * alt_conj)),
+                (180.0, lambda r: (pcx - r - larg_conj - 5.0, pcy - 0.5 * alt_conj)),
+                (45.0, lambda r: (pcx + r, pcy + r * 0.7)),
+                (135.0, lambda r: (pcx - r - larg_conj, pcy + r * 0.7)),
+                (90.0, lambda r: (pcx - 0.5 * larg_conj, pcy + r + 5.0)),
+            ]
 
         cur_x, cur_y = p9["x1"], p9["y1"]
         if forcar_ciclo_se_deslocado and tem_seta and not colide:
@@ -920,10 +1112,36 @@ def reposicionar_pilares_conflitantes(
             pular_proximas = False
 
         escolhido = None
-        for _, fpos in direcoes_ord:
-            for r in (40.0, 60.0, 80.0, 100.0, 125.0, 150.0):
-                cand_x, cand_y = fpos(r)
-                if pular_proximas and math.hypot(cand_x - cur_x, cand_y - cur_y) < 25.0:
+        precisa_seta_pilar = False
+
+        lim_desloc = _limite_desloc_pilar()
+        if lim_desloc is not None:
+            if not colide:
+                continue
+            pular_proximas = False
+        lim1 = 5.0 if lim_desloc is not None else 10.0
+        lim_r_max = 75.0 if lim_desloc is None else max(25.0, lim_desloc)
+
+        # ESTAGIO 1: Micro-deslocamentos sutis muito proximos ao pilar (SEM SETA, limite estrito de 5 cm no Inverter e Organizar)
+        if not pular_proximas:
+            offsets_curtos = []
+            passos_s = [0.0] + [s * d for d in (1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0) if d <= lim1 for s in (-1.0, 1.0)]
+            for dx_s in passos_s:
+                for dy_s in passos_s:
+                    d_hyp = math.hypot(dx_s, dy_s)
+                    if d_hyp <= lim1:
+                        offsets_curtos.append((d_hyp, cur_x + dx_s, cur_y + dy_s))
+            offsets_curtos.sort(key=lambda it: it[0])
+            candidatos_curtos = [(cx, cy) for _, cx, cy in offsets_curtos]
+            for _, fpos in direcoes_ord:
+                for r_curto in (3.0, 5.0, 7.0, 10.0):
+                    pos_c = fpos(r_curto)
+                    if math.hypot(pos_c[0] - cur_x, pos_c[1] - cur_y) <= lim1:
+                        candidatos_curtos.append(pos_c)
+
+            for cand_x, cand_y in candidatos_curtos:
+                # Regra dos 5 cm / 10 cm: acima disso, vai para o estagio 2 com seta
+                if math.hypot(cand_x - cur_x, cand_y - cur_y) > lim1:
                     continue
 
                 cb9 = _bbox_texto(cand_x, cand_y, p9["h"], p9["ang"], p9["txt"])
@@ -933,34 +1151,252 @@ def reposicionar_pilares_conflitantes(
                 )
                 c_conj = (min(cb9[0], cb12[0]), min(cb9[1], cb12[1]), max(cb9[2], cb12[2]), max(cb9[3], cb12[3]))
 
-                if any(_boxes_colidem(c_conj, p_outro["box"], margem=5.0) for p_outro in pilares_group if p_outro is not p_grp):
+                # Precisa continuar proximo da caixa fisica do pilar (<= 10 cm) para dispensar seta
+                dx_pb = max(0.0, p_box[0] - c_conj[2], c_conj[0] - p_box[2])
+                dy_pb = max(0.0, p_box[1] - c_conj[3], c_conj[1] - p_box[3])
+                if math.hypot(dx_pb, dy_pb) > 10.0:
                     continue
-                if any(_boxes_colidem(c_conj, obs_p, margem=5.0) for obs_p in obstaculos_pilar):
+
+                if tw and abs(dx_gem) >= abs(dy_gem):
+                    if dx_gem < 0 and (cand_x + 0.5 * larg_conj > mid_x):
+                        continue
+                    if dx_gem > 0 and (cand_x + 0.5 * larg_conj < mid_x):
+                        continue
+                elif tw and abs(dy_gem) > abs(dx_gem):
+                    if dy_gem < 0 and (c_conj[3] > mid_y + 2.0):
+                        continue
+                    if dy_gem > 0 and (c_conj[1] < mid_y - 2.0):
+                        continue
+
+                if any(_boxes_colidem(c_conj, p_outro["box"], margem=2.0) for p_outro in pilares_group if p_outro is not p_grp):
+                    continue
+                if any(_boxes_colidem(c_conj, obs_p, margem=2.0) for obs_p in obstaculos_pilar):
                     continue
 
                 corte_concreto = False
                 for lx1, ly1, lx2, ly2, _ in lines_concreto:
-                    if _segmento_colide_box(lx1, ly1, lx2, ly2, c_conj, margem=1.0):
+                    if _segmento_colide_box(lx1, ly1, lx2, ly2, c_conj, margem=0.5):
                         corte_concreto = True
                         break
                 if corte_concreto:
                     continue
 
-                # Calcula geometria da seta para validar se a linha nao corta textos/obstaculos
+                escolhido = (cand_x, cand_y, c_conj)
+                precisa_seta_pilar = False
+                break
+
+        # ESTAGIO 2: Se nao resolveu dentro de 5 cm (ex: pilares gemeos P55/P57 ou P56/P58 sobrepostos),
+        # busca vaga livre proxima ao proprio pilar COM SETA EXECUTIVA (limitado a lim_r_max)
+        if escolhido is None:
+            for _, fpos in direcoes_ord:
+                for r in [rv for rv in (15.0, 25.0, 40.0, 60.0, 75.0, 100.0, 125.0, 150.0) if rv <= lim_r_max]:
+                    cand_x, cand_y = fpos(r)
+                    if pular_proximas and math.hypot(cand_x - cur_x, cand_y - cur_y) < 15.0:
+                        continue
+
+                    # Restricao estrita de territorio para pilares gemeos (nunca invade o lado oposto da junta)
+                    if tw and abs(dx_gem) >= abs(dy_gem):
+                        if dx_gem < 0 and (cand_x + 0.5 * larg_conj > mid_x):
+                            continue
+                        if dx_gem > 0 and (cand_x + 0.5 * larg_conj < mid_x):
+                            continue
+                    elif tw and abs(dy_gem) > abs(dx_gem):
+                        if dy_gem < 0 and (cand_y > mid_y):
+                            continue
+                        if dy_gem > 0 and (cand_y < mid_y):
+                            continue
+
+                    cb9 = _bbox_texto(cand_x, cand_y, p9["h"], p9["ang"], p9["txt"])
+                    cb12 = _bbox_texto(
+                        cand_x + p_grp["dx_sec"], cand_y + p_grp["dy_sec"],
+                        p12["h"] if p12 else 12.0, p9["ang"], p12["txt"] if p12 else ""
+                    )
+                    c_conj = (min(cb9[0], cb12[0]), min(cb9[1], cb12[1]), max(cb9[2], cb12[2]), max(cb9[3], cb12[3]))
+
+                    if any(_boxes_colidem(c_conj, p_outro["box"], margem=5.0) for p_outro in pilares_group if p_outro is not p_grp):
+                        continue
+                    if any(_boxes_colidem(c_conj, obs_p, margem=5.0) for obs_p in obstaculos_pilar):
+                        continue
+
+                    corte_concreto = False
+                    for lx1, ly1, lx2, ly2, _ in lines_concreto:
+                        if _segmento_colide_box(lx1, ly1, lx2, ly2, c_conj, margem=1.0):
+                            corte_concreto = True
+                            break
+                    if corte_concreto:
+                        continue
+
+                    # Calcula geometria da seta para validar se a linha nao corta textos/obstaculos
+                    y_pat = (cand_y + p_grp["dy_sec"] - 3.0) if p12 else (cand_y - 3.0)
+                    if cand_x >= pcx:
+                        x_jlh = cand_x - 3.0
+                        x_fp = cand_x + larg_conj + 2.0
+                        x_st = min(p_box[2], max(p_box[0] + 5.0, pcx + 3.0))
+                        y_st = p_box[1] if y_pat < pcy else p_box[3]
+                    else:
+                        x_jlh = cand_x + larg_conj + 3.0
+                        x_fp = cand_x - 2.0
+                        x_st = max(p_box[0], min(p_box[2] - 5.0, pcx - 3.0))
+                        y_st = p_box[1] if y_pat < pcy else p_box[3]
+
+                    dist_s = math.hypot(x_jlh - x_st, y_pat - y_st)
+                    if dist_s >= 8.0:
+                        corta_seta = False
+                        for obs_p in obstaculos_pilar:
+                            if p_box and (p_box[0] - 2.0 <= 0.5 * (obs_p[0] + obs_p[2]) <= p_box[2] + 2.0) and (p_box[1] - 2.0 <= 0.5 * (obs_p[1] + obs_p[3]) <= p_box[3] + 2.0):
+                                continue
+                            if _segmento_colide_box(x_jlh, y_pat, x_st, y_st, obs_p, margem=0.5) or \
+                               _segmento_colide_box(x_fp, y_pat, x_jlh, y_pat, obs_p, margem=0.5):
+                                corta_seta = True
+                                break
+                        if corta_seta:
+                            continue
+                        for p_outro in pilares_group:
+                            if p_outro is not p_grp and (
+                                _segmento_colide_box(x_jlh, y_pat, x_st, y_st, p_outro["box"], margem=0.5) or
+                                _segmento_colide_box(x_fp, y_pat, x_jlh, y_pat, p_outro["box"], margem=0.5)
+                            ):
+                                corta_seta = True
+                                break
+                        if corta_seta:
+                            continue
+
+                    escolhido = (cand_x, cand_y, c_conj)
+                    precisa_seta_pilar = True
+                    break
+                if escolhido is not None:
+                    break
+
+        # Se for pilar de junta e nao achou vaga em r <= lim_r_max apenas por causa de um rotulo de laje (L... / h=...),
+        # tenta afastar levemente o rotulo da laje (25..32 cm) para abrir a vaga colada ao pilar!
+        if escolhido is None:
+            for _, fpos in direcoes_ord:
+                for r in (15.0, 25.0, 35.0, 45.0):
+                    cand_x, cand_y = fpos(r)
+                    if tw and abs(dx_gem) >= abs(dy_gem):
+                        if (dx_gem < 0 and cand_x + 0.5 * larg_conj > mid_x) or (dx_gem > 0 and cand_x + 0.5 * larg_conj < mid_x):
+                            continue
+                    elif tw and abs(dy_gem) > abs(dx_gem):
+                        if (dy_gem < 0 and cand_y > mid_y) or (dy_gem > 0 and cand_y < mid_y):
+                            continue
+                    cb9 = _bbox_texto(cand_x, cand_y, p9["h"], p9["ang"], p9["txt"])
+                    cb12 = _bbox_texto(
+                        cand_x + p_grp["dx_sec"], cand_y + p_grp["dy_sec"],
+                        p12["h"] if p12 else 12.0, p9["ang"], p12["txt"] if p12 else ""
+                    )
+                    c_conj = (min(cb9[0], cb12[0]), min(cb9[1], cb12[1]), max(cb9[2], cb12[2]), max(cb9[3], cb12[3]))
+                    if any(_boxes_colidem(c_conj, p_outro["box"], margem=3.0) for p_outro in pilares_group if p_outro is not p_grp):
+                        continue
+                    if any(_boxes_colidem(c_conj, bp, margem=2.0) for bp in boxes_pilares_poly):
+                        continue
+                    if any(_segmento_colide_box(lx1, ly1, lx2, ly2, c_conj, margem=0.5) for lx1, ly1, lx2, ly2, _ in lines_concreto):
+                        continue
+                    tx_col = [
+                        tx for tx in texts_raw
+                        if tx["addr"] not in (p9["addr"], addr_p12) and _boxes_colidem(c_conj, tx["box"], margem=3.0)
+                    ]
+                    if not tx_col or any(tx["level"] not in (10, 13) for tx in tx_col):
+                        continue
+                    # Coleta o par completo da laje (L... + h=...)
+                    laje_grp = list(tx_col)
+                    for tx in texts_raw:
+                        if tx not in laje_grp and tx["level"] in (10, 13):
+                            if any(abs(tx["x1"] - tl["x1"]) <= 8.0 and abs(tx["y1"] - tl["y1"]) <= 30.0 for tl in tx_col):
+                                laje_grp.append(tx)
+                    moveu_laje = False
+                    for dy_lj in (28.0, 34.0, -28.0, -34.0):
+                        novos_lj = [(tl, (tl["box"][0], tl["box"][1] + dy_lj, tl["box"][2], tl["box"][3] + dy_lj)) for tl in laje_grp]
+                        if any(_boxes_colidem(c_conj, nb, margem=2.0) for _, nb in novos_lj):
+                            continue
+                        if any(
+                            _boxes_colidem(nb, tx["box"], margem=1.5)
+                            for _, nb in novos_lj
+                            for tx in texts_raw
+                            if tx not in laje_grp and tx["addr"] not in (p9["addr"], addr_p12)
+                        ):
+                            continue
+                        if any(_boxes_colidem(nb, bp, margem=1.5) for _, nb in novos_lj for bp in boxes_pilares_poly):
+                            continue
+                        if any(
+                            _segmento_colide_box(lx1, ly1, lx2, ly2, nb, margem=0.5)
+                            for _, nb in novos_lj
+                            for lx1, ly1, lx2, ly2, _ in lines_concreto
+                        ):
+                            continue
+                        for tl, nb in novos_lj:
+                            dwg.edit.Move(tl["addr"], 0.0, dy_lj)
+                            tl["y1"] += dy_lj
+                            tl["y2"] += dy_lj
+                            tl["yc"] += dy_lj
+                            tl["box"] = nb
+                            if "rbox" in tl:
+                                tl["rbox"] = (tl["rbox"][0], tl["rbox"][1] + dy_lj, tl["rbox"][2], tl["rbox"][3] + dy_lj)
+                        obstaculos_pilar = (
+                            list(boxes_pilares_poly)
+                            + list(obstaculos_fixos)
+                            + list(todos_obstaculos_cotas)
+                            + [tx["box"] for tx in texts_raw if tx["addr"] not in (p9["addr"], addr_p12)]
+                        )
+                        escolhido = (cand_x, cand_y, c_conj)
+                        precisa_seta_pilar = True
+                        moveu_laje = True
+                        break
+                    if moveu_laje:
+                        break
+                if escolhido is not None:
+                    break
+
+        # Fallback 2D em malha se os 8 raios fixos nao encontraram vaga com seta (ex: juntas muito apertadas)
+        if escolhido is None:
+            grid_cands = []
+            for r_g in [rv for rv in (25.0, 45.0, 65.0, 75.0, 105.0, 125.0, 145.0, 165.0, 190.0) if rv <= lim_r_max]:
+                for ang_deg in range(0, 360, 15):
+                    rad_g = math.radians(ang_deg)
+                    cx = pcx + r_g * math.cos(rad_g) - 0.5 * larg_conj
+                    cy = pcy + r_g * math.sin(rad_g) - 0.5 * alt_conj
+                    grid_cands.append((math.hypot(cx - pcx, cy - pcy), cx, cy))
+            grid_cands.sort(key=lambda it: it[0])
+            for _, cand_x, cand_y in grid_cands:
+                if pular_proximas and math.hypot(cand_x - cur_x, cand_y - cur_y) < 15.0:
+                    continue
+                if tw and abs(dx_gem) >= abs(dy_gem):
+                    if dx_gem < 0 and (cand_x + 0.5 * larg_conj > mid_x):
+                        continue
+                    if dx_gem > 0 and (cand_x + 0.5 * larg_conj < mid_x):
+                        continue
+                elif tw and abs(dy_gem) > abs(dx_gem):
+                    if dy_gem < 0 and (cand_y > mid_y):
+                        continue
+                    if dy_gem > 0 and (cand_y < mid_y):
+                        continue
+
+                cb9 = _bbox_texto(cand_x, cand_y, p9["h"], p9["ang"], p9["txt"])
+                cb12 = _bbox_texto(
+                    cand_x + p_grp["dx_sec"], cand_y + p_grp["dy_sec"],
+                    p12["h"] if p12 else 12.0, p9["ang"], p12["txt"] if p12 else ""
+                )
+                c_conj = (min(cb9[0], cb12[0]), min(cb9[1], cb12[1]), max(cb9[2], cb12[2]), max(cb9[3], cb12[3]))
+
+                if any(_boxes_colidem(c_conj, p_outro["box"], margem=3.0) for p_outro in pilares_group if p_outro is not p_grp):
+                    continue
+                if any(_boxes_colidem(c_conj, obs_p, margem=2.0) for obs_p in obstaculos_pilar):
+                    continue
+                if any(_segmento_colide_box(lx1, ly1, lx2, ly2, c_conj, margem=0.5) for lx1, ly1, lx2, ly2, _ in lines_concreto):
+                    continue
+
                 y_pat = (cand_y + p_grp["dy_sec"] - 3.0) if p12 else (cand_y - 3.0)
                 if cand_x >= pcx:
                     x_jlh = cand_x - 3.0
                     x_fp = cand_x + larg_conj + 2.0
                     x_st = min(p_box[2], max(p_box[0] + 5.0, pcx + 3.0))
-                    y_st = p_box[1] if y_pat < pcy else p_box[3]
                 else:
                     x_jlh = cand_x + larg_conj + 3.0
                     x_fp = cand_x - 2.0
                     x_st = max(p_box[0], min(p_box[2] - 5.0, pcx - 3.0))
-                    y_st = p_box[1] if y_pat < pcy else p_box[3]
+                y_st = p_box[1] if y_pat < pcy else p_box[3]
 
                 dist_s = math.hypot(x_jlh - x_st, y_pat - y_st)
-                if dist_s >= 35.0:
+                if dist_s >= 8.0:
                     corta_seta = False
                     for obs_p in obstaculos_pilar:
                         if p_box and (p_box[0] - 2.0 <= 0.5 * (obs_p[0] + obs_p[2]) <= p_box[2] + 2.0) and (p_box[1] - 2.0 <= 0.5 * (obs_p[1] + obs_p[3]) <= p_box[3] + 2.0):
@@ -971,19 +1407,17 @@ def reposicionar_pilares_conflitantes(
                             break
                     if corta_seta:
                         continue
-                    for p_outro in pilares_group:
-                        if p_outro is not p_grp and (
+                    if any(
+                        p_outro is not p_grp and (
                             _segmento_colide_box(x_jlh, y_pat, x_st, y_st, p_outro["box"], margem=0.5) or
                             _segmento_colide_box(x_fp, y_pat, x_jlh, y_pat, p_outro["box"], margem=0.5)
-                        ):
-                            corta_seta = True
-                            break
-                    if corta_seta:
+                        )
+                        for p_outro in pilares_group
+                    ):
                         continue
 
                 escolhido = (cand_x, cand_y, c_conj)
-                break
-            if escolhido is not None:
+                precisa_seta_pilar = True
                 break
 
         if escolhido is not None:
@@ -1012,23 +1446,25 @@ def reposicionar_pilares_conflitantes(
 
             p_grp["box"] = novo_box
 
-            y_patamar = (ny + p_grp["dy_sec"] - 3.0) if p12 is not None else (ny - 3.0)
-            if nx >= pcx:
-                x_joelho = nx - 3.0
-                x_fim_patamar = nx + larg_conj + 2.0
-                x_seta = min(p_box[2], max(p_box[0] + 5.0, pcx + 3.0))
-                y_seta = p_box[1] if y_patamar < pcy else p_box[3]
-            else:
-                x_joelho = nx + larg_conj + 3.0
-                x_fim_patamar = nx - 2.0
-                x_seta = max(p_box[0], min(p_box[2] - 5.0, pcx - 3.0))
-                y_seta = p_box[1] if y_patamar < pcy else p_box[3]
+            desloc_total = math.hypot(dx, dy)
+            if precisa_seta_pilar or desloc_total > 10.0:
+                y_patamar = (ny + p_grp["dy_sec"] - 3.0) if p12 is not None else (ny - 3.0)
+                if nx >= pcx:
+                    x_joelho = nx - 3.0
+                    x_fim_patamar = nx + larg_conj + 2.0
+                    x_seta = min(p_box[2], max(p_box[0] + 5.0, pcx + 3.0))
+                    y_seta = p_box[1] if y_patamar < pcy else p_box[3]
+                else:
+                    x_joelho = nx + larg_conj + 3.0
+                    x_fim_patamar = nx - 2.0
+                    x_seta = max(p_box[0], min(p_box[2] - 5.0, pcx - 3.0))
+                    y_seta = p_box[1] if y_patamar < pcy else p_box[3]
 
-            dist_seta = math.hypot(x_joelho - x_seta, y_patamar - y_seta)
-            if dist_seta >= 35.0:
-                desenhar_seta_chamada_executiva(
-                    dwg, x_fim_patamar, x_joelho, y_patamar, x_seta, y_seta, linhas_221_setas=linhas_221_setas
-                )
+                dist_seta = math.hypot(x_joelho - x_seta, y_patamar - y_seta)
+                if dist_seta >= 8.0 or desloc_total > 10.0:
+                    desenhar_seta_chamada_executiva(
+                        dwg, x_fim_patamar, x_joelho, y_patamar, x_seta, y_seta, linhas_221_setas=linhas_221_setas
+                    )
 
             total_ajustes += 1
 
@@ -1082,6 +1518,222 @@ def _descolar_texto_concreto_viga(dwg, tx, vg, lines_concreto, folga_min=6.0):
     return False
 
 
+def resolver_sobreposicao_viga_com_seta(
+    dwg, t_viga, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas=None
+):
+    """
+    Resolve sobreposicao persistente de titulo de viga 'VXXX' (Nivel 8):
+    1. Procura posicao livre ao longo das faces da viga de concreto.
+    2. Se nao couber diretamente nas faces da viga (ex: vao curto ou laje adjacente),
+       encontra uma posicao limpa no espaco adjacente livre e gera uma Seta de Chamada
+       Executiva no Nivel 221 apontando com precisao para a viga.
+    Retorna True se reposicionou com sucesso, False caso contrario.
+    """
+    comp_v = len(t_viga["txt"]) * t_viga["h"] * (1.0 if "VIGA INVERTIDA" in t_viga["txt"].upper() else 0.85)
+    h_v = t_viga["h"]
+    ang = t_viga["ang"]
+
+    # 1. Identifica a viga de concreto correspondente a t_viga
+    if ang == 90.0:
+        segs = [s for s in lines_concreto if abs(s[0] - s[2]) <= 8.0 and abs(s[1] - s[3]) > 10.0]
+        perto = [s for s in segs if abs(0.5 * (s[0] + s[2]) - t_viga["xc"]) <= 45.0]
+        if not perto:
+            perto = [s for s in segs if abs(0.5 * (s[0] + s[2]) - t_viga["xc"]) <= 90.0]
+        xs = sorted(list(set(round(0.5 * (s[0] + s[2]), 1) for s in perto)))
+        faces = None
+        menor_d = float("inf")
+        for i in range(len(xs)):
+            for j in range(i + 1, len(xs)):
+                w = xs[j] - xs[i]
+                if 9.0 <= w <= 40.0:
+                    d_c = abs(0.5 * (xs[i] + xs[j]) - t_viga["xc"])
+                    if d_c < menor_d:
+                        menor_d = d_c
+                        faces = (xs[i], xs[j])
+        if faces:
+            xa_alvo = 0.5 * (faces[0] + faces[1])
+        elif xs:
+            xa_alvo = xs[0]
+        else:
+            xa_alvo = t_viga["xc"]
+        ya_alvo = t_viga["yc"]
+    else:
+        segs = [s for s in lines_concreto if abs(s[1] - s[3]) <= 8.0 and abs(s[0] - s[2]) > 10.0]
+        perto = [s for s in segs if abs(0.5 * (s[1] + s[3]) - t_viga["yc"]) <= 45.0]
+        if not perto:
+            perto = [s for s in segs if abs(0.5 * (s[1] + s[3]) - t_viga["yc"]) <= 90.0]
+        ys = sorted(list(set(round(0.5 * (s[1] + s[3]), 1) for s in perto)))
+        faces = None
+        menor_d = float("inf")
+        for i in range(len(ys)):
+            for j in range(i + 1, len(ys)):
+                w = ys[j] - ys[i]
+                if 9.0 <= w <= 40.0:
+                    d_c = abs(0.5 * (ys[i] + ys[j]) - t_viga["yc"])
+                    if d_c < menor_d:
+                        menor_d = d_c
+                        faces = (ys[i], ys[j])
+        if faces:
+            ya_alvo = 0.5 * (faces[0] + faces[1])
+        elif ys:
+            ya_alvo = ys[0]
+        else:
+            ya_alvo = t_viga["yc"]
+        xa_alvo = t_viga["xc"]
+
+    obst_boxes = [t["box"] for t in texts_raw if id(t) != id(t_viga)]
+    if obstaculos_fixos:
+        obst_boxes.extend(obstaculos_fixos)
+
+    setas_chk = linhas_221_setas or []
+    tem_seta_antiga = any(
+        min(
+            math.hypot(l["x1"] - t_viga["x1"], l["y1"] - t_viga["y1"]),
+            math.hypot(l["x2"] - t_viga["x1"], l["y2"] - t_viga["y1"]),
+            math.hypot(l["x1"] - (t_viga["x1"] + comp_v), l["y1"] - t_viga["y1"]),
+            math.hypot(l["x2"] - (t_viga["x1"] + comp_v), l["y2"] - t_viga["y1"]),
+        ) <= 15.0
+        for l in setas_chk
+    )
+
+    # Passo A: Tenta deslizar na direcao de leitura (sem gerar seta) se ainda nao tinha seta
+    if not tem_seta_antiga:
+        for d_slide in (8.0, -8.0, 15.0, -15.0, 25.0, -25.0, 35.0, -35.0, 50.0, -50.0, 62.0, -62.0, 75.0, -75.0, 90.0, -90.0):
+            sx = t_viga["x1"] + (d_slide if ang == 0.0 else 0.0)
+            sy = t_viga["y1"] + (0.0 if ang == 0.0 else d_slide)
+            sbx = _bbox_texto(sx, sy, h_v, ang, t_viga["txt"])
+            if any(_boxes_colidem(sbx, ob, margem=1.5) for ob in obst_boxes):
+                continue
+            if any(_segmento_colide_box(lx1, ly1, lx2, ly2, sbx, margem=-1.5) for lx1, ly1, lx2, ly2, _ in lines_concreto):
+                continue
+            if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], sbx, margem=1.0) for l in setas_chk):
+                continue
+            dx = sx - t_viga["x1"]
+            dy = sy - t_viga["y1"]
+            dwg.edit.Move(t_viga["addr"], dx, dy)
+            t_viga["x1"] = sx
+            t_viga["y1"] = sy
+            t_viga["xc"] = sx + 0.5 * (sbx[2] - sbx[0])
+            t_viga["yc"] = sy + 0.5 * (sbx[3] - sbx[1])
+            t_viga["box"] = sbx
+            t_viga["rbox"] = sbx
+            return True
+
+    best_cand = None
+    min_dist = float("inf")
+
+    angs_testar = [ang]
+
+    for cs_ang in angs_testar:
+        for r in (12.0, 20.0, 30.0, 42.0, 55.0, 75.0, 95.0, 120.0, 150.0, 180.0):
+            for s_side in (1.0, -1.0):
+                for d_long in (0.0, -15.0, 15.0, -30.0, 30.0, -50.0, 50.0, -80.0, 80.0, -110.0, 110.0):
+                    if ang == 90.0:
+                        if cs_ang == 0.0:
+                            cs_x = (xa_alvo + r) if s_side > 0 else (xa_alvo - r - comp_v)
+                            cs_y = ya_alvo + d_long - 0.5 * h_v
+                        else:
+                            cs_x = (xa_alvo + r + h_v) if s_side > 0 else (xa_alvo - r)
+                            cs_y = ya_alvo - 0.5 * comp_v + d_long
+                    else:
+                        if cs_ang == 0.0:
+                            cs_x = xa_alvo + d_long - 0.5 * comp_v
+                            cs_y = (ya_alvo + r) if s_side > 0 else (ya_alvo - r - h_v)
+                        else:
+                            cs_x = (xa_alvo + d_long + 0.5 * h_v)
+                            cs_y = (ya_alvo + r) if s_side > 0 else (ya_alvo - r - comp_v)
+
+                    cand_bx = _bbox_texto(cs_x, cs_y, h_v, cs_ang, t_viga["txt"])
+
+                    if any(_boxes_colidem(cand_bx, ob, margem=2.0) for ob in obst_boxes):
+                        continue
+                    if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], cand_bx, margem=1.5) for l in setas_chk):
+                        continue
+                    corta_concreto = False
+                    for lx1, ly1, lx2, ly2, _ in lines_concreto:
+                        if _segmento_colide_box(lx1, ly1, lx2, ly2, cand_bx, margem=-1.0):
+                            corta_concreto = True
+                            break
+                    if corta_concreto:
+                        continue
+
+                    alvos_seta = []
+                    if cs_ang == 0.0:
+                        if cs_x > xa_alvo + 5.0:
+                            alvos_seta.append((cs_x - 2.0, cs_y + 0.5 * h_v, xa_alvo, ya_alvo))
+                        elif cs_x + comp_v < xa_alvo - 5.0:
+                            alvos_seta.append((cs_x + comp_v + 2.0, cs_y + 0.5 * h_v, xa_alvo, ya_alvo))
+                        elif cs_y > ya_alvo + 2.0:
+                            for frac in (0.5, 0.25, 0.75):
+                                xs_a = cs_x + frac * comp_v
+                                alvos_seta.append((xs_a, cs_y - 2.0, xs_a, ya_alvo))
+                        else:
+                            for frac in (0.5, 0.25, 0.75):
+                                xs_a = cs_x + frac * comp_v
+                                alvos_seta.append((xs_a, cs_y + h_v + 2.0, xs_a, ya_alvo))
+                    else:
+                        if cs_y + comp_v < ya_alvo - 5.0:
+                            alvos_seta.append((cs_x - 0.5 * h_v, cs_y + comp_v + 2.0, xa_alvo, ya_alvo))
+                        elif cs_y > ya_alvo + 5.0:
+                            alvos_seta.append((cs_x - 0.5 * h_v, cs_y - 2.0, xa_alvo, ya_alvo))
+                        else:
+                            x_j_side = (cs_x - h_v - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
+                            for frac in (0.5, 0.75, 0.25, 0.85, 0.15):
+                                ys_a = cs_y + frac * comp_v
+                                alvos_seta.append((x_j_side, ys_a, xa_alvo, ys_a))
+
+                    alvo_ok = None
+                    for x_j, y_j, xa_s, ya_s in alvos_seta:
+                        corta_seta = False
+                        for ob_b in obst_boxes:
+                            if abs(xa_s - 0.5 * (ob_b[0] + ob_b[2])) < 5.0 and abs(ya_s - 0.5 * (ob_b[1] + ob_b[3])) < 5.0:
+                                continue
+                            if _segmento_colide_box(x_j, y_j, xa_s, ya_s, ob_b, margem=0.5):
+                                corta_seta = True
+                                break
+                        if not corta_seta:
+                            alvo_ok = (xa_s, ya_s)
+                            break
+                    if alvo_ok is None:
+                        continue
+
+                    dist = math.hypot(cs_x - t_viga["x1"], cs_y - t_viga["y1"])
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_cand = (cs_x, cs_y, cs_ang, cand_bx, alvo_ok[0], alvo_ok[1])
+            if best_cand:
+                break
+        if best_cand:
+            break
+
+    if best_cand is not None:
+        nx, ny, nang, nbox, xa_f, ya_f = best_cand
+        if linhas_221_setas is not None:
+            apagar_chamadas_antigas_de_inversao(dwg, t_viga, linhas_221_setas, raio_busca=35.0)
+        dx = nx - t_viga["x1"]
+        dy = ny - t_viga["y1"]
+        dwg.edit.Move(t_viga["addr"], dx, dy)
+        if nang != t_viga["ang"]:
+            try:
+                dwg.edit.ModifyText(t_viga["addr"], t_viga["h"], nang)
+            except Exception:
+                pass
+            t_viga["ang"] = nang
+
+        t_viga["x1"] = nx
+        t_viga["y1"] = ny
+        t_viga["xc"] = nx + 0.5 * (nbox[2] - nbox[0])
+        t_viga["yc"] = ny + 0.5 * (nbox[3] - nbox[1])
+        t_viga["box"] = nbox
+        t_viga["rbox"] = nbox
+
+        desenhar_seta_inversao(
+            dwg, nx, ny, comp_v, h_v, nang, xa_f, ya_f, linhas_221_setas
+        )
+        return True
+    return False
+
+
 def executar_anti_sobreposicao(dwg):
     """
     Executa a organizacao completa da planta de formas:
@@ -1112,6 +1764,12 @@ def executar_anti_sobreposicao(dwg):
             break
         if dwg.iterator.inBlock != 0:
             continue
+        if dwg.iterator.isOpenObject != 0:
+            if tipo == TQSDwg.DWGTYPE_TEXT and dwg.iterator.level in (122, 216):
+                todos_obstaculos_cotas.append(_bbox_texto_exato(
+                    dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2, dwg.iterator.textHeight
+                ))
+            continue
 
         l = dwg.iterator.level
         addr = dwg.iterator.GetElementReadPosition()
@@ -1124,7 +1782,7 @@ def executar_anti_sobreposicao(dwg):
             ys = [p[1] for p in pts]
             dx_poly = max(xs) - min(xs)
             dy_poly = max(ys) - min(ys)
-            if l in (2, 3, 4, 5) and 8.0 <= dx_poly <= 180.0 and 8.0 <= dy_poly <= 180.0 and len(pts) >= 4:
+            if l in (2, 3, 4, 5) and 5.0 <= dx_poly <= 450.0 and 5.0 <= dy_poly <= 450.0 and len(pts) >= 4:
                 poly_pilares.append({
                     "addr": addr,
                     "level": l,
@@ -1136,14 +1794,14 @@ def executar_anti_sobreposicao(dwg):
             elif l in (1, 2, 201):
                 for i in range(len(pts) - 1):
                     lines_concreto.append((pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1], l))
-            elif l in (210, 241, 200, 205):
+            elif l in (200, 205):
                 obstaculos_fixos.append((min(xs), min(ys), max(xs), max(ys)))
 
         elif tipo == TQSDwg.DWGTYPE_LINE:
             x1, y1, x2, y2 = dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2
             if l in (1, 2, 201):
                 lines_concreto.append((x1, y1, x2, y2, l))
-            elif l in (210, 241, 200, 205):
+            elif l in (200, 205):
                 obstaculos_fixos.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
             elif l in (122, 216):
                 todos_obstaculos_cotas.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
@@ -1770,6 +2428,12 @@ def executar_organizar_apenas_pilares(dwg):
             break
         if dwg.iterator.inBlock != 0:
             continue
+        if dwg.iterator.isOpenObject != 0:
+            if tipo == TQSDwg.DWGTYPE_TEXT and dwg.iterator.level in (122, 216):
+                todos_obstaculos_cotas.append(_bbox_texto_exato(
+                    dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2, dwg.iterator.textHeight
+                ))
+            continue
 
         l = dwg.iterator.level
         addr = dwg.iterator.GetElementReadPosition()
@@ -1782,7 +2446,7 @@ def executar_organizar_apenas_pilares(dwg):
             ys = [p[1] for p in pts]
             dx_poly = max(xs) - min(xs)
             dy_poly = max(ys) - min(ys)
-            if l in (2, 3, 4, 5) and 8.0 <= dx_poly <= 180.0 and 8.0 <= dy_poly <= 180.0 and len(pts) >= 4:
+            if l in (2, 3, 4, 5) and 5.0 <= dx_poly <= 450.0 and 5.0 <= dy_poly <= 450.0 and len(pts) >= 4:
                 poly_pilares.append({
                     "addr": addr, "level": l, "pts": pts,
                     "box": (min(xs), min(ys), max(xs), max(ys)),
@@ -1792,14 +2456,14 @@ def executar_organizar_apenas_pilares(dwg):
             elif l in (1, 2, 201):
                 for i in range(len(pts) - 1):
                     lines_concreto.append((pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1], l))
-            elif l in (210, 241, 200, 205):
+            elif l in (200, 205):
                 obstaculos_fixos.append((min(xs), min(ys), max(xs), max(ys)))
 
         elif tipo == TQSDwg.DWGTYPE_LINE:
             x1, y1, x2, y2 = dwg.iterator.x1, dwg.iterator.y1, dwg.iterator.x2, dwg.iterator.y2
             if l in (1, 2, 201):
                 lines_concreto.append((x1, y1, x2, y2, l))
-            elif l in (210, 241, 200, 205):
+            elif l in (200, 205):
                 obstaculos_fixos.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
             elif l in (122, 216):
                 todos_obstaculos_cotas.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
