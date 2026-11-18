@@ -249,9 +249,13 @@ def _deslocamento_perpendicular(alvo, outro, sinal, gap):
     return {id(alvo): (alvo, nx * s, ny * s)}
 
 
-def _grupo_valido(moves, outro, gap, texts_raw, lines_concreto, obstaculos_fixos, boxes_pilares):
+def _grupo_valido(moves, outro, gap, texts_raw, lines_concreto, obstaculos_fixos, boxes_pilares, linhas_221_setas=None):
     novos = {k: _transladar(t["rbox"], dx, dy) for k, (t, dx, dy) in moves.items()}
+    setas_chk = linhas_221_setas or []
+    lim_pilar = anti_sobreposicao._limite_desloc_pilar()
     for k, (t, dx, dy) in moves.items():
+        if lim_pilar is not None and t["level"] in (9, 12) and math.hypot(dx, dy) > lim_pilar:
+            return False
         cbox = novos[k]
         if _sobrepoe(cbox, outro["rbox"], gap * 0.5 - 0.01):
             return False
@@ -267,8 +271,18 @@ def _grupo_valido(moves, outro, gap, texts_raw, lines_concreto, obstaculos_fixos
             return False
         if any(_sobrepoe(cbox, pb, 1.0) for pb in boxes_pilares):
             return False
-        # Nao pode cortar MAIS linhas de concreto do que ja cortava na posicao original
+        if any(
+            anti_sobreposicao._segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], cbox, margem=1.0)
+            for l in setas_chk
+        ):
+            return False
+        # Nao pode ficar em cima ou cortar MAIS linhas de concreto do que ja cortava na posicao original
         if _n_cortes_concreto(cbox, lines_concreto) > _n_cortes_concreto(t["rbox"], lines_concreto):
+            return False
+        if _n_cortes_concreto(t["rbox"], lines_concreto) == 0 and any(
+            anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, cbox, margem=0.5)
+            for lx1, ly1, lx2, ly2, _ in lines_concreto
+        ):
             return False
     return True
 
@@ -374,7 +388,7 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
                                 if id(outro) in moves:
                                     continue
                                 if _grupo_valido(moves, outro, gap, texts_raw, lines_concreto,
-                                                 obstaculos_fixos, boxes_pilares):
+                                                 obstaculos_fixos, boxes_pilares, linhas_221_setas):
                                     escolhido = moves
                                     break
                             if escolhido:
@@ -421,14 +435,12 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
                 except Exception:
                     pass
 
-    # 3. Textos de inversao/rebaixo de viga/laje sobre cubetas ou cortando linha branca de viga:
+    # 3. Textos de inversao de viga sobre cubetas ou cortando linha branca de viga:
     # move para um local livre (sem cubeta nem concreto) e puxa seta apontando.
     cubetas_chk = cubetas_boxes or []
     for t in texts_raw:
         txt_up = t["txt"].upper()
-        eh_inv = (t["level"] == 11 and "VIGA INVERTIDA" in txt_up) or (
-            t["level"] == 13 and "LAJE REBAIXADA" in txt_up
-        )
+        eh_inv = (t["level"] == 11 and "VIGA INVERTIDA" in txt_up)
         if not eh_inv:
             continue
         bate_cubeta = any(_colisao_real(t["rbox"], cb) for cb in cubetas_chk)
@@ -525,7 +537,7 @@ def executar_organizar_tudo(dwg):
                 ys = [p[1] for p in pts]
                 dx_poly = max(xs) - min(xs)
                 dy_poly = max(ys) - min(ys)
-                if l in (2, 3, 4, 5) and 8.0 <= dx_poly <= 180.0 and 8.0 <= dy_poly <= 180.0 and len(pts) >= 4:
+                if l in (2, 3, 4, 5) and 5.0 <= dx_poly <= 450.0 and 5.0 <= dy_poly <= 450.0 and len(pts) >= 4:
                     poly_pilares.append({
                         "addr": addr, "level": l, "pts": pts,
                         "box": (min(xs), min(ys), max(xs), max(ys)),
@@ -558,12 +570,45 @@ def executar_organizar_tudo(dwg):
         def _grupo_sobreposto(g):
             proprios = [x for x in (g.get("p9"), g.get("p12")) if x]
             ids = set(id(x) for x in proprios)
+            p_self = g.get("p_poly")
+            b_self = p_self["box"] if p_self else None
+            p9, p12 = g.get("p9"), g.get("p12")
+            setas_proprias_ids = set()
+            if p9:
+                for l in (linhas_221_setas + linhas_242):
+                    d1_9 = math.hypot(l["x1"] - p9["x1"], l["y1"] - p9["y1"])
+                    d2_9 = math.hypot(l["x2"] - p9["x1"], l["y2"] - p9["y1"])
+                    d1_12 = math.hypot(l["x1"] - p12["x1"], l["y1"] - p12["y1"]) if p12 else float("inf")
+                    d2_12 = math.hypot(l["x2"] - p12["x1"], l["y2"] - p12["y1"]) if p12 else float("inf")
+                    if min(d1_9, d2_9, d1_12, d2_12) <= 35.0:
+                        setas_proprias_ids.add(id(l))
+                        for tO in texts_raw:
+                            if id(tO) in ids:
+                                continue
+                            if anti_sobreposicao._segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], tO["box"], margem=0.5):
+                                return True
             for x in proprios:
                 for tO in texts_raw:
                     if id(tO) in ids:
                         continue
                     if _colisao_real(x["rbox"], tO["rbox"]):
                         return True
+                for bp in poly_pilares:
+                    pb = bp["box"]
+                    if b_self is not None and pb == b_self:
+                        continue
+                    if anti_sobreposicao._boxes_colidem(x["rbox"], pb, margem=3.0):
+                        return True
+                if any(
+                    anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, x["rbox"], margem=-0.5)
+                    for lx1, ly1, lx2, ly2, _ in lines_concreto
+                ):
+                    return True
+                if any(
+                    id(l) not in setas_proprias_ids and anti_sobreposicao._segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], x["box"], margem=-1.0)
+                    for l in (linhas_221_setas + linhas_242)
+                ):
+                    return True
             return False
 
         ids_sobrepostos = set(id(g) for g in pilares_group if _grupo_sobreposto(g))
