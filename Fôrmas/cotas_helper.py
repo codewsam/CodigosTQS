@@ -79,7 +79,9 @@ def configurar_estilo_cotas(
     extensao_linha=0.25,
     extensao_chamada=0.25,
     folga_chamada=0.25,
-    arredondar_5=False
+    tamanho_tick=0.25,
+    arredondar_5=False,
+    fator_comprimento=1.0
 ):
     """
     Define as variaveis globais de aparencia de cotagem no objeto dwg.dim do TQS.
@@ -90,9 +92,11 @@ def configurar_estilo_cotas(
     """
     dwg.dim.dimblk = str(bloco)
     dwg.dim.dimtxt = float(altura_texto)
+    dwg.dim.dimtsz = float(tamanho_tick)
     dwg.dim.dimdle = float(extensao_linha)
     dwg.dim.dimexe = float(extensao_chamada)
     dwg.dim.dimexo = float(folga_chamada)
+    dwg.dim.dimlfc = float(fator_comprimento)
     dwg.dim.idmniv = int(nivel)
     dwg.dim.idmnic = 221
     dwg.dim.idmnil = 221
@@ -185,6 +189,7 @@ def coletar_cotas_existentes(dwg, nivel_cota=216):
                         "h": txt_info["h"],
                         "ang": txt_info["ang"],
                         "texto": txt_info["texto"],
+                        "addr_txt": txt_info.get("addr_txt"),
                         "bbox_texto": _bbox_texto(
                             txt_info["x"], txt_info["y"], txt_info["h"], txt_info["ang"], txt_info["texto"]
                         ),
@@ -200,6 +205,7 @@ def coletar_cotas_existentes(dwg, nivel_cota=216):
                         "y": dwg.iterator.y1,
                         "h": dwg.iterator.textHeight,
                         "ang": dwg.iterator.textAngle % 360.0,
+                        "addr_txt": dwg.iterator.GetElementReadPosition(),
                     }
                 elif tipo == TQSDwg.DWGTYPE_LINE:
                     cur_obj["lines"].append((
@@ -290,7 +296,8 @@ def criar_dim_horizontal(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
     e nao linhas/textos soltos.
     """
     if arredondar:
-        dist = abs(x2 - x1)
+        fator = float(getattr(dwg.dim, "dimlfc", 1.0) or 1.0)
+        dist = abs(x2 - x1) * fator
         val_arr = arredondar_valor_cota(dist)
         dwg.dim.dimtxu = formatar_valor_cota(val_arr)
     else:
@@ -309,7 +316,8 @@ def criar_dim_vertical(dwg, x1, y1, x2, y2, x3, y3, arredondar=False):
     e nao linhas/textos soltos.
     """
     if arredondar:
-        dist = abs(y2 - y1)
+        fator = float(getattr(dwg.dim, "dimlfc", 1.0) or 1.0)
+        dist = abs(y2 - y1) * fator
         val_arr = arredondar_valor_cota(dist)
         dwg.dim.dimtxu = formatar_valor_cota(val_arr)
     else:
@@ -435,7 +443,7 @@ def _substituir_ipocot_por_primitivos(dwg, cota_dict, novo_x, novo_y, estender_l
         orient = cota_dict.get("orient", "H")
         h = float(cota_dict.get("h", 10.0))
         texto = str(cota_dict.get("texto", ""))
-        larg_txt = max(8.0, (len(texto) - 0.2) * 5.0)
+        larg_txt = max(h * 0.7, len(texto) * h * 0.65)
 
         for idx, (lvl, lx1, ly1, lx2, ly2) in enumerate(cota_dict.get("lines", [])):
             dwg.draw.level = int(lvl)
@@ -504,7 +512,7 @@ def _organizar_cotas_apertadas(dwg):
 
         txt = str(c.get("texto", ""))
         h = float(c.get("h", 10.0))
-        larg_txt = max(8.0, (len(txt) - 0.2) * 5.0)
+        larg_txt = max(h * 0.6, (len(txt) - 0.2) * h * 0.5)
         meio = 0.5 * (p1 + p2)
 
         if orient == "H":
@@ -1691,26 +1699,8 @@ class CotadorFormas(object):
                     self.dwg.iterator.textHeight,
                 ))
 
-        if not quadrados_207:
-            return 0
-
         def _faces_exatas_pilar(pts):
-            u_pts = (
-                pts[:-1]
-                if len(pts) > 1 and abs(pts[0][0] - pts[-1][0]) < 0.1 and abs(pts[0][1] - pts[-1][1]) < 0.1
-                else pts
-            )
-            if len(u_pts) == 4:
-                sx = sorted(u_pts, key=lambda p: p[0])
-                sy = sorted(u_pts, key=lambda p: p[1])
-                x_esq = 0.5 * (sx[0][0] + sx[1][0])
-                x_dir = 0.5 * (sx[2][0] + sx[3][0])
-                y_inf = 0.5 * (sy[0][1] + sy[1][1])
-                y_sup = 0.5 * (sy[2][1] + sy[3][1])
-                return (x_esq, y_inf, x_dir, y_sup)
-            xs = [p[0] for p in u_pts]
-            ys = [p[1] for p in u_pts]
-            return (min(xs), min(ys), max(xs), max(ys))
+            return CotadorFormas._faces_exatas_pilar(pts)
 
         # Associa cada quadrado amarelo (Nivel 207) ao pilar interno (ignorando pilares soltos)
         capiteis = []
@@ -1741,10 +1731,8 @@ class CotadorFormas(object):
                     "y_txt_min": y_txt_min,
                 })
 
-        if not capiteis:
-            return 0
-
         total_criadas = 0
+        criadas_capitel = 0
 
         # Agrupa os quadrados em linhas horizontais (mesma faixa Y, tolerancia 200 cm)
         capiteis_ord = sorted(capiteis, key=lambda c: -0.5 * (c["sq"][1] + c["sq"][3]))
@@ -1911,217 +1899,820 @@ class CotadorFormas(object):
                     total_criadas += 1
 
         # ---------------------------------------------------------------------
-        # 3. COTAS DOS PILARES LATERAIS (SOBRESSAIMENTO E DISTANCIA ENTRE PILARES)
+        # 3. COTAS DOS PILARES LATERAIS (CADEIA EXTERNA ENCADEADA NO CONTORNO)
         # ---------------------------------------------------------------------
+        criadas_capitel = total_criadas
+        if criadas_capitel > 0:
+            _organizar_cotas_apertadas(self.dwg)
+            if arredondar_valores:
+                aplicar_arredondamento_cotas(self.dwg)
+            self.cotas_existentes = coletar_cotas_existentes(self.dwg)
+
         if incluir_pilares_laterais:
-            # Identifica pilares fora dos quadrados 207
-            pilares_fora_sq = []
-            for _, pbx, ppts in pilares_poly:
-                cx = 0.5 * (pbx[0] + pbx[2])
-                cy = 0.5 * (pbx[1] + pbx[3])
-                dentro = any(
-                    (s[0][0] - 2.0) <= cx <= (s[0][2] + 2.0) and (s[0][1] - 2.0) <= cy <= (s[0][3] + 2.0)
-                    for s in quadrados_207
-                )
-                if not dentro:
-                    pilares_fora_sq.append((pbx, _faces_exatas_pilar(ppts)))
-
-            # Junta todos os segmentos de viga coletados no desenho
-            vigas_todas_seg = []
-            for vx1, vy1, vx2, vy2, _ in vigas_vert:
-                vigas_todas_seg.append((vx1, vy1, vx2, vy2))
-            for vx1, vy1, vx2, vy2, _ in vigas_horiz:
-                vigas_todas_seg.append((vx1, vy1, vx2, vy2))
-
-            # -----------------------------------------------------------------
-            # A) Pilares em vigas verticais (sobressaem para a direita D ou esquerda E)
-            # -----------------------------------------------------------------
-            laterais_vert = []
-            for pbx, (px1, py1, px2, py2) in pilares_fora_sq:
-                xs_c = []
-                for x1, y1, x2, y2 in vigas_todas_seg:
-                    if abs(x2 - x1) <= 0.25 * abs(y2 - y1) or abs(x2 - x1) < 4.0:
-                        for xp, yp in ((x1, y1), (x2, y2)):
-                            if abs(yp - py1) < 4.0 or abs(yp - py2) < 4.0:
-                                if (px1 - 4.0) <= xp <= (px2 + 4.0):
-                                    xs_c.append(xp)
-                if len(xs_c) >= 2:
-                    xs_u = sorted(list(set(round(x, 1) for x in xs_c)))
-                    if len(xs_u) >= 2:
-                        v_esq, v_dir = xs_u[0], xs_u[-1]
-                        larg_v = v_dir - v_esq
-                        if 10.0 <= larg_v <= 45.0:
-                            sob_d = px2 - v_dir
-                            sob_e = v_esq - px1
-                            if sob_d >= 5.0 and abs(sob_e) <= 5.0:
-                                laterais_vert.append({
-                                    "pilar": (px1, py1, px2, py2),
-                                    "lado": "D",
-                                    "x_ext": px1,
-                                    "x_face_viga": v_dir,
-                                    "x_sobressai": px2,
-                                    "sobressai": sob_d,
-                                })
-                            elif sob_e >= 5.0 and abs(sob_d) <= 5.0:
-                                laterais_vert.append({
-                                    "pilar": (px1, py1, px2, py2),
-                                    "lado": "E",
-                                    "x_ext": px2,
-                                    "x_face_viga": v_esq,
-                                    "x_sobressai": px1,
-                                    "sobressai": sob_e,
-                                })
-
-            # Agrupa os pilares laterais verticais por alinhamento X (faixa de 35 cm)
-            grupos_v = []
-            for lat in sorted(laterais_vert, key=lambda it: (it["lado"], it["x_ext"], it["pilar"][1])):
-                alocado = False
-                for grp in grupos_v:
-                    if grp["lado"] == lat["lado"] and abs(grp["x_ext"] - lat["x_ext"]) < 35.0:
-                        grp["pilares"].append(lat)
-                        alocado = True
-                        break
-                if not alocado:
-                    grupos_v.append({
-                        "lado": lat["lado"],
-                        "x_ext": lat["x_ext"],
-                        "pilares": [lat],
-                    })
-
-            for grp in grupos_v:
-                lado = grp["lado"]
-                # Remove pilares duplicados por junta de dilatacao (< 30 cm)
-                pils_ord = sorted(grp["pilares"], key=lambda it: it["pilar"][1])
-                pils_filtrados = []
-                for item in pils_ord:
-                    if not pils_filtrados or abs(item["pilar"][1] - pils_filtrados[-1]["pilar"][1]) > 30.0:
-                        pils_filtrados.append(item)
-
-                # 1. Cota do quanto cada pilar se sobressai da viga
-                for lat in pils_filtrados:
-                    px1, py1, px2, py2 = lat["pilar"]
-                    x_face_v = lat["x_face_viga"]
-                    x_sob = lat["x_sobressai"]
-                    y_cota_sob = py2 + 18.0
-                    x1_c, x2_c = min(x_face_v, x_sob), max(x_face_v, x_sob)
-                    if (x2_c - x1_c) >= 3.0 and not cota_ja_existe(x1_c, x2_c, self.cotas_existentes, orient="H", pos_linha=y_cota_sob, tol_linha=10.0):
-                        criar_dim_horizontal(self.dwg, x1_c, py2, x2_c, py2, 0.5 * (x1_c + x2_c), y_cota_sob, arredondar=arredondar_valores)
-                        _registrar_cota_em_memoria(self.cotas_existentes, "H", x1_c, x2_c, y_cota_sob)
-                        total_criadas += 1
-
-                # 2. Cota da distancia entre pilares consecutivos POR DENTRO (face interna)
-                # lado == 'D' -> face interna e a direita (px2), entao afasta para dentro (+ 22 cm)
-                # lado == 'E' -> face interna e a esquerda (px1), entao afasta para dentro (- 22 cm)
-                for k in range(len(pils_filtrados) - 1):
-                    p_atual = pils_filtrados[k]["pilar"]
-                    p_prox = pils_filtrados[k + 1]["pilar"]
-                    y1_vao = p_atual[3]
-                    y2_vao = p_prox[1]
-                    if (y2_vao - y1_vao) >= 20.0:
-                        x_ref_int = p_atual[2] if lado == "D" else p_atual[0]
-                        x_cota_vao = (x_ref_int + 22.0) if lado == "D" else (x_ref_int - 22.0)
-                        if not cota_ja_existe(y1_vao, y2_vao, self.cotas_existentes, orient="V", pos_linha=x_cota_vao, tol_linha=15.0):
-                            criar_dim_vertical(self.dwg, x_ref_int, y1_vao, x_ref_int, y2_vao, x_cota_vao, 0.5 * (y1_vao + y2_vao), arredondar=arredondar_valores)
-                            _registrar_cota_em_memoria(self.cotas_existentes, "V", y1_vao, y2_vao, x_cota_vao)
-                            total_criadas += 1
-
-            # -----------------------------------------------------------------
-            # B) Pilares em vigas horizontais/inclinadas (sobressaem para baixo I ou cima S)
-            # -----------------------------------------------------------------
-            laterais_horiz = []
-            for pbx, (px1, py1, px2, py2) in pilares_fora_sq:
-                ys_c = []
-                for x1, y1, x2, y2 in vigas_todas_seg:
-                    if abs(y2 - y1) <= 0.25 * abs(x2 - x1) or abs(y2 - y1) < 4.0:
-                        for xp, yp in ((x1, y1), (x2, y2)):
-                            if abs(xp - px1) < 4.0 or abs(xp - px2) < 4.0:
-                                if (py1 - 4.0) <= yp <= (py2 + 4.0):
-                                    ys_c.append(yp)
-                if len(ys_c) >= 2:
-                    ys_u = sorted(list(set(round(y, 1) for y in ys_c)))
-                    if len(ys_u) >= 2:
-                        vy1, vy2 = ys_u[0], ys_u[-1]
-                        if 10.0 <= (vy2 - vy1) <= 45.0:
-                            sob_s = py2 - vy2
-                            sob_i = vy1 - py1
-                            if sob_i >= 5.0 and abs(sob_s) <= 5.0:
-                                laterais_horiz.append({
-                                    "pilar": (px1, py1, px2, py2),
-                                    "lado": "I",
-                                    "y_ext": py2,
-                                    "y_face_viga": vy1,
-                                    "y_sobressai": py1,
-                                    "sobressai": sob_i,
-                                })
-                            elif sob_s >= 5.0 and abs(sob_i) <= 5.0:
-                                laterais_horiz.append({
-                                    "pilar": (px1, py1, px2, py2),
-                                    "lado": "S",
-                                    "y_ext": py1,
-                                    "y_face_viga": vy2,
-                                    "y_sobressai": py2,
-                                    "sobressai": sob_s,
-                                })
-
-            # Agrupa os pilares laterais horizontais por alinhamento Y (faixa de 50 cm)
-            grupos_h = []
-            for lat in sorted(laterais_horiz, key=lambda it: (it["lado"], it["y_ext"], it["pilar"][0])):
-                alocado = False
-                for grp in grupos_h:
-                    if grp["lado"] == lat["lado"] and abs(grp["y_ext"] - lat["y_ext"]) < 70.0:
-                        grp["pilares"].append(lat)
-                        alocado = True
-                        break
-                if not alocado:
-                    grupos_h.append({
-                        "lado": lat["lado"],
-                        "y_ext": lat["y_ext"],
-                        "pilares": [lat],
-                    })
-
-            for grp in grupos_h:
-                lado = grp["lado"]
-                # Remove pilares duplicados por junta de dilatacao (< 30 cm)
-                pils_ord = sorted(grp["pilares"], key=lambda it: it["pilar"][0])
-                pils_filtrados = []
-                for item in pils_ord:
-                    if not pils_filtrados or abs(item["pilar"][0] - pils_filtrados[-1]["pilar"][0]) > 30.0:
-                        pils_filtrados.append(item)
-
-                # 1. Cota do quanto cada pilar se sobressai da viga (vertical)
-                for lat in pils_filtrados:
-                    px1, py1, px2, py2 = lat["pilar"]
-                    y_face_v = lat["y_face_viga"]
-                    y_sob = lat["y_sobressai"]
-                    x_cota_sob = px2 + 18.0
-                    y1_c, y2_c = min(y_face_v, y_sob), max(y_face_v, y_sob)
-                    if (y2_c - y1_c) >= 3.0 and not cota_ja_existe(y1_c, y2_c, self.cotas_existentes, orient="V", pos_linha=x_cota_sob, tol_linha=10.0):
-                        criar_dim_vertical(self.dwg, px2, y1_c, px2, y2_c, x_cota_sob, 0.5 * (y1_c + y2_c), arredondar=arredondar_valores)
-                        _registrar_cota_em_memoria(self.cotas_existentes, "V", y1_c, y2_c, x_cota_sob)
-                        total_criadas += 1
-
-                # 2. Cota da distancia entre pilares consecutivos POR DENTRO (face interna)
-                # lado == 'I' -> face interna e embaixo (py1), entao afasta para dentro (- 22 cm)
-                # lado == 'S' -> face interna e em cima (py2), entao afasta para dentro (+ 22 cm)
-                for k in range(len(pils_filtrados) - 1):
-                    p_atual = pils_filtrados[k]["pilar"]
-                    p_prox = pils_filtrados[k + 1]["pilar"]
-                    x1_vao = p_atual[2]
-                    x2_vao = p_prox[0]
-                    if (x2_vao - x1_vao) >= 20.0:
-                        y_ref_int = p_atual[1] if lado == "I" else p_atual[3]
-                        y_cota_vao = (y_ref_int - 22.0) if lado == "I" else (y_ref_int + 22.0)
-                        if not cota_ja_existe(x1_vao, x2_vao, self.cotas_existentes, orient="H", pos_linha=y_cota_vao, tol_linha=15.0):
-                            criar_dim_horizontal(self.dwg, x1_vao, y_ref_int, x2_vao, y_ref_int, 0.5 * (x1_vao + x2_vao), y_cota_vao, arredondar=arredondar_valores)
-                            _registrar_cota_em_memoria(self.cotas_existentes, "H", x1_vao, x2_vao, y_cota_vao)
-                            total_criadas += 1
-
-        _organizar_cotas_apertadas(self.dwg)
-        if arredondar_valores:
-            aplicar_arredondamento_cotas(self.dwg)
-        self.cotas_existentes = coletar_cotas_existentes(self.dwg)
+            total_criadas += self.cotar_pilares_laterais(arredondar_valores=arredondar_valores)
 
         return total_criadas
+
+    def cotar_pilares_laterais(self, arredondar_valores=True):
+        """
+        Gera cadeias encadeadas de cotas externas para todos os pilares do contorno
+        exterior da planta (esquerda, direita, topo e base), alternando a medida do
+        proprio pilar e o vao livre ate o proximo pilar em sequencia.
+        Funciona em qualquer planta de formas (com ou sem quadrados/capiteis) e
+        calcula automaticamente um afastamento externo livre de sobreposicoes.
+        """
+        self.configurar_estilo()
+        self.cotas_existentes = coletar_cotas_existentes(self.dwg)
+
+        # 1. Identifica eventual quadro de "DETALHE MUDANCA DE SECAO DE PILARES" para ignora-lo
+        titulos_det = []
+        quadros_200 = []
+        self.dwg.iterator.Begin()
+        while True:
+            tipo = self.dwg.iterator.Next()
+            if tipo == TQSDwg.DWGTYPE_EOF:
+                break
+            if self.dwg.iterator.inBlock != 0:
+                continue
+            lvl = self.dwg.iterator.level
+            if tipo == TQSDwg.DWGTYPE_TEXT:
+                s = (self.dwg.iterator.text or "").strip().upper()
+                if "DETALHE MUDANCA DE SECAO DE PILARES" in s:
+                    titulos_det.append((self.dwg.iterator.x1, self.dwg.iterator.y1))
+            elif tipo == TQSDwg.DWGTYPE_POLYLINE and lvl == 200:
+                pts = [self.dwg.iterator.GetPolylinePt(i) for i in range(self.dwg.iterator.xySize)]
+                if len(pts) >= 4:
+                    xs = [p[0] for p in pts]
+                    ys = [p[1] for p in pts]
+                    quadros_200.append((min(xs), min(ys), max(xs), max(ys)))
+
+        caixas_ignorar = []
+        for tx, ty in titulos_det:
+            for qx1, qy1, qx2, qy2 in quadros_200:
+                if (qx1 - 20.0) <= tx <= (qx2 + 20.0) and (qy1 - 20.0) <= ty <= (qy2 + 20.0):
+                    caixas_ignorar.append((qx1 - 10.0, qy1 - 10.0, qx2 + 10.0, qy2 + 10.0))
+
+        def _dentro_ignorar(x, y):
+            return any(ix1 <= x <= ix2 and iy1 <= y <= iy2 for ix1, iy1, ix2, iy2 in caixas_ignorar)
+
+        # 2. Coleta pilares, segmentos de concreto/laje, textos e blocos de corte
+        pilares_raw = []
+        segs_concreto = []
+        boxes_pilares = []
+        boxes_textos = []
+
+        self.dwg.iterator.Begin()
+        while True:
+            tipo = self.dwg.iterator.Next()
+            if tipo == TQSDwg.DWGTYPE_EOF:
+                break
+            if self.dwg.iterator.inBlock != 0:
+                continue
+            lvl = self.dwg.iterator.level
+
+            if tipo == TQSDwg.DWGTYPE_POLYLINE:
+                pts = [self.dwg.iterator.GetPolylinePt(i) for i in range(self.dwg.iterator.xySize)]
+                if not pts:
+                    continue
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                bx = (min(xs), min(ys), max(xs), max(ys))
+                if _dentro_ignorar(0.5 * (bx[0] + bx[2]), 0.5 * (bx[1] + bx[3])):
+                    continue
+                dx_b = bx[2] - bx[0]
+                dy_b = bx[3] - bx[1]
+                if lvl in (2, 3, 4, 5) and len(pts) >= 4 and 8.0 <= dx_b <= 450.0 and 8.0 <= dy_b <= 450.0:
+                    faces = self._faces_exatas_pilar(pts)
+                    pilares_raw.append(faces)
+                    boxes_pilares.append(faces)
+                if lvl in (1, 2, 3, 4, 5, 201, 237) and len(pts) >= 2:
+                    for k in range(len(pts) - 1):
+                        segs_concreto.append((pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]))
+            elif tipo == TQSDwg.DWGTYPE_LINE and lvl in (1, 2, 201, 237):
+                x1, y1, x2, y2 = self.dwg.iterator.x1, self.dwg.iterator.y1, self.dwg.iterator.x2, self.dwg.iterator.y2
+                if not _dentro_ignorar(0.5 * (x1 + x2), 0.5 * (y1 + y2)):
+                    segs_concreto.append((x1, y1, x2, y2))
+            elif tipo == TQSDwg.DWGTYPE_TEXT:
+                txt = (self.dwg.iterator.text or "").strip()
+                if txt and lvl != 216:
+                    tx, ty = self.dwg.iterator.x1, self.dwg.iterator.y1
+                    if not _dentro_ignorar(tx, ty):
+                        boxes_textos.append(
+                            _bbox_texto(tx, ty, self.dwg.iterator.textHeight, self.dwg.iterator.textAngle, txt)
+                        )
+            elif tipo == TQSDwg.DWGTYPE_BLOCK:
+                bname = (self.dwg.iterator.blockName or "").upper()
+                if "CORTE" in bname or "LINCOR" in bname:
+                    bx_c, by_c = self.dwg.iterator.xc, self.dwg.iterator.yc
+                    if not _dentro_ignorar(bx_c, by_c):
+                        boxes_textos.append((bx_c - 30.0, by_c - 30.0, bx_c + 30.0, by_c + 30.0))
+
+        # Deduplica poligonos de pilares sobrepostos (ex: pilar de mudanca de secao)
+        pilares = []
+        for pb in pilares_raw:
+            if not any(
+                abs(pb[0] - u[0]) < 2.0 and abs(pb[1] - u[1]) < 2.0
+                and abs(pb[2] - u[2]) < 2.0 and abs(pb[3] - u[3]) < 2.0
+                for u in pilares
+            ):
+                pilares.append(pb)
+
+        if len(pilares) < 2:
+            return 0
+
+        def _seg_cruza_box(x1, y1, x2, y2, box):
+            bx1, by1, bx2, by2 = box
+            if max(x1, x2) < bx1 or min(x1, x2) > bx2 or max(y1, y2) < by1 or min(y1, y2) > by2:
+                return False
+            # Se algum ponto esta dentro, ou cruza a caixa (amostragem + clipping exato)
+            if (bx1 <= x1 <= bx2 and by1 <= y1 <= by2) or (bx1 <= x2 <= bx2 and by1 <= y2 <= by2):
+                return True
+            dx = x2 - x1
+            dy = y2 - y1
+            t0, t1 = 0.0, 1.0
+            for p_v, q_v in (
+                (-dx, x1 - bx1),
+                (dx, bx2 - x1),
+                (-dy, y1 - by1),
+                (dy, by2 - y1),
+            ):
+                if abs(p_v) < 1e-9:
+                    if q_v < 0.0:
+                        return False
+                else:
+                    r = q_v / p_v
+                    if p_v < 0.0:
+                        if r > t1:
+                            return False
+                        if r > t0:
+                            t0 = r
+                    else:
+                        if r < t0:
+                            return False
+                        if r < t1:
+                            t1 = r
+            return t0 <= t1
+
+        def _cota_ja_existe_lado_ext(a, b, orient, borda_ref, direcao):
+            pmin, pmax = min(a, b), max(a, b)
+            for c in self.cotas_existentes:
+                if c.get("orient") != orient:
+                    continue
+                if c.get("p1") is None or c.get("p2") is None:
+                    continue
+                cmin = min(c["p1"], c["p2"])
+                cmax = max(c["p1"], c["p2"])
+                if abs(cmin - pmin) <= 2.5 and abs(cmax - pmax) <= 2.5:
+                    delta = (c["pos_linha"] - borda_ref) * direcao
+                    if -15.0 <= delta <= 400.0:
+                        return True
+            return False
+
+        def _escolher_pos_externa(orient, direcao, borda_ref, s_min, s_max):
+            # Distancia confortavel inicial: 55 cm para fora da borda externa local
+            extras = (0.0, 20.0, 40.0, 65.0, 90.0, 120.0, 155.0, 195.0, 240.0, 290.0)
+            candidatos = [borda_ref + direcao * (55.0 + d) for d in extras]
+
+            melhor_pos = candidatos[0]
+            menor_penalidade = float("inf")
+
+            for pos_c in candidatos:
+                if orient == "V":
+                    # Texto da cota vertical fica a esquerda da linha (h=10 cm)
+                    box_band = (pos_c - 15.0, s_min - 14.0, pos_c + 5.0, s_max + 14.0)
+                    box_band_cota = (pos_c - 20.0, s_min - 14.0, pos_c + 14.0, s_max + 14.0)
+                else:
+                    # Texto da cota horizontal fica acima da linha (h=10 cm)
+                    box_band = (s_min - 14.0, pos_c - 5.0, s_max + 14.0, pos_c + 15.0)
+                    box_band_cota = (s_min - 14.0, pos_c - 14.0, s_max + 14.0, pos_c + 20.0)
+
+                pen = 0
+                for pb in boxes_pilares:
+                    if _boxes_colidem(box_band, pb, margem=5.0):
+                        pen += 100
+                for x1, y1, x2, y2 in segs_concreto:
+                    if _seg_cruza_box(x1, y1, x2, y2, box_band):
+                        # Se for uma viga perpendicular de outra ala em L que se estende >300 cm para fora,
+                        # nao empurra a cota indefinidamente para longe
+                        if orient == "V":
+                            ext_out = (max(x1, x2) - borda_ref) * direcao if direcao > 0 else (borda_ref - min(x1, x2))
+                            eh_ala_perp = abs(y2 - y1) <= 15.0 and ext_out > 300.0
+                        else:
+                            ext_out = (max(y1, y2) - borda_ref) * direcao if direcao > 0 else (borda_ref - min(y1, y2))
+                            eh_ala_perp = abs(x2 - x1) <= 15.0 and ext_out > 300.0
+                        pen += 1 if eh_ala_perp else 50
+                for tb in boxes_textos:
+                    if _boxes_colidem(box_band, tb, margem=4.0):
+                        pen += 20
+                for c in self.cotas_existentes:
+                    btxt = c.get("bbox_texto")
+                    if btxt and _boxes_colidem(box_band, btxt, margem=4.0):
+                        pen += 25
+                    for ln in c.get("lines", []):
+                        _, lx1, ly1, lx2, ly2 = ln
+                        if abs(lx1 - lx2) < 0.05 and abs(ly1 - ly2) < 0.05:
+                            continue
+                        if _seg_cruza_box(lx1, ly1, lx2, ly2, box_band_cota):
+                            pen += 30
+                    if c.get("orient") == orient and c.get("p1") is not None and c.get("p2") is not None:
+                        cmin = min(c["p1"], c["p2"])
+                        cmax = max(c["p1"], c["p2"])
+                        if not (cmax < s_min - 10.0 or cmin > s_max + 10.0):
+                            if abs(c["pos_linha"] - pos_c) < 28.0:
+                                pen += 30
+
+                if pen == 0:
+                    return pos_c
+                if pen < menor_penalidade:
+                    menor_penalidade = pen
+                    melhor_pos = pos_c
+
+            return melhor_pos
+
+        total_criadas = 0
+        tol_alin = 120.0
+
+        configs_lados = (
+            # (nome, orient, direcao, reverse_ext)
+            ("ESQ", "V", -1.0, False),
+            ("DIR", "V", 1.0, True),
+            ("SUP", "H", 1.0, True),
+            ("INF", "H", -1.0, False),
+        )
+
+        for lado, orient, direcao, reverse_ext in configs_lados:
+            if lado == "ESQ":
+                key_ext = lambda p: p[0]
+                span_fn = lambda p: (p[1], p[3])
+            elif lado == "DIR":
+                key_ext = lambda p: p[2]
+                span_fn = lambda p: (p[1], p[3])
+            elif lado == "SUP":
+                key_ext = lambda p: p[3]
+                span_fn = lambda p: (p[0], p[2])
+            else:
+                key_ext = lambda p: p[1]
+                span_fn = lambda p: (p[0], p[2])
+
+            ordenados = sorted(pilares, key=key_ext, reverse=reverse_ext)
+            grupos = []
+            for p in ordenados:
+                v = key_ext(p)
+                alocado = False
+                for g in grupos:
+                    if abs(v - g["ref"]) <= tol_alin:
+                        g["pilares"].append(p)
+                        alocado = True
+                        break
+                if not alocado:
+                    grupos.append({"ref": v, "pilares": [p]})
+
+            # Varredura de sombra do mais externo para o mais interno (filtra apenas contorno)
+            sombras = []
+            cadeias = []
+            for g in grupos:
+                visiveis = []
+                for p in g["pilares"]:
+                    a, b = span_fn(p)
+                    mid = 0.5 * (a + b)
+                    if not any((smin - 5.0) <= mid <= (smax + 5.0) for smin, smax in sombras):
+                        visiveis.append(p)
+
+                novas = []
+                if len(visiveis) >= 2:
+                    visiveis.sort(key=lambda p: span_fn(p)[0])
+                    # Remove pilares paralelos no mesmo trecho (ex: junta de dilatacao lado a lado no outro eixo),
+                    # mantendo o mais externo
+                    vis_seq = []
+                    for p in visiveis:
+                        a_p, b_p = span_fn(p)
+                        if vis_seq:
+                            a_ant, b_ant = span_fn(vis_seq[-1])
+                            if a_p < b_ant - 2.0 and b_p > a_ant + 2.0:
+                                # Sobrepoe longitudinalmente -> mantem apenas o mais externo
+                                if (key_ext(p) - key_ext(vis_seq[-1])) * direcao > 0.0:
+                                    vis_seq[-1] = p
+                                continue
+                        vis_seq.append(p)
+
+                    if len(vis_seq) >= 2:
+                        sub = [vis_seq[0]]
+                        for p in vis_seq[1:]:
+                            meio_vao = 0.5 * (span_fn(sub[-1])[1] + span_fn(p)[0])
+                            if any((smin + 10.0) < meio_vao < (smax - 10.0) for smin, smax in sombras):
+                                if len(sub) >= 2:
+                                    novas.append(sub)
+                                sub = [p]
+                            else:
+                                sub.append(p)
+                        if len(sub) >= 2:
+                            novas.append(sub)
+
+                    for c in novas:
+                        cadeias.append(c)
+                        sombras.append((min(span_fn(p)[0] for p in c), max(span_fn(p)[1] for p in c)))
+                    if not novas and len(vis_seq) == 1:
+                        a, b = span_fn(vis_seq[0])
+                        sombras.append((a, b))
+                elif len(visiveis) == 1:
+                    a, b = span_fn(visiveis[0])
+                    sombras.append((a, b))
+
+            # Para cada cadeia externa do contorno, posiciona por fora e gera as cotas encadeadas
+            for cadeia in cadeias:
+                s_min = min(span_fn(p)[0] for p in cadeia)
+                s_max = max(span_fn(p)[1] for p in cadeia)
+                if direcao < 0:
+                    face_ext = min(key_ext(p) for p in cadeia)
+                else:
+                    face_ext = max(key_ext(p) for p in cadeia)
+
+                # Considera balancos/sacadas/vigas ate 250 cm fora da face dos pilares desta cadeia
+                borda_local = face_ext
+                for x1, y1, x2, y2 in segs_concreto:
+                    if orient == "V":
+                        seg_s1, seg_s2 = min(y1, y2), max(y1, y2)
+                        ov = min(seg_s2, s_max) - max(seg_s1, s_min)
+                        if ov < 25.0:
+                            continue
+                        val_ext = min(x1, x2) if direcao < 0 else max(x1, x2)
+                    else:
+                        seg_s1, seg_s2 = min(x1, x2), max(x1, x2)
+                        ov = min(seg_s2, s_max) - max(seg_s1, s_min)
+                        if ov < 25.0:
+                            continue
+                        val_ext = min(y1, y2) if direcao < 0 else max(y1, y2)
+
+                    dist_fora = (val_ext - face_ext) * direcao
+                    if 0.0 < dist_fora <= 250.0:
+                        if (val_ext - borda_local) * direcao > 0.0:
+                            borda_local = val_ext
+
+                pos_c = _escolher_pos_externa(orient, direcao, borda_local, s_min, s_max)
+
+                # Gera cadeia continua: pilar_0 -> vao_0_1 -> pilar_1 -> ... -> pilar_n
+                for idx, p in enumerate(cadeia):
+                    a_i, b_i = span_fn(p)
+                    ref_i = key_ext(p)
+
+                    # 1) Medida do proprio pilar
+                    if (b_i - a_i) >= 3.0 and not _cota_ja_existe_lado_ext(a_i, b_i, orient, borda_local, direcao):
+                        if orient == "V":
+                            criar_dim_vertical(
+                                self.dwg, ref_i, a_i, ref_i, b_i, pos_c, 0.5 * (a_i + b_i),
+                                arredondar=arredondar_valores,
+                            )
+                            boxes_textos.append((pos_c - 14.0, a_i, pos_c + 2.0, b_i))
+                        else:
+                            criar_dim_horizontal(
+                                self.dwg, a_i, ref_i, b_i, ref_i, 0.5 * (a_i + b_i), pos_c,
+                                arredondar=arredondar_valores,
+                            )
+                            boxes_textos.append((a_i, pos_c - 2.0, b_i, pos_c + 14.0))
+                        _registrar_cota_em_memoria(self.cotas_existentes, orient, a_i, b_i, pos_c)
+                        total_criadas += 1
+
+                    # 2) Distancia livre ate o proximo pilar (ignora fresta < 5 cm de junta de dilatacao)
+                    if idx + 1 < len(cadeia):
+                        p_next = cadeia[idx + 1]
+                        a_next, _ = span_fn(p_next)
+                        ref_next = key_ext(p_next)
+                        if (a_next - b_i) >= 5.0 and not _cota_ja_existe_lado_ext(b_i, a_next, orient, borda_local, direcao):
+                            if orient == "V":
+                                criar_dim_vertical(
+                                    self.dwg, ref_i, b_i, ref_next, a_next, pos_c, 0.5 * (b_i + a_next),
+                                    arredondar=arredondar_valores,
+                                )
+                                boxes_textos.append((pos_c - 14.0, b_i, pos_c + 2.0, a_next))
+                            else:
+                                criar_dim_horizontal(
+                                    self.dwg, b_i, ref_i, a_next, ref_next, 0.5 * (b_i + a_next), pos_c,
+                                    arredondar=arredondar_valores,
+                                )
+                                boxes_textos.append((b_i, pos_c - 2.0, a_next, pos_c + 14.0))
+                            _registrar_cota_em_memoria(self.cotas_existentes, orient, b_i, a_next, pos_c)
+                            total_criadas += 1
+
+        self.cotas_existentes = coletar_cotas_existentes(self.dwg)
+        return total_criadas
+
+    @staticmethod
+    def _faces_exatas_pilar(pts):
+        u_pts = (
+            pts[:-1]
+            if len(pts) > 1 and abs(pts[0][0] - pts[-1][0]) < 0.1 and abs(pts[0][1] - pts[-1][1]) < 0.1
+            else pts
+        )
+        if len(u_pts) == 4:
+            sx = sorted(u_pts, key=lambda p: p[0])
+            sy = sorted(u_pts, key=lambda p: p[1])
+            x_esq = 0.5 * (sx[0][0] + sx[1][0])
+            x_dir = 0.5 * (sx[2][0] + sx[3][0])
+            y_inf = 0.5 * (sy[0][1] + sy[1][1])
+            y_sup = 0.5 * (sy[2][1] + sy[3][1])
+            return (x_esq, y_inf, x_dir, y_sup)
+        xs = [p[0] for p in u_pts]
+        ys = [p[1] for p in u_pts]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def cotar_detalhes(self, arredondar_valores=True):
+        """
+        Cota pequenos detalhes geometricos da forma (ressaltos/degraus entre pilares proximos
+        e quanto um pilar passa de uma viga), usando fonte reduzida e posicionando
+        as cotas SEMPRE fora dos poligonos dos pilares e sem sobrepor textos.
+        """
+        h_det = 6.0
+        configurar_estilo_cotas(
+            self.dwg,
+            altura_texto=0.12,
+            extensao_linha=0.12,
+            extensao_chamada=0.12,
+            folga_chamada=0.06,
+            tamanho_tick=0.12,
+        )
+
+        pilares_poly = []
+        vigas_vert = []
+        vigas_horiz = []
+        lajes_237_seg = []
+        textos_obst = []
+
+        try:
+            self.dwg.iterator.Begin()
+            while True:
+                tipo = self.dwg.iterator.Next()
+                if tipo == TQSDwg.DWGTYPE_EOF:
+                    break
+                if self.dwg.iterator.inBlock != 0:
+                    continue
+                nivel = self.dwg.iterator.level
+
+                if tipo == TQSDwg.DWGTYPE_POLYLINE:
+                    pts = [self.dwg.iterator.GetPolylinePt(i) for i in range(self.dwg.iterator.xySize)]
+                    if not pts:
+                        continue
+                    xs = [p[0] for p in pts]
+                    ys = [p[1] for p in pts]
+                    bx = (min(xs), min(ys), max(xs), max(ys))
+                    dx_b = bx[2] - bx[0]
+                    dy_b = bx[3] - bx[1]
+                    if nivel in (2, 3, 4, 5) and len(pts) >= 4 and 5.0 <= dx_b <= 450.0 and 5.0 <= dy_b <= 450.0:
+                        pilares_poly.append((bx, self._faces_exatas_pilar(pts)))
+                    elif nivel in (1, 2, 201, 237):
+                        for k in range(len(pts) - 1):
+                            x1, y1 = pts[k]
+                            x2, y2 = pts[k + 1]
+                            dy = abs(y2 - y1)
+                            dx = abs(x2 - x1)
+                            if nivel == 237:
+                                if (dy >= 10.0 and dx <= 0.15 * dy) or (dx >= 10.0 and dy <= 0.15 * dx):
+                                    lajes_237_seg.append((x1, y1, x2, y2))
+                            else:
+                                if dy >= 10.0 and dx <= 0.15 * dy:
+                                    vigas_vert.append((x1, y1, x2, y2))
+                                elif dx >= 10.0 and dy <= 0.15 * dx:
+                                    vigas_horiz.append((x1, y1, x2, y2))
+                elif tipo == TQSDwg.DWGTYPE_LINE and nivel in (1, 2, 201, 237):
+                    x1, y1 = self.dwg.iterator.x1, self.dwg.iterator.y1
+                    x2, y2 = self.dwg.iterator.x2, self.dwg.iterator.y2
+                    dy = abs(y2 - y1)
+                    dx = abs(x2 - x1)
+                    if nivel == 237:
+                        if (dy >= 10.0 and dx <= 0.15 * dy) or (dx >= 10.0 and dy <= 0.15 * dx):
+                            lajes_237_seg.append((x1, y1, x2, y2))
+                    else:
+                        if dy >= 10.0 and dx <= 0.15 * dy:
+                            vigas_vert.append((x1, y1, x2, y2))
+                        elif dx >= 10.0 and dy <= 0.15 * dx:
+                            vigas_horiz.append((x1, y1, x2, y2))
+                elif tipo == TQSDwg.DWGTYPE_TEXT and nivel not in (28, 29, 122, 216):
+                    textos_obst.append(_bbox_texto(
+                        self.dwg.iterator.x1,
+                        self.dwg.iterator.y1,
+                        self.dwg.iterator.textHeight,
+                        _normalizar_angulo(self.dwg.iterator.textAngle),
+                        self.dwg.iterator.text.strip(),
+                    ))
+
+            if not pilares_poly:
+                return 0
+
+            boxes_pilares = [pbx for pbx, _ in pilares_poly]
+            vigas_todas = vigas_vert + vigas_horiz
+            cotas_det_boxes = []
+            total_criadas = 0
+
+            def _chamada_corta_texto_h(x_c, y_a, y_b):
+                y_lo, y_hi = min(y_a, y_b) + 1.0, max(y_a, y_b) - 1.0
+                if y_hi <= y_lo:
+                    return False
+                bx_ch = (x_c - 0.5, y_lo, x_c + 0.5, y_hi)
+                return any(_boxes_colidem(bx_ch, tb, margem=0.2) for tb in textos_obst)
+
+            def _chamada_corta_texto_v(y_c, x_a, x_b):
+                x_lo, x_hi = min(x_a, x_b) + 1.0, max(x_a, x_b) - 1.0
+                if x_hi <= x_lo:
+                    return False
+                bx_ch = (x_lo, y_c - 0.5, x_hi, y_c + 0.5)
+                return any(_boxes_colidem(bx_ch, tb, margem=0.2) for tb in textos_obst)
+
+            def _pos_livre_h(x1, x2, y_pref, direcao, y_alt=None):
+                """Escolhe Y fora de todos os pilares; evita textos se possivel, mas nunca pula o detalhe."""
+                xmin, xmax = min(x1, x2), max(x1, x2)
+                xc_m = 0.5 * (xmin + xmax)
+                if (xmax - xmin) < 20.0:
+                    tx_x1 = xmin - 24.0
+                    tx_x2 = xmax
+                else:
+                    larg_t = max(8.0, min(xmax - xmin - 1.6, 15.0))
+                    tx_x1 = xc_m - 0.5 * larg_t
+                    tx_x2 = xc_m + 0.5 * larg_t
+
+                offs_up = [6.5, 10.5, 15.0, 20.0]
+                offs_dn = [11.0, 15.0, 19.5, 24.0]
+                pares = []
+                if direcao > 0:
+                    pares.extend((y_pref, y_pref + d) for d in offs_up)
+                    yr2 = y_alt if y_alt is not None else y_pref
+                    pares.extend((yr2, yr2 - d) for d in offs_dn)
+                else:
+                    pares.extend((y_pref, y_pref - d) for d in offs_dn)
+                    yr2 = y_alt if y_alt is not None else y_pref
+                    pares.extend((yr2, yr2 + d) for d in offs_up)
+
+                # Passada 1: fora de pilares, fora de textos, fora de outras cotas de detalhe e sem chamada cortando texto
+                for y_ref_c, yc in pares:
+                    bx_linha = (xmin, yc - 1.0, xmax, yc + h_det + 2.5)
+                    bx_texto = (tx_x1, yc + 1.0, tx_x2, yc + h_det + 2.5)
+                    if any(_boxes_colidem(bx_linha, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, cb, margem=0.3) for cb in cotas_det_boxes):
+                        continue
+                    if any(_boxes_colidem(bx_texto, tb, margem=0.3) for tb in textos_obst):
+                        continue
+                    if _chamada_corta_texto_h(xmin, y_ref_c, yc) or _chamada_corta_texto_h(xmax, y_ref_c, yc):
+                        continue
+                    sgn_c = 1.0 if yc >= y_ref_c else -1.0
+                    if cota_ja_existe(xmin, xmax, self.cotas_existentes, orient="H", pos_linha=y_ref_c + sgn_c * 15.0, tol_linha=16.0):
+                        continue
+                    return (y_ref_c, yc)
+
+                # Passada 2 (fallback): garante que o detalhe SEMPRE seja cotado fora dos pilares e sem encavalar outra cota
+                for y_ref_c, yc in pares:
+                    bx_linha = (xmin, yc - 1.0, xmax, yc + h_det + 2.5)
+                    bx_texto = (tx_x1, yc + 1.0, tx_x2, yc + h_det + 2.5)
+                    if any(_boxes_colidem(bx_linha, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, cb, margem=0.3) for cb in cotas_det_boxes):
+                        continue
+                    sgn_c = 1.0 if yc >= y_ref_c else -1.0
+                    if cota_ja_existe(xmin, xmax, self.cotas_existentes, orient="H", pos_linha=y_ref_c + sgn_c * 15.0, tol_linha=16.0):
+                        continue
+                    return (y_ref_c, yc)
+                return None
+
+            def _pos_livre_v(y1, y2, x_pref, direcao, x_alt=None):
+                """Escolhe X fora de todos os pilares; evita textos se possivel, mas nunca pula o detalhe."""
+                ymin, ymax = min(y1, y2), max(y1, y2)
+                yc_m = 0.5 * (ymin + ymax)
+                if (ymax - ymin) < 20.0:
+                    ty_y1 = ymin - 24.0
+                    ty_y2 = ymax
+                else:
+                    larg_t = max(8.0, min(ymax - ymin - 1.6, 15.0))
+                    ty_y1 = yc_m - 0.5 * larg_t
+                    ty_y2 = yc_m + 0.5 * larg_t
+
+                offs_esq = [6.5, 10.5, 15.0, 20.0]
+                offs_dir = [11.0, 15.0, 19.5, 24.0]
+                pares = []
+                if direcao < 0:
+                    pares.extend((x_pref, x_pref - d) for d in offs_esq)
+                    xr2 = x_alt if x_alt is not None else x_pref
+                    pares.extend((xr2, xr2 + d) for d in offs_dir)
+                else:
+                    pares.extend((x_pref, x_pref + d) for d in offs_dir)
+                    xr2 = x_alt if x_alt is not None else x_pref
+                    pares.extend((xr2, xr2 - d) for d in offs_esq)
+
+                for x_ref_c, xc in pares:
+                    bx_linha = (xc - h_det - 2.5, ymin, xc + 1.0, ymax)
+                    bx_texto = (xc - h_det - 2.5, ty_y1, xc - 1.0, ty_y2)
+                    if any(_boxes_colidem(bx_linha, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, cb, margem=0.3) for cb in cotas_det_boxes):
+                        continue
+                    if any(_boxes_colidem(bx_texto, tb, margem=0.3) for tb in textos_obst):
+                        continue
+                    if _chamada_corta_texto_v(ymin, x_ref_c, xc) or _chamada_corta_texto_v(ymax, x_ref_c, xc):
+                        continue
+                    sgn_c = 1.0 if xc >= x_ref_c else -1.0
+                    if cota_ja_existe(ymin, ymax, self.cotas_existentes, orient="V", pos_linha=x_ref_c + sgn_c * 15.0, tol_linha=16.0):
+                        continue
+                    return (x_ref_c, xc)
+
+                for x_ref_c, xc in pares:
+                    bx_linha = (xc - h_det - 2.5, ymin, xc + 1.0, ymax)
+                    bx_texto = (xc - h_det - 2.5, ty_y1, xc - 1.0, ty_y2)
+                    if any(_boxes_colidem(bx_linha, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, pb, margem=0.5) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(bx_texto, cb, margem=0.3) for cb in cotas_det_boxes):
+                        continue
+                    sgn_c = 1.0 if xc >= x_ref_c else -1.0
+                    if cota_ja_existe(ymin, ymax, self.cotas_existentes, orient="V", pos_linha=x_ref_c + sgn_c * 15.0, tol_linha=16.0):
+                        continue
+                    return (x_ref_c, xc)
+                return None
+
+            def _add_h(x1, x2, y_ref, direcao, y_alt=None):
+                nonlocal total_criadas
+                xa, xb = min(x1, x2), max(x1, x2)
+                if not (2.0 <= (xb - xa) <= 80.0):
+                    return
+                # Evita duplicar qualquer cota ja existente naquela mesma face/lado (sem bloquear a face oposta em pilares estreitos)
+                if cota_ja_existe(xa, xb, self.cotas_existentes, orient="H", pos_linha=y_ref + direcao * 15.0, tol_linha=16.0):
+                    return
+                if y_alt is not None and cota_ja_existe(xa, xb, self.cotas_existentes, orient="H", pos_linha=y_alt - direcao * 15.0, tol_linha=16.0):
+                    return
+                res = _pos_livre_h(xa, xb, y_ref, direcao, y_alt=y_alt)
+                if res is None:
+                    return
+                y_ref_ok, yc = res
+                criar_dim_horizontal(self.dwg, xa, y_ref_ok, xb, y_ref_ok, 0.5 * (xa + xb), yc, arredondar=arredondar_valores)
+                _registrar_cota_em_memoria(self.cotas_existentes, "H", xa, xb, yc)
+                if (xb - xa) < 20.0:
+                    cotas_det_boxes.append((xa - 24.0, yc + 1.0, xb - 0.8, yc + h_det + 2.5))
+                else:
+                    cotas_det_boxes.append((xa + 0.8, yc + 1.0, xb - 0.8, yc + h_det + 2.5))
+                total_criadas += 1
+
+            def _add_v(y1, y2, x_ref, direcao, x_alt=None):
+                nonlocal total_criadas
+                ya, yb = min(y1, y2), max(y1, y2)
+                if not (2.0 <= (yb - ya) <= 80.0):
+                    return
+                # Evita duplicar qualquer cota ja existente naquela mesma face/lado (sem bloquear a face oposta em pilares estreitos)
+                if cota_ja_existe(ya, yb, self.cotas_existentes, orient="V", pos_linha=x_ref + direcao * 15.0, tol_linha=16.0):
+                    return
+                if x_alt is not None and cota_ja_existe(ya, yb, self.cotas_existentes, orient="V", pos_linha=x_alt - direcao * 15.0, tol_linha=16.0):
+                    return
+                res = _pos_livre_v(ya, yb, x_ref, direcao, x_alt=x_alt)
+                if res is None:
+                    return
+                x_ref_ok, xc = res
+                criar_dim_vertical(self.dwg, x_ref_ok, ya, x_ref_ok, yb, xc, 0.5 * (ya + yb), arredondar=arredondar_valores)
+                _registrar_cota_em_memoria(self.cotas_existentes, "V", ya, yb, xc)
+                if (yb - ya) < 20.0:
+                    cotas_det_boxes.append((xc - h_det - 2.5, ya - 24.0, xc - 1.0, yb - 0.8))
+                else:
+                    cotas_det_boxes.append((xc - h_det - 2.5, ya + 0.8, xc - 1.0, yb - 0.8))
+                total_criadas += 1
+
+            # 1. Sobressaimentos de pilares em relacao as vigas (niveis 1/2/201) e linhas de fechamento de laje (nivel 237)
+            for _, (px1, py1, px2, py2) in pilares_poly:
+                for y_face, dir_y in ((py2, 1.0), (py1, -1.0)):
+                    xs_v = []
+                    for x1, y1, x2, y2 in vigas_todas:
+                        if abs(x2 - x1) <= 0.25 * abs(y2 - y1) or abs(x2 - x1) < 4.0:
+                            ymin_s, ymax_s = min(y1, y2), max(y1, y2)
+                            sai_para_lado = (ymax_s > py2 + 5.0) if dir_y > 0 else (ymin_s < py1 - 5.0)
+                            entra_no_pilar = (ymin_s <= py2 + 4.0) and (ymax_s >= py1 - 4.0)
+                            if sai_para_lado and entra_no_pilar:
+                                if abs(y2 - y1) > 0.1:
+                                    xp = x1 + (y_face - y1) / (y2 - y1) * (x2 - x1)
+                                else:
+                                    xp = 0.5 * (x1 + x2)
+                                if (px1 - 4.0) <= xp <= (px2 + 4.0):
+                                    xs_v.append(xp)
+                    xs_u = sorted(list(set(round(x, 1) for x in xs_v)))
+                    tem_viga_face = False
+                    if len(xs_u) >= 2:
+                        v_esq, v_dir = xs_u[0], xs_u[-1]
+                        if 10.0 <= (v_dir - v_esq) <= 45.0:
+                            tem_viga_face = True
+                            if (v_esq - px1) >= 3.0:
+                                _add_h(px1, v_esq, y_face, dir_y)
+                            if (px2 - v_dir) >= 3.0:
+                                _add_h(v_dir, px2, y_face, dir_y)
+
+                    if not tem_viga_face and lajes_237_seg:
+                        xs_l = []
+                        for x1, y1, x2, y2 in lajes_237_seg:
+                            if abs(x2 - x1) <= 0.25 * abs(y2 - y1) or abs(x2 - x1) < 4.0:
+                                ymin_s, ymax_s = min(y1, y2), max(y1, y2)
+                                sai_para_lado = (ymax_s > py2 + 5.0) if dir_y > 0 else (ymin_s < py1 - 5.0)
+                                entra_no_pilar = (ymin_s <= py2 + 4.0) and (ymax_s >= py1 - 4.0)
+                                if sai_para_lado and entra_no_pilar:
+                                    xp = (x1 + (y_face - y1) / (y2 - y1) * (x2 - x1)) if abs(y2 - y1) > 0.1 else 0.5 * (x1 + x2)
+                                    if (px1 - 4.0) <= xp <= (px2 + 4.0):
+                                        xs_l.append(round(xp, 1))
+                        for x_l in sorted(set(xs_l)):
+                            if (x_l - px1) >= 3.0:
+                                _add_h(px1, x_l, y_face, dir_y)
+                            if (px2 - x_l) >= 3.0:
+                                _add_h(x_l, px2, y_face, dir_y)
+
+                for x_face, dir_x in ((px1, -1.0), (px2, 1.0)):
+                    ys_v = []
+                    for x1, y1, x2, y2 in vigas_todas:
+                        if abs(y2 - y1) <= 0.25 * abs(x2 - x1) or abs(y2 - y1) < 4.0:
+                            xmin_s, xmax_s = min(x1, x2), max(x1, x2)
+                            sai_para_lado = (xmax_s > px2 + 5.0) if dir_x > 0 else (xmin_s < px1 - 5.0)
+                            entra_no_pilar = (xmin_s <= px2 + 4.0) and (xmax_s >= px1 - 4.0)
+                            if sai_para_lado and entra_no_pilar:
+                                if abs(x2 - x1) > 0.1:
+                                    yp = y1 + (x_face - x1) / (x2 - x1) * (y2 - y1)
+                                else:
+                                    yp = 0.5 * (y1 + y2)
+                                if (py1 - 4.0) <= yp <= (py2 + 4.0):
+                                    ys_v.append(yp)
+                    ys_u = sorted(list(set(round(y, 1) for y in ys_v)))
+                    tem_viga_face = False
+                    if len(ys_u) >= 2:
+                        v_inf, v_sup = ys_u[0], ys_u[-1]
+                        if 10.0 <= (v_sup - v_inf) <= 45.0:
+                            tem_viga_face = True
+                            if (v_inf - py1) >= 3.0:
+                                _add_v(py1, v_inf, x_face, dir_x)
+                            if (py2 - v_sup) >= 3.0:
+                                _add_v(v_sup, py2, x_face, dir_x)
+
+                    if not tem_viga_face and lajes_237_seg:
+                        ys_l = []
+                        for x1, y1, x2, y2 in lajes_237_seg:
+                            if abs(y2 - y1) <= 0.25 * abs(x2 - x1) or abs(y2 - y1) < 4.0:
+                                xmin_s, xmax_s = min(x1, x2), max(x1, x2)
+                                sai_para_lado = (xmax_s > px2 + 5.0) if dir_x > 0 else (xmin_s < px1 - 5.0)
+                                entra_no_pilar = (xmin_s <= px2 + 4.0) and (xmax_s >= px1 - 4.0)
+                                if sai_para_lado and entra_no_pilar:
+                                    yp = (y1 + (x_face - x1) / (x2 - x1) * (y2 - y1)) if abs(x2 - x1) > 0.1 else 0.5 * (y1 + y2)
+                                    if (py1 - 4.0) <= yp <= (py2 + 4.0):
+                                        ys_l.append(round(yp, 1))
+                        for y_l in sorted(set(ys_l)):
+                            if (y_l - py1) >= 3.0:
+                                _add_v(py1, y_l, x_face, dir_x)
+                            if (py2 - y_l) >= 3.0:
+                                _add_v(y_l, py2, x_face, dir_x)
+
+            # 2. Degraus / ressaltos entre pares de pilares proximos (junta de dilatacao)
+            # Posiciona no lado do pilar recuado (menor), alinhando em cadeia com o sobressaimento dele
+            for i in range(len(pilares_poly)):
+                _, (ax1, ay1, ax2, ay2) = pilares_poly[i]
+                for j in range(i + 1, len(pilares_poly)):
+                    _, (bx1, by1, bx2, by2) = pilares_poly[j]
+                    gx = max(0.0, max(ax1, bx1) - min(ax2, bx2))
+                    gy = max(0.0, max(ay1, by1) - min(ay2, by2))
+                    if gx > 15.0 or gy > 15.0:
+                        continue
+
+                    if gy <= 15.0 and min(ax2, bx2) > max(ax1, bx1):
+                        if ay2 >= by2:
+                            sup, inf = (ax1, ay1, ax2, ay2), (bx1, by1, bx2, by2)
+                        else:
+                            sup, inf = (bx1, by1, bx2, by2), (ax1, ay1, ax2, ay2)
+
+                        if 3.0 <= abs(sup[0] - inf[0]) <= 80.0:
+                            if sup[0] > inf[0]:
+                                _add_h(sup[0], inf[0], sup[3], 1.0, y_alt=inf[1])
+                            else:
+                                _add_h(sup[0], inf[0], inf[1], -1.0, y_alt=sup[3])
+                        if 3.0 <= abs(sup[2] - inf[2]) <= 80.0:
+                            if sup[2] < inf[2]:
+                                _add_h(sup[2], inf[2], sup[3], 1.0, y_alt=inf[1])
+                            else:
+                                _add_h(sup[2], inf[2], inf[1], -1.0, y_alt=sup[3])
+                    elif gx <= 15.0 and min(ay2, by2) > max(ay1, by1):
+                        if ax2 >= bx2:
+                            dir_p, esq_p = (ax1, ay1, ax2, ay2), (bx1, by1, bx2, by2)
+                        else:
+                            dir_p, esq_p = (bx1, by1, bx2, by2), (ax1, ay1, ax2, ay2)
+
+                        if 3.0 <= abs(dir_p[1] - esq_p[1]) <= 80.0:
+                            if dir_p[1] > esq_p[1]:
+                                _add_v(dir_p[1], esq_p[1], dir_p[2], 1.0, x_alt=esq_p[0])
+                            else:
+                                _add_v(dir_p[1], esq_p[1], esq_p[0], -1.0, x_alt=dir_p[2])
+                        if 3.0 <= abs(dir_p[3] - esq_p[3]) <= 80.0:
+                            if dir_p[3] < esq_p[3]:
+                                _add_v(dir_p[3], esq_p[3], dir_p[2], 1.0, x_alt=esq_p[0])
+                            else:
+                                _add_v(dir_p[3], esq_p[3], esq_p[0], -1.0, x_alt=dir_p[2])
+
+            if arredondar_valores:
+                aplicar_arredondamento_cotas(self.dwg)
+            self.cotas_existentes = coletar_cotas_existentes(self.dwg)
+
+            return total_criadas
+        finally:
+            self.configurar_estilo()
 
 
 def pedir_modo_cotas():
@@ -2279,8 +2870,8 @@ def pedir_modo_cotas():
 
         function initDialog() {{
             try {{
-                window.resizeTo(480, 525);
-                window.moveTo((screen.availWidth - 480) / 2, (screen.availHeight - 525) / 2);
+                window.resizeTo(480, 600);
+                window.moveTo((screen.availWidth - 480) / 2, (screen.availHeight - 600) / 2);
             }} catch(e) {{}}
             selecionarModo("pilar");
         }}
@@ -2296,10 +2887,11 @@ def pedir_modo_cotas():
                 var incH = document.getElementById("chk-horiz").checked ? "true" : "false";
                 var incC = document.getElementById("chk-capitel").checked ? "true" : "false";
                 var incL = document.getElementById("chk-lateral").checked ? "true" : "false";
+                var incD = document.getElementById("chk-detalhe").checked ? "true" : "false";
                 var arrV = document.getElementById("chk-arredondar").checked ? "true" : "false";
                 var fso = new ActiveXObject("Scripting.FileSystemObject");
                 var a = fso.CreateTextFile("{json_js}", true);
-                var jsonStr = '{{"modo":"' + modoSelecionado + '","cadeia_horizontal":' + incH + ',"cotas_capitel":' + incC + ',"pilares_laterais":' + incL + ',"arredondar_valores":' + arrV + '}}';
+                var jsonStr = '{{"modo":"' + modoSelecionado + '","cadeia_horizontal":' + incH + ',"cotas_capitel":' + incC + ',"pilares_laterais":' + incL + ',"cotar_detalhe":' + incD + ',"arredondar_valores":' + arrV + '}}';
                 a.WriteLine(jsonStr);
                 a.Close();
                 window.close();
@@ -2335,7 +2927,7 @@ def pedir_modo_cotas():
                 </label>
                 <label class="chk-row">
                     <input type="checkbox" id="chk-lateral" checked />
-                    Cotas de pilares laterais (sobressaimento e dist&acirc;ncia entre pilares)
+                    Cotas de pilares laterais (cadeia externa nos pilares do contorno)
                 </label>
             </div>
         </div>
@@ -2343,6 +2935,16 @@ def pedir_modo_cotas():
         <div id="card-geral" class="card-option" onclick="selecionarModo('geral')" ondblclick="selecionarModo('geral'); confirmar();">
             <div class="card-title">2. Cota Geral da F&ocirc;rma</div>
             <div class="card-desc">Gera as cotas externas em 3 camadas (parciais, eixos e total) e completa as cadeias internas da estrutura.</div>
+        </div>
+
+        <div class="panel-round">
+            <label class="panel-round-header">
+                <input type="checkbox" id="chk-detalhe" />
+                Cotar detalhe
+            </label>
+            <div class="panel-round-desc">
+                Cota os detalhezinhos pequenos (ressaltos entre pilares e sobressaimentos em vigas), mantendo as cotas <strong>fora dos pilares</strong>.
+            </div>
         </div>
 
         <div class="panel-round">
@@ -2399,6 +3001,7 @@ def cmd_criar_cotas(eag, tqsjan):
 
         modo = escolha.get("modo", "geral")
         arredondar = bool(escolha.get("arredondar_valores", True))
+        cotar_detalhe = bool(escolha.get("cotar_detalhe", False))
         dwg = tqsjan.dwg
         cotador = CotadorFormas(dwg)
 
@@ -2412,15 +3015,23 @@ def cmd_criar_cotas(eag, tqsjan):
                 incluir_pilares_laterais=inc_l,
                 arredondar_valores=arredondar,
             )
-            if criadas > 0:
+            detalhes_criadas = cotador.cotar_detalhes(arredondar_valores=arredondar) if cotar_detalhe else 0
+            total_pilar = criadas + detalhes_criadas
+            if total_pilar > 0:
                 tqsjan.Regen()
-                eag.msg.Print("G3 Plugins: %d cota(s) de pilar (quadrados) gerada(s) com sucesso!" % criadas)
-                eag.msg.PrintStatus("%d cota(s) de pilar criada(s)!" % criadas)
+                if criadas > 0:
+                    eag.msg.Print("G3 Plugins: %d cota(s) de pilar e %d cota(s) de detalhe gerada(s)!" % (criadas, detalhes_criadas))
+                    eag.msg.PrintStatus("%d cota(s) criada(s)!" % total_pilar)
+                else:
+                    eag.msg.Print("G3 Plugins: %d cota(s) de detalhe gerada(s) com sucesso!" % detalhes_criadas)
+                    eag.msg.PrintStatus("%d cota(s) de detalhe criada(s)!" % detalhes_criadas)
             else:
-                eag.msg.Print("G3 Plugins: Nenhum pilar com quadrado (nivel 207) sem cota encontrado.")
+                eag.msg.Print("G3 Plugins: Nenhuma cota nova de pilar, contorno lateral ou detalhe necessaria.")
                 eag.msg.PrintStatus("Nenhuma cota nova necessaria.")
         else:
             criadas = cotador.cotar_forma_completa(arredondar_valores=arredondar)
+            if cotar_detalhe:
+                criadas += cotador.cotar_detalhes(arredondar_valores=arredondar)
             if criadas > 0:
                 tqsjan.Regen()
                 eag.msg.Print("G3 Plugins: %d cota(s) geral(is) gerada(s) automaticamente na planta de formas!" % criadas)
