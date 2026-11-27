@@ -34,6 +34,8 @@ try:
 except Exception:
     pass
 
+LIMITE_SEM_SETA_INVERSAO_VIGA = 40.0
+
 
 def _garantir_ipocot_carregado():
     try:
@@ -281,44 +283,71 @@ def mapear_vigas_continuas(vigas_titulo, lines_concreto):
     return vigas_geom
 
 
-def associar_elemento_a_viga(xc, yc, ang, vigas_geom):
+def associar_elemento_a_viga(xc, yc, ang, vigas_geom, tol_dist=90.0):
     """
     Associa uma secao 'xx/xx', bolinha '(xx)' ou texto 'VIGA INVERTIDA' a sua viga
-    branca continua correspondente verificando tanto a faixa transversal [t_min, t_max]
-    quanto a extensao longitudinal [l_min, l_max].
+    branca continua correspondente verificando compatibilidade estrita de angulo,
+    faixa transversal [t_min, t_max] e extensao longitudinal [l_min, l_max].
+    Mantem prioridade para correspondencias estritas (<= 45 cm) e faz fallback
+    controlado para elementos da mesma viga com afastamento ate tol_dist ou vao continuo.
     """
-    cands = []
+    cands_estritos = []
+    cands_ext = []
     for vg in vigas_geom:
-        if abs((ang - vg["ang"]) % 180.0) < 5.0:
-            if vg["ang"] == 0.0:
-                dt = 0.0
-                if yc < vg["t_min"]:
-                    dt = vg["t_min"] - yc
-                elif yc > vg["t_max"]:
-                    dt = yc - vg["t_max"]
-                dl = 0.0
-                if xc < vg["l_min"]:
-                    dl = vg["l_min"] - xc
-                elif xc > vg["l_max"]:
-                    dl = xc - vg["l_max"]
-                if dt <= 45.0 and dl <= 45.0:
-                    cands.append((dt + dl * 0.5, abs(xc - vg["l_txt"]), vg))
-            else:
-                dt = 0.0
-                if xc < vg["t_min"]:
-                    dt = vg["t_min"] - xc
-                elif xc > vg["t_max"]:
-                    dt = xc - vg["t_max"]
-                dl = 0.0
-                if yc < vg["l_min"]:
-                    dl = vg["l_min"] - yc
-                elif yc > vg["l_max"]:
-                    dl = yc - vg["l_max"]
-                if dt <= 45.0 and dl <= 45.0:
-                    cands.append((dt + dl * 0.5, abs(yc - vg["l_txt"]), vg))
-    if cands:
-        cands.sort(key=lambda x: (x[0], x[1]))
-        return cands[0][2]
+        da = abs((ang - vg["ang"]) % 180.0)
+        if min(da, 180.0 - da) >= 10.0:
+            continue
+        if vg["ang"] == 0.0:
+            dt = 0.0
+            if yc < vg["t_min"]:
+                dt = vg["t_min"] - yc
+            elif yc > vg["t_max"]:
+                dt = yc - vg["t_max"]
+            dl = 0.0
+            if xc < vg["l_min"]:
+                dl = vg["l_min"] - xc
+            elif xc > vg["l_max"]:
+                dl = xc - vg["l_max"]
+            pos_l = xc
+            t_mid = 0.5 * (vg["t_min"] + vg["t_max"])
+        else:
+            dt = 0.0
+            if xc < vg["t_min"]:
+                dt = vg["t_min"] - xc
+            elif xc > vg["t_max"]:
+                dt = xc - vg["t_max"]
+            dl = 0.0
+            if yc < vg["l_min"]:
+                dl = vg["l_min"] - yc
+            elif yc > vg["l_max"]:
+                dl = yc - vg["l_max"]
+            pos_l = yc
+            t_mid = 0.5 * (vg["t_min"] + vg["t_max"])
+
+        dist_txt = abs(pos_l - vg["l_txt"])
+        if dt <= 45.0 and dl <= 45.0:
+            cands_estritos.append((dt + dl * 0.5, dist_txt, vg))
+        elif (dt <= tol_dist and dl <= 45.0) or (dt <= 55.0 and dl <= 600.0):
+            # Evita atravessar o territorio de outra viga colinear no mesmo alinhamento
+            invade_outra = False
+            if dl > 45.0:
+                for vg2 in vigas_geom:
+                    if vg2 is vg or vg2["ang"] != vg["ang"]:
+                        continue
+                    t_mid2 = 0.5 * (vg2["t_min"] + vg2["t_max"])
+                    if abs(t_mid - t_mid2) <= 25.0:
+                        if abs(pos_l - vg2["l_txt"]) + 10.0 < dist_txt:
+                            invade_outra = True
+                            break
+            if not invade_outra:
+                cands_ext.append((dt * 1.5 + dl * 0.4, dist_txt, vg))
+
+    if cands_estritos:
+        cands_estritos.sort(key=lambda x: (x[0], x[1]))
+        return cands_estritos[0][2]
+    if cands_ext:
+        cands_ext.sort(key=lambda x: (x[0], x[1]))
+        return cands_ext[0][2]
     return None
 
 
@@ -506,57 +535,68 @@ def desenhar_seta_chamada_executiva(dwg, x_fim_patamar, x_joelho, y_patamar, x_s
                     pass
 
 
+def _ponto_saida_seta_inversao(xt, yt, comp, h, ang_txt, xa, ya):
+    """
+    Calcula o ponto de saida (x_joelho, y_joelho) na borda da caixa do texto
+    orientada em 'ang_txt' (0°, 90° ou qualquer angulo inclinado) mais proxima
+    do ponto alvo (xa, ya) na viga.
+    """
+    ang_n = _normalizar_angulo(ang_txt)
+    if ang_n == 0.0:
+        if xt > xa + 5.0:
+            return (xt - 2.0, yt + 0.5 * h)
+        elif xt + comp < xa - 5.0:
+            return (xt + comp + 2.0, yt + 0.5 * h)
+        elif yt > ya + 2.0:
+            return (max(xt + 2.0, min(xt + comp - 2.0, xa)), yt - 2.0)
+        else:
+            return (max(xt + 2.0, min(xt + comp - 2.0, xa)), yt + h + 2.0)
+    elif ang_n == 90.0:
+        if yt + comp < ya - 5.0:
+            return (xt - 0.5 * h, yt + comp + 2.0)
+        elif yt > ya + 5.0:
+            return (xt - 0.5 * h, yt - 2.0)
+        else:
+            x_j = (xt - h - 2.0) if (xt - 0.5 * h) >= xa else (xt + 2.0)
+            y_j = max(yt + 2.0, min(yt + comp - 2.0, ya))
+            return (x_j, y_j)
+    else:
+        rad = math.radians(ang_txt)
+        ux, uy = math.cos(rad), math.sin(rad)
+        nx, ny = -uy, ux
+        sa = (xa - xt) * ux + (ya - yt) * uy
+        qa = (xa - xt) * nx + (ya - yt) * ny
+        s_clamped = max(2.0, min(max(2.0, comp - 2.0), sa))
+        if sa < -5.0:
+            sj, qj = -2.0, 0.5 * h
+        elif sa > comp + 5.0:
+            sj, qj = comp + 2.0, 0.5 * h
+        elif qa < 0.5 * h:
+            sj, qj = s_clamped, -2.0
+        else:
+            sj, qj = s_clamped, h + 2.0
+        return (xt + sj * ux + qj * nx, yt + sj * uy + qj * ny)
+
+
 def desenhar_seta_inversao(dwg, xt, yt, comp, h, ang_txt, xa, ya, linhas_221_setas=None):
     """
     Desenha Seta de Chamada Executiva para Inversoes de Viga no Nivel 221:
-      - Se horizontal: patamar horizontal sob o texto + leader diagonal conectando ao ponto alvo na viga.
-      - Se vertical: leader diagonal conectando da borda do texto ao ponto alvo na viga.
+      - Suporta 0°, 90° e angulos inclinados gerais mantendo assinatura original.
+      - Leader conectando da borda mais proxima do texto ao ponto alvo (xa, ya) na viga.
       - Cabeca da seta na ponta (duas asas de 6.0 cm a 18 graus) apontando para o concreto da viga invertida.
     """
     dwg.draw.level = 221
     dwg.draw.color = -1
     dwg.draw.style = 0
 
-    if ang_txt == 0.0:
-        if xt > xa + 5.0:
-            x_joelho = xt - 2.0
-            y_joelho = yt + 0.5 * h
-        elif xt + comp < xa - 5.0:
-            x_joelho = xt + comp + 2.0
-            y_joelho = yt + 0.5 * h
-        elif yt > ya + 2.0:
-            x_joelho = max(xt, min(xt + comp, xa))
-            y_joelho = yt - 2.0
-        else:
-            x_joelho = max(xt, min(xt + comp, xa))
-            y_joelho = yt + h + 2.0
-
-        dwg.draw.Line(x_joelho, y_joelho, xa, ya)
-        if linhas_221_setas is not None:
-            try:
-                a2 = dwg.iterator.GetElementWritePosition()
-                linhas_221_setas.append({"addr": a2, "x1": x_joelho, "y1": y_joelho, "x2": xa, "y2": ya})
-            except Exception:
-                pass
-        start_x, start_y = x_joelho, y_joelho
-    else:
-        if yt + comp < ya - 5.0:
-            x_joelho = xt - 0.5 * h
-            y_joelho = yt + comp + 2.0
-        elif yt > ya + 5.0:
-            x_joelho = xt - 0.5 * h
-            y_joelho = yt - 2.0
-        else:
-            x_joelho = (xt - h - 2.0) if xt >= xa else (xt + 2.0)
-            y_joelho = max(yt + 2.0, min(yt + comp - 2.0, ya))
-        dwg.draw.Line(x_joelho, y_joelho, xa, ya)
-        if linhas_221_setas is not None:
-            try:
-                a1 = dwg.iterator.GetElementWritePosition()
-                linhas_221_setas.append({"addr": a1, "x1": x_joelho, "y1": y_joelho, "x2": xa, "y2": ya})
-            except Exception:
-                pass
-        start_x, start_y = x_joelho, y_joelho
+    start_x, start_y = _ponto_saida_seta_inversao(xt, yt, comp, h, ang_txt, xa, ya)
+    dwg.draw.Line(start_x, start_y, xa, ya)
+    if linhas_221_setas is not None:
+        try:
+            a_lin = dwg.iterator.GetElementWritePosition()
+            linhas_221_setas.append({"addr": a_lin, "x1": start_x, "y1": start_y, "x2": xa, "y2": ya})
+        except Exception:
+            pass
 
     dx = start_x - xa
     dy = start_y - ya
@@ -694,45 +734,123 @@ def limpar_chamadas_orfas_221(dwg, linhas_221_setas, pilares_group):
     return 0
 
 
-def apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40.0):
+def _dist_ponto_a_box(px, py, box):
+    dx = max(0.0, box[0] - px, px - box[2])
+    dy = max(0.0, box[1] - py, py - box[3])
+    return math.hypot(dx, dy)
+
+
+def _box_exato_de_texto_dict(tx):
+    if "x2" in tx and "y2" in tx:
+        return _bbox_texto_exato(tx["x1"], tx["y1"], tx["x2"], tx["y2"], tx["h"])
+    if "txt" in tx and "h" in tx and "ang" in tx:
+        return _bbox_texto(tx["x1"], tx["y1"], tx["h"], tx["ang"], tx["txt"])
+    return tx["box"]
+
+
+def _encontrar_seta_de_inversao(vi, linhas_221_setas, tol_caixa=5.5, texts_raw=None):
+    """
+    Identifica de forma cirurgica o conjunto (haste + 2 asas) no Nivel 221 pertencente
+    ao texto 'vi':
+      - Avalia cada haste individualmente junto ao seu par de asas alinhado (~18°), sem
+        descartar setas cujas pontas toquem concreto proximo (< 3 cm) de outra seta.
+      - Exige que a cauda saia da borda de 'vi' (<= tol_caixa, padrao 5.5 cm), nao possua
+        patamar de pilar conectado e nao esteja mais proxima de outro texto em texts_raw.
+    Retorna (set_de_indices, (x_tip, y_tip) ou None).
+    """
+    if not linhas_221_setas:
+        return set(), None
+
+    vi_box = _box_exato_de_texto_dict(vi)
+    vi_addr = vi.get("addr")
+    outros_boxes = []
+    if texts_raw:
+        for tO in texts_raw:
+            if tO is vi or (vi_addr is not None and tO.get("addr") == vi_addr):
+                continue
+            outros_boxes.append(_box_exato_de_texto_dict(tO))
+
+    asas_idx = []
+    hastes_idx = []
+    for idx, ln in enumerate(linhas_221_setas):
+        L_seg = math.hypot(ln["x2"] - ln["x1"], ln["y2"] - ln["y1"])
+        if 5.2 <= L_seg <= 6.8:
+            asas_idx.append(idx)
+        elif L_seg > 3.0:
+            hastes_idx.append(idx)
+
+    if len(asas_idx) < 2 or not hastes_idx:
+        return set(), None
+
+    indices_escolhidos = set()
+    tip_escolhido = None
+    melhor_d_tail = float("inf")
+
+    for h_idx in hastes_idx:
+        lh = linhas_221_setas[h_idx]
+        for tip_x, tip_y, tail_x, tail_y in (
+            (lh["x1"], lh["y1"], lh["x2"], lh["y2"]),
+            (lh["x2"], lh["y2"], lh["x1"], lh["y1"]),
+        ):
+            if math.hypot(tail_x - tip_x, tail_y - tip_y) <= 3.0:
+                continue
+
+            d_meu = _dist_ponto_a_box(tail_x, tail_y, vi_box)
+            if d_meu > tol_caixa or d_meu >= melhor_d_tail:
+                continue
+
+            # Nunca rouba seta cuja cauda esteja mais proxima da caixa de outro texto
+            if any(_dist_ponto_a_box(tail_x, tail_y, obx) + 0.5 < d_meu for obx in outros_boxes):
+                continue
+
+            # Rejeita se houver patamar de pilar (outra haste conectada na cauda)
+            tem_patamar_cauda = False
+            for o_idx in hastes_idx:
+                if o_idx == h_idx:
+                    continue
+                lo = linhas_221_setas[o_idx]
+                if min(math.hypot(tail_x - lo["x1"], tail_y - lo["y1"]),
+                       math.hypot(tail_x - lo["x2"], tail_y - lo["y2"])) <= 2.5:
+                    tem_patamar_cauda = True
+                    break
+            if tem_patamar_cauda:
+                continue
+
+            # Procura as 2 asas conectadas em (tip_x, tip_y) e alinhadas com a direcao da haste
+            ang_haste = math.atan2(tail_y - tip_y, tail_x - tip_x)
+            asas_alinhadas = []
+            for w_idx in asas_idx:
+                lw = linhas_221_setas[w_idx]
+                d1 = math.hypot(lw["x1"] - tip_x, lw["y1"] - tip_y)
+                d2 = math.hypot(lw["x2"] - tip_x, lw["y2"] - tip_y)
+                if min(d1, d2) > 1.8:
+                    continue
+                wx_far, wy_far = (lw["x2"], lw["y2"]) if d1 <= d2 else (lw["x1"], lw["y1"])
+                ang_w = math.atan2(wy_far - tip_y, wx_far - tip_x)
+                diff_ang = abs((ang_w - ang_haste + math.pi) % (2.0 * math.pi) - math.pi)
+                if diff_ang <= math.radians(42.0):
+                    asas_alinhadas.append((abs(diff_ang - math.radians(18.0)), w_idx))
+
+            if len(asas_alinhadas) >= 2:
+                asas_alinhadas.sort(key=lambda it: it[0])
+                melhor_d_tail = d_meu
+                indices_escolhidos = {h_idx, asas_alinhadas[0][1], asas_alinhadas[1][1]}
+                tip_escolhido = (tip_x, tip_y)
+
+    return indices_escolhidos, tip_escolhido
+
+
+def apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=5.5, texts_raw=None):
     """
     Apaga linhas de chamada executiva (nivel 221) associadas ao texto de inversao 'vi'
-    que esta sendo movido, evitando deixar linhas orfas/fantasmas no desenho.
+    que esta sendo movido, evitando deixar linhas orfas/fantasmas no desenho e sem
+    tocar em cotas, setas de pilares ou setas de textos vizinhos.
     """
     if not linhas_221_setas:
         return 0
-    vx, vy = vi["x1"], vi["y1"]
-    vxc, vyc = vi.get("xc", vx), vi.get("yc", vy)
-    selecionadas = set()
-    for i, l in enumerate(linhas_221_setas):
-        d1 = min(math.hypot(l["x1"] - vx, l["y1"] - vy), math.hypot(l["x1"] - vxc, l["y1"] - vyc))
-        d2 = min(math.hypot(l["x2"] - vx, l["y2"] - vy), math.hypot(l["x2"] - vxc, l["y2"] - vyc))
-        if min(d1, d2) <= raio_busca:
-            selecionadas.add(i)
-
-    mudou = True
-    while mudou:
-        mudou = False
-        for i, cand in enumerate(linhas_221_setas):
-            if i in selecionadas:
-                continue
-            for sel_idx in list(selecionadas):
-                sel = linhas_221_setas[sel_idx]
-                d11 = math.hypot(cand["x1"] - sel["x1"], cand["y1"] - sel["y1"])
-                d12 = math.hypot(cand["x1"] - sel["x2"], cand["y1"] - sel["y2"])
-                d21 = math.hypot(cand["x2"] - sel["x1"], cand["y2"] - sel["y1"])
-                d22 = math.hypot(cand["x2"] - sel["x2"], cand["y2"] - sel["y2"])
-                if min(d11, d12, d21, d22) <= 3.0:
-                    selecionadas.add(i)
-                    mudou = True
-                    break
-
-    tem_asa_seta = any(
-        5.2 <= math.hypot(linhas_221_setas[idx]["x2"] - linhas_221_setas[idx]["x1"],
-                          linhas_221_setas[idx]["y2"] - linhas_221_setas[idx]["y1"]) <= 6.8
-        for idx in selecionadas
-    )
-    if not tem_asa_seta:
+    tol = min(float(raio_busca), 5.5) if raio_busca is not None else 5.5
+    selecionadas, _ = _encontrar_seta_de_inversao(vi, linhas_221_setas, tol_caixa=tol, texts_raw=texts_raw)
+    if not selecionadas:
         return 0
 
     apagadas = 0
@@ -1522,213 +1640,370 @@ def resolver_sobreposicao_viga_com_seta(
     dwg, t_viga, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas=None
 ):
     """
-    Resolve sobreposicao persistente de titulo de viga 'VXXX' (Nivel 8):
-    1. Procura posicao livre ao longo das faces da viga de concreto.
-    2. Se nao couber diretamente nas faces da viga (ex: vao curto ou laje adjacente),
-       encontra uma posicao limpa no espaco adjacente livre e gera uma Seta de Chamada
-       Executiva no Nivel 221 apontando com precisao para a viga.
-    Retorna True se reposicionou com sucesso, False caso contrario.
+    Resolve sobreposicao persistente de titulo de viga 'VXXX' (Nivel 8) ou texto de
+    inversao 'VIGA INVERTIDA xCM' (Nivel 11):
+      - Trava estritamente a orientacao original 'ang' do texto (JAMAIS gira 90° <-> 0°).
+      - Respeita poligonos fisicos de pilares, textos de pilares (9/12), cubetas (208),
+        cotas, linhas de concreto e demais textos.
+      - Para VIGA INVERTIDA: se couber encostado na mesma face com deslocamento ate a
+        ancora <= LIMITE_SEM_SETA_INVERSAO_VIGA (40.0 cm) e sem seta previa, posiciona
+        sem seta; caso contrario (afastou > 40 cm, desencostou ou trocou de lado), limpa
+        eventual seta antiga e desenha Seta de Chamada Executiva no Nivel 221 validada.
     """
-    comp_v = len(t_viga["txt"]) * t_viga["h"] * (1.0 if "VIGA INVERTIDA" in t_viga["txt"].upper() else 0.85)
+    txt_up = t_viga.get("txt", "").upper()
+    eh_inversao = (t_viga.get("level") == 11 and "INVERTIDA" in txt_up)
+    comp_v = len(t_viga["txt"]) * t_viga["h"] * (1.0 if eh_inversao else 0.85)
     h_v = t_viga["h"]
     ang = t_viga["ang"]
+    ang_n = _normalizar_angulo(ang)
 
-    # 1. Identifica a viga de concreto correspondente a t_viga
-    if ang == 90.0:
+    cur_box = _box_exato_de_texto_dict(t_viga)
+    cx_cur = 0.5 * (cur_box[0] + cur_box[2])
+    cy_cur = 0.5 * (cur_box[1] + cur_box[3])
+
+    setas_chk = linhas_221_setas if linhas_221_setas is not None else []
+    idxs_seta_antiga, tip_antigo = _encontrar_seta_de_inversao(t_viga, setas_chk, tol_caixa=5.5, texts_raw=texts_raw)
+    tem_seta_antiga = len(idxs_seta_antiga) > 0
+    other_setas = [l for idx, l in enumerate(setas_chk) if idx not in idxs_seta_antiga]
+
+    boxes_pilares = [pb["box"] for pb in (poly_pilares or [])]
+    obst_texts = [_box_exato_de_texto_dict(t) for t in texts_raw if id(t) != id(t_viga)]
+    obst_fixos = list(obstaculos_fixos or [])
+    obst_all = obst_texts + boxes_pilares + obst_fixos
+    obst_criticos_seta = obst_texts + boxes_pilares
+
+    # 1. Identifica a viga de concreto correspondente e suas faces [t_min, t_max]
+    vigas_titulo = [tx for tx in texts_raw if tx.get("level") == 8 and tx.get("txt", "").upper().startswith("V")]
+    for vt in vigas_titulo:
+        if "box" not in vt or (vt["ang"] == 90.0 and abs(vt["box"][2] - vt["box"][0]) < 1.0):
+            vt["box"] = _box_exato_de_texto_dict(vt)
+    vigas_geom = mapear_vigas_continuas(vigas_titulo, lines_concreto) if vigas_titulo else []
+    ref_x = tip_antigo[0] if tip_antigo is not None else cx_cur
+    ref_y = tip_antigo[1] if tip_antigo is not None else cy_cur
+    vg = associar_elemento_a_viga(ref_x, ref_y, ang, vigas_geom, tol_dist=120.0) if vigas_geom else None
+
+    faces = None
+    l_min_vg, l_max_vg = None, None
+    if vg is not None:
+        faces = (vg["t_min"], vg["t_max"])
+        l_min_vg, l_max_vg = vg["l_min"], vg["l_max"]
+    elif ang_n == 90.0:
         segs = [s for s in lines_concreto if abs(s[0] - s[2]) <= 8.0 and abs(s[1] - s[3]) > 10.0]
-        perto = [s for s in segs if abs(0.5 * (s[0] + s[2]) - t_viga["xc"]) <= 45.0]
+        perto = [s for s in segs if abs(0.5 * (s[0] + s[2]) - ref_x) <= 55.0 and min(s[1], s[3]) - 80.0 <= ref_y <= max(s[1], s[3]) + 80.0]
         if not perto:
-            perto = [s for s in segs if abs(0.5 * (s[0] + s[2]) - t_viga["xc"]) <= 90.0]
+            perto = [s for s in segs if abs(0.5 * (s[0] + s[2]) - ref_x) <= 95.0]
         xs = sorted(list(set(round(0.5 * (s[0] + s[2]), 1) for s in perto)))
-        faces = None
         menor_d = float("inf")
         for i in range(len(xs)):
             for j in range(i + 1, len(xs)):
                 w = xs[j] - xs[i]
-                if 9.0 <= w <= 40.0:
-                    d_c = abs(0.5 * (xs[i] + xs[j]) - t_viga["xc"])
+                if 9.0 <= w <= 45.0:
+                    d_c = abs(0.5 * (xs[i] + xs[j]) - ref_x)
                     if d_c < menor_d:
                         menor_d = d_c
                         faces = (xs[i], xs[j])
-        if faces:
-            xa_alvo = 0.5 * (faces[0] + faces[1])
-        elif xs:
-            xa_alvo = xs[0]
-        else:
-            xa_alvo = t_viga["xc"]
-        ya_alvo = t_viga["yc"]
-    else:
+    elif ang_n == 0.0:
         segs = [s for s in lines_concreto if abs(s[1] - s[3]) <= 8.0 and abs(s[0] - s[2]) > 10.0]
-        perto = [s for s in segs if abs(0.5 * (s[1] + s[3]) - t_viga["yc"]) <= 45.0]
+        perto = [s for s in segs if abs(0.5 * (s[1] + s[3]) - ref_y) <= 55.0 and min(s[0], s[2]) - 80.0 <= ref_x <= max(s[0], s[2]) + 80.0]
         if not perto:
-            perto = [s for s in segs if abs(0.5 * (s[1] + s[3]) - t_viga["yc"]) <= 90.0]
+            perto = [s for s in segs if abs(0.5 * (s[1] + s[3]) - ref_y) <= 95.0]
         ys = sorted(list(set(round(0.5 * (s[1] + s[3]), 1) for s in perto)))
-        faces = None
         menor_d = float("inf")
         for i in range(len(ys)):
             for j in range(i + 1, len(ys)):
                 w = ys[j] - ys[i]
-                if 9.0 <= w <= 40.0:
-                    d_c = abs(0.5 * (ys[i] + ys[j]) - t_viga["yc"])
+                if 9.0 <= w <= 45.0:
+                    d_c = abs(0.5 * (ys[i] + ys[j]) - ref_y)
                     if d_c < menor_d:
                         menor_d = d_c
                         faces = (ys[i], ys[j])
-        if faces:
-            ya_alvo = 0.5 * (faces[0] + faces[1])
-        elif ys:
-            ya_alvo = ys[0]
+
+    if ang_n == 90.0:
+        if faces is not None:
+            t_meio = 0.5 * (faces[0] + faces[1])
+            lado_orig = 1.0 if cx_cur <= t_meio else -1.0
+            xa_alvo = tip_antigo[0] if tip_antigo is not None else (faces[0] if lado_orig > 0 else faces[1])
         else:
-            ya_alvo = t_viga["yc"]
-        xa_alvo = t_viga["xc"]
+            lado_orig = 1.0
+            xa_alvo = tip_antigo[0] if tip_antigo is not None else cx_cur
+        ya_alvo = tip_antigo[1] if tip_antigo is not None else cy_cur
+        if l_min_vg is not None and l_max_vg is not None and tip_antigo is None:
+            ya_alvo = max(l_min_vg + 5.0, min(l_max_vg - 5.0, ya_alvo))
+        dt_face_atual = min(abs(cur_box[2] - faces[0]), abs(cur_box[0] - faces[1])) if faces is not None else 999.0
+    elif ang_n == 0.0:
+        if faces is not None:
+            t_meio = 0.5 * (faces[0] + faces[1])
+            lado_orig = 1.0 if cy_cur >= t_meio else -1.0
+            ya_alvo = tip_antigo[1] if tip_antigo is not None else (faces[1] if lado_orig > 0 else faces[0])
+        else:
+            lado_orig = 1.0
+            ya_alvo = tip_antigo[1] if tip_antigo is not None else cy_cur
+        xa_alvo = tip_antigo[0] if tip_antigo is not None else cx_cur
+        if l_min_vg is not None and l_max_vg is not None and tip_antigo is None:
+            xa_alvo = max(l_min_vg + 5.0, min(l_max_vg - 5.0, xa_alvo))
+        dt_face_atual = min(abs(cur_box[1] - faces[1]), abs(cur_box[3] - faces[0])) if faces is not None else 999.0
+    else:
+        lado_orig = 1.0
+        xa_alvo = tip_antigo[0] if tip_antigo is not None else cx_cur
+        ya_alvo = tip_antigo[1] if tip_antigo is not None else cy_cur
+        dt_face_atual = 999.0
 
-    obst_boxes = [t["box"] for t in texts_raw if id(t) != id(t_viga)]
-    if obstaculos_fixos:
-        obst_boxes.extend(obstaculos_fixos)
-
-    setas_chk = linhas_221_setas or []
-    tem_seta_antiga = any(
-        min(
-            math.hypot(l["x1"] - t_viga["x1"], l["y1"] - t_viga["y1"]),
-            math.hypot(l["x2"] - t_viga["x1"], l["y2"] - t_viga["y1"]),
-            math.hypot(l["x1"] - (t_viga["x1"] + comp_v), l["y1"] - t_viga["y1"]),
-            math.hypot(l["x2"] - (t_viga["x1"] + comp_v), l["y2"] - t_viga["y1"]),
-        ) <= 15.0
-        for l in setas_chk
-    )
-
-    # Passo A: Tenta deslizar na direcao de leitura (sem gerar seta) se ainda nao tinha seta
-    if not tem_seta_antiga:
-        for d_slide in (8.0, -8.0, 15.0, -15.0, 25.0, -25.0, 35.0, -35.0, 50.0, -50.0, 62.0, -62.0, 75.0, -75.0, 90.0, -90.0):
-            sx = t_viga["x1"] + (d_slide if ang == 0.0 else 0.0)
-            sy = t_viga["y1"] + (0.0 if ang == 0.0 else d_slide)
-            sbx = _bbox_texto(sx, sy, h_v, ang, t_viga["txt"])
-            if any(_boxes_colidem(sbx, ob, margem=1.5) for ob in obst_boxes):
-                continue
-            if any(_segmento_colide_box(lx1, ly1, lx2, ly2, sbx, margem=-1.5) for lx1, ly1, lx2, ly2, _ in lines_concreto):
-                continue
-            if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], sbx, margem=1.0) for l in setas_chk):
-                continue
-            dx = sx - t_viga["x1"]
-            dy = sy - t_viga["y1"]
+    def _aplicar_movimento_viga(nx, ny, nbox):
+        dx = nx - t_viga["x1"]
+        dy = ny - t_viga["y1"]
+        if abs(dx) > 1e-4 or abs(dy) > 1e-4:
             dwg.edit.Move(t_viga["addr"], dx, dy)
-            t_viga["x1"] = sx
-            t_viga["y1"] = sy
-            t_viga["xc"] = sx + 0.5 * (sbx[2] - sbx[0])
-            t_viga["yc"] = sy + 0.5 * (sbx[3] - sbx[1])
-            t_viga["box"] = sbx
-            t_viga["rbox"] = sbx
-            return True
+        t_viga["x1"] = nx
+        t_viga["y1"] = ny
+        if "x2" in t_viga:
+            t_viga["x2"] += dx
+        if "y2" in t_viga:
+            t_viga["y2"] += dy
+        t_viga["xc"] = t_viga.get("xc", nx) + dx
+        t_viga["yc"] = t_viga.get("yc", ny) + dy
+        t_viga["box"] = nbox
+        if "rbox" in t_viga:
+            rb = t_viga["rbox"]
+            t_viga["rbox"] = (rb[0] + dx, rb[1] + dy, rb[2] + dx, rb[3] + dy)
+        else:
+            t_viga["rbox"] = nbox
+
+    # Passo A (Tier 1 - SEM SETA):
+    # Para VIGA INVERTIDA: apenas na mesma face original e com d_box <= LIMITE_SEM_SETA_INVERSAO_VIGA (40 cm).
+    if not tem_seta_antiga:
+        if eh_inversao:
+            if faces is not None and dt_face_atual <= 18.0:
+                passos_tier1 = (0.0, 6.0, -6.0, 12.0, -12.0, 18.0, -18.0, 24.0, -24.0, 30.0, -30.0, 35.0, -35.0, 40.0, -40.0)
+                if ang_n == 0.0:
+                    y_face_ok = (faces[1] + 0.25 * h_v + 3.5) if lado_orig > 0 else (faces[0] - 1.15 * h_v - 3.5)
+                    ys_try = [t_viga["y1"]] if abs(t_viga["y1"] - y_face_ok) <= 2.5 else [t_viga["y1"], y_face_ok]
+                else:
+                    x_face_ok = (faces[0] - 0.25 * h_v - 3.5) if lado_orig > 0 else (faces[1] + 1.15 * h_v + 3.5)
+                    xs_try = [t_viga["x1"]] if abs(t_viga["x1"] - x_face_ok) <= 2.5 else [t_viga["x1"], x_face_ok]
+
+                cands_t1 = []
+                for d_sl in passos_tier1:
+                    if ang_n == 0.0:
+                        for sy in ys_try:
+                            sx = t_viga["x1"] + d_sl
+                            if l_min_vg is not None and (sx < l_min_vg - 15.0 or sx + comp_v > l_max_vg + 15.0):
+                                continue
+                            cands_t1.append((abs(d_sl) + abs(sy - t_viga["y1"]), sx, sy))
+                    elif ang_n == 90.0:
+                        for sx in xs_try:
+                            sy = t_viga["y1"] + d_sl
+                            if l_min_vg is not None and (sy < l_min_vg - 15.0 or sy + comp_v > l_max_vg + 15.0):
+                                continue
+                            cands_t1.append((abs(d_sl) + abs(sx - t_viga["x1"]), sx, sy))
+                cands_t1.sort(key=lambda it: it[0])
+
+                for _, sx, sy in cands_t1:
+                    sbx = _bbox_texto(sx, sy, h_v, ang, t_viga["txt"])
+                    if _dist_ponto_a_box(xa_alvo, ya_alvo, sbx) > LIMITE_SEM_SETA_INVERSAO_VIGA:
+                        continue
+                    if any(_boxes_colidem(sbx, pb, margem=1.0) for pb in boxes_pilares):
+                        continue
+                    if any(_boxes_colidem(sbx, ob, margem=0.5) for ob in obst_texts):
+                        continue
+                    if any(_boxes_colidem(sbx, ob, margem=0.5) for ob in obst_fixos):
+                        continue
+                    if any(_segmento_colide_box(lx1, ly1, lx2, ly2, sbx, margem=0.5) for lx1, ly1, lx2, ly2, _ in lines_concreto):
+                        continue
+                    if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], sbx, margem=0.8) for l in other_setas):
+                        continue
+                    _aplicar_movimento_viga(sx, sy, sbx)
+                    return True
+        else:
+            rad_a = math.radians(ang)
+            ux_a, uy_a = math.cos(rad_a), math.sin(rad_a)
+            for d_slide in (8.0, -8.0, 15.0, -15.0, 25.0, -25.0, 35.0, -35.0, 50.0, -50.0, 62.0, -62.0, 75.0, -75.0, 90.0, -90.0):
+                sx = t_viga["x1"] + d_slide * ux_a
+                sy = t_viga["y1"] + d_slide * uy_a
+                sbx = _bbox_texto(sx, sy, h_v, ang, t_viga["txt"])
+                if any(_boxes_colidem(sbx, ob, margem=1.5) for ob in obst_all):
+                    continue
+                if any(_segmento_colide_box(lx1, ly1, lx2, ly2, sbx, margem=-1.5) for lx1, ly1, lx2, ly2, _ in lines_concreto):
+                    continue
+                if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], sbx, margem=1.0) for l in other_setas):
+                    continue
+                _aplicar_movimento_viga(sx, sy, sbx)
+                return True
+
+    # Passo B (Tier 2 - COM SETA NO NIVEL 221, orientacao 'ang' 100% TRAVADA):
+    raw_cands = [(t_viga["x1"], t_viga["y1"], lado_orig)]
+    lados_ord = (lado_orig, -lado_orig)
+    d_longs = (0.0, -15.0, 15.0, -30.0, 30.0, -50.0, 50.0, -75.0, 75.0, -105.0, 105.0, -140.0, 140.0, -175.0, 175.0)
+    raios = (4.0, 12.0, 20.0, 30.0, 42.0, 55.0, 75.0, 95.0, 120.0, 150.0, 185.0, 220.0)
+
+    if ang_n == 90.0:
+        x_esq_ref = faces[0] if faces is not None else xa_alvo
+        x_dir_ref = faces[1] if faces is not None else xa_alvo
+        for r in raios:
+            for s_side in lados_ord:
+                cs_x = (x_esq_ref - 0.25 * h_v - r) if s_side > 0 else (x_dir_ref + 1.15 * h_v + r)
+                for d_long in d_longs:
+                    cs_y = ya_alvo - 0.5 * comp_v + d_long
+                    raw_cands.append((cs_x, cs_y, s_side))
+            for d_perp in (0.0, -15.0, 15.0, -30.0, 30.0):
+                raw_cands.append((xa_alvo + d_perp + 0.5 * h_v, ya_alvo + r + 8.0, lado_orig))
+                raw_cands.append((xa_alvo + d_perp + 0.5 * h_v, ya_alvo - r - comp_v - 8.0, lado_orig))
+    elif ang_n == 0.0:
+        y_inf_ref = faces[0] if faces is not None else ya_alvo
+        y_sup_ref = faces[1] if faces is not None else ya_alvo
+        for r in raios:
+            for s_side in lados_ord:
+                cs_y = (y_sup_ref + 0.25 * h_v + r) if s_side > 0 else (y_inf_ref - 1.15 * h_v - r)
+                for d_long in d_longs:
+                    cs_x = xa_alvo - 0.5 * comp_v + d_long
+                    raw_cands.append((cs_x, cs_y, s_side))
+            for d_perp in (0.0, -15.0, 15.0, -30.0, 30.0):
+                raw_cands.append((xa_alvo + r + 8.0, ya_alvo + d_perp - 0.5 * h_v, lado_orig))
+                raw_cands.append((xa_alvo - r - comp_v - 8.0, ya_alvo + d_perp - 0.5 * h_v, lado_orig))
+    else:
+        rad_g = math.radians(ang)
+        ux_g, uy_g = math.cos(rad_g), math.sin(rad_g)
+        nx_g, ny_g = -uy_g, ux_g
+        for r in raios:
+            for s_side in lados_ord:
+                off_n = s_side * (r + 0.65 * h_v)
+                for d_long in d_longs:
+                    cx_m = xa_alvo + d_long * ux_g + off_n * nx_g
+                    cy_m = ya_alvo + d_long * uy_g + off_n * ny_g
+                    cs_x = cx_m - 0.5 * comp_v * ux_g - 0.5 * h_v * nx_g
+                    cs_y = cy_m - 0.5 * comp_v * uy_g - 0.5 * h_v * ny_g
+                    raw_cands.append((cs_x, cs_y, s_side))
+
+    # Ordena estritamente pela menor distancia ao local original/atual (com leve bonus para manter mesmo lado)
+    scored_cands = []
+    seen_grid = set()
+    for cs_x, cs_y, s_side in raw_cands:
+        gk = (round(cs_x, 1), round(cs_y, 1))
+        if gk in seen_grid:
+            continue
+        seen_grid.add(gk)
+        cbx = _bbox_texto(cs_x, cs_y, h_v, ang, t_viga["txt"])
+        cmx = 0.5 * (cbx[0] + cbx[2])
+        cmy = 0.5 * (cbx[1] + cbx[3])
+        pen_lado = 0.0 if s_side == lado_orig else 6.0
+        dist_score = math.hypot(cmx - cx_cur, cmy - cy_cur) + 0.35 * _dist_ponto_a_box(xa_alvo, ya_alvo, cbx) + pen_lado
+        scored_cands.append((dist_score, cs_x, cs_y, cbx))
+    scored_cands.sort(key=lambda it: it[0])
+
+    def _alvos_na_viga_para_cand(cs_x, cs_y, cbx):
+        cmx = 0.5 * (cbx[0] + cbx[2])
+        cmy = 0.5 * (cbx[1] + cbx[3])
+        raw_pts = []
+        offs_long = (
+            0.0, -10.0, 10.0, -18.0, 18.0, -28.0, 28.0, -38.0, 38.0,
+            -50.0, 50.0, -65.0, 65.0, -85.0, 85.0, -110.0, 110.0,
+            -140.0, 140.0, -175.0, 175.0, -220.0, 220.0
+        )
+        fracs = (0.5, 0.3, 0.7, 0.15, 0.85, 0.05, 0.95)
+        if ang_n == 0.0:
+            ya_face = (faces[1] if cmy >= 0.5 * (faces[0] + faces[1]) else faces[0]) if faces is not None else ya_alvo
+            for off in offs_long:
+                xs_a = xa_alvo + off
+                if l_min_vg is not None and not (l_min_vg + 4.0 <= xs_a <= l_max_vg - 4.0):
+                    continue
+                raw_pts.append((xs_a, ya_face))
+            for frac in fracs:
+                xs_a = cs_x + frac * comp_v
+                if l_min_vg is not None and not (l_min_vg + 4.0 <= xs_a <= l_max_vg - 4.0):
+                    continue
+                if abs(xs_a - xa_alvo) <= 220.0:
+                    raw_pts.append((xs_a, ya_face))
+        elif ang_n == 90.0:
+            xa_face = (faces[0] if cmx <= 0.5 * (faces[0] + faces[1]) else faces[1]) if faces is not None else xa_alvo
+            for off in offs_long:
+                ys_a = ya_alvo + off
+                if l_min_vg is not None and not (l_min_vg + 4.0 <= ys_a <= l_max_vg - 4.0):
+                    continue
+                raw_pts.append((xa_face, ys_a))
+            for frac in fracs:
+                ys_a = cs_y + frac * comp_v
+                if l_min_vg is not None and not (l_min_vg + 4.0 <= ys_a <= l_max_vg - 4.0):
+                    continue
+                if abs(ys_a - ya_alvo) <= 220.0:
+                    raw_pts.append((xa_face, ys_a))
+        else:
+            rad_t = math.radians(ang)
+            ux_t, uy_t = math.cos(rad_t), math.sin(rad_t)
+            for off in offs_long:
+                raw_pts.append((xa_alvo + off * ux_t, ya_alvo + off * uy_t))
+
+        seen_pts = set()
+        pts_limpos = []
+        for px, py in raw_pts:
+            pk = (round(px, 1), round(py, 1))
+            if pk in seen_pts:
+                continue
+            seen_pts.add(pk)
+            if any(_dist_ponto_a_box(px, py, pb) < 6.0 for pb in boxes_pilares):
+                continue
+            d_orig = math.hypot(px - xa_alvo, py - ya_alvo)
+            d_cbx = _dist_ponto_a_box(px, py, cbx)
+            pts_limpos.append((0.6 * d_orig + 0.4 * d_cbx, px, py))
+
+        pts_limpos.sort(key=lambda it: it[0])
+        return [(px, py) for _, px, py in pts_limpos]
+
+    corredor_viga_miolo = None
+    if faces is not None and (faces[1] - faces[0]) > 4.0:
+        if ang_n == 0.0:
+            lx0 = (l_min_vg - 5.0) if l_min_vg is not None else (xa_alvo - 250.0)
+            lx1 = (l_max_vg + 5.0) if l_max_vg is not None else (xa_alvo + 250.0)
+            corredor_viga_miolo = (lx0, faces[0] + 1.0, lx1, faces[1] - 1.0)
+        elif ang_n == 90.0:
+            ly0 = (l_min_vg - 5.0) if l_min_vg is not None else (ya_alvo - 250.0)
+            ly1 = (l_max_vg + 5.0) if l_max_vg is not None else (ya_alvo + 250.0)
+            corredor_viga_miolo = (faces[0] + 1.0, ly0, faces[1] - 1.0, ly1)
 
     best_cand = None
-    min_dist = float("inf")
+    for m_txt, m_fix, m_conc, obst_seta_list in (
+        (1.2, 1.2, 0.5, obst_all),
+        (0.3, 0.2, 0.2, obst_criticos_seta),
+    ):
+        for _, cs_x, cs_y, cand_bx in scored_cands:
+            if corredor_viga_miolo is not None and _boxes_colidem(cand_bx, corredor_viga_miolo, margem=0.0):
+                continue
+            if any(_boxes_colidem(cand_bx, pb, margem=1.0) for pb in boxes_pilares):
+                continue
+            if any(_boxes_colidem(cand_bx, ob, margem=m_txt) for ob in obst_texts):
+                continue
+            if any(_boxes_colidem(cand_bx, ob, margem=m_fix) for ob in obst_fixos):
+                continue
+            if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], cand_bx, margem=0.8) for l in other_setas):
+                continue
+            if any(_segmento_colide_box(lx1, ly1, lx2, ly2, cand_bx, margem=m_conc) for lx1, ly1, lx2, ly2, _ in lines_concreto):
+                continue
 
-    angs_testar = [ang]
+            alvo_ok = None
+            for xa_s, ya_s in _alvos_na_viga_para_cand(cs_x, cs_y, cand_bx):
+                x_j, y_j = _ponto_saida_seta_inversao(cs_x, cs_y, comp_v, h_v, ang, xa_s, ya_s)
+                if math.hypot(x_j - xa_s, y_j - ya_s) < 3.0:
+                    continue
+                corta_seta = False
+                for ob_b in obst_seta_list:
+                    if _segmento_colide_box(x_j, y_j, xa_s, ya_s, ob_b, margem=0.4):
+                        corta_seta = True
+                        break
+                if not corta_seta:
+                    alvo_ok = (xa_s, ya_s)
+                    break
 
-    for cs_ang in angs_testar:
-        for r in (12.0, 20.0, 30.0, 42.0, 55.0, 75.0, 95.0, 120.0, 150.0, 180.0):
-            for s_side in (1.0, -1.0):
-                for d_long in (0.0, -15.0, 15.0, -30.0, 30.0, -50.0, 50.0, -80.0, 80.0, -110.0, 110.0):
-                    if ang == 90.0:
-                        if cs_ang == 0.0:
-                            cs_x = (xa_alvo + r) if s_side > 0 else (xa_alvo - r - comp_v)
-                            cs_y = ya_alvo + d_long - 0.5 * h_v
-                        else:
-                            cs_x = (xa_alvo + r + h_v) if s_side > 0 else (xa_alvo - r)
-                            cs_y = ya_alvo - 0.5 * comp_v + d_long
-                    else:
-                        if cs_ang == 0.0:
-                            cs_x = xa_alvo + d_long - 0.5 * comp_v
-                            cs_y = (ya_alvo + r) if s_side > 0 else (ya_alvo - r - h_v)
-                        else:
-                            cs_x = (xa_alvo + d_long + 0.5 * h_v)
-                            cs_y = (ya_alvo + r) if s_side > 0 else (ya_alvo - r - comp_v)
-
-                    cand_bx = _bbox_texto(cs_x, cs_y, h_v, cs_ang, t_viga["txt"])
-
-                    if any(_boxes_colidem(cand_bx, ob, margem=2.0) for ob in obst_boxes):
-                        continue
-                    if any(_segmento_colide_box(l["x1"], l["y1"], l["x2"], l["y2"], cand_bx, margem=1.5) for l in setas_chk):
-                        continue
-                    corta_concreto = False
-                    for lx1, ly1, lx2, ly2, _ in lines_concreto:
-                        if _segmento_colide_box(lx1, ly1, lx2, ly2, cand_bx, margem=-1.0):
-                            corta_concreto = True
-                            break
-                    if corta_concreto:
-                        continue
-
-                    alvos_seta = []
-                    if cs_ang == 0.0:
-                        if cs_x > xa_alvo + 5.0:
-                            alvos_seta.append((cs_x - 2.0, cs_y + 0.5 * h_v, xa_alvo, ya_alvo))
-                        elif cs_x + comp_v < xa_alvo - 5.0:
-                            alvos_seta.append((cs_x + comp_v + 2.0, cs_y + 0.5 * h_v, xa_alvo, ya_alvo))
-                        elif cs_y > ya_alvo + 2.0:
-                            for frac in (0.5, 0.25, 0.75):
-                                xs_a = cs_x + frac * comp_v
-                                alvos_seta.append((xs_a, cs_y - 2.0, xs_a, ya_alvo))
-                        else:
-                            for frac in (0.5, 0.25, 0.75):
-                                xs_a = cs_x + frac * comp_v
-                                alvos_seta.append((xs_a, cs_y + h_v + 2.0, xs_a, ya_alvo))
-                    else:
-                        if cs_y + comp_v < ya_alvo - 5.0:
-                            alvos_seta.append((cs_x - 0.5 * h_v, cs_y + comp_v + 2.0, xa_alvo, ya_alvo))
-                        elif cs_y > ya_alvo + 5.0:
-                            alvos_seta.append((cs_x - 0.5 * h_v, cs_y - 2.0, xa_alvo, ya_alvo))
-                        else:
-                            x_j_side = (cs_x - h_v - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
-                            for frac in (0.5, 0.75, 0.25, 0.85, 0.15):
-                                ys_a = cs_y + frac * comp_v
-                                alvos_seta.append((x_j_side, ys_a, xa_alvo, ys_a))
-
-                    alvo_ok = None
-                    for x_j, y_j, xa_s, ya_s in alvos_seta:
-                        corta_seta = False
-                        for ob_b in obst_boxes:
-                            if abs(xa_s - 0.5 * (ob_b[0] + ob_b[2])) < 5.0 and abs(ya_s - 0.5 * (ob_b[1] + ob_b[3])) < 5.0:
-                                continue
-                            if _segmento_colide_box(x_j, y_j, xa_s, ya_s, ob_b, margem=0.5):
-                                corta_seta = True
-                                break
-                        if not corta_seta:
-                            alvo_ok = (xa_s, ya_s)
-                            break
-                    if alvo_ok is None:
-                        continue
-
-                    dist = math.hypot(cs_x - t_viga["x1"], cs_y - t_viga["y1"])
-                    if dist < min_dist:
-                        min_dist = dist
-                        best_cand = (cs_x, cs_y, cs_ang, cand_bx, alvo_ok[0], alvo_ok[1])
-            if best_cand:
+            if alvo_ok is not None:
+                best_cand = (cs_x, cs_y, cand_bx, alvo_ok[0], alvo_ok[1])
                 break
-        if best_cand:
+        if best_cand is not None:
             break
 
     if best_cand is not None:
-        nx, ny, nang, nbox, xa_f, ya_f = best_cand
+        nx, ny, nbox, xa_f, ya_f = best_cand
         if linhas_221_setas is not None:
-            apagar_chamadas_antigas_de_inversao(dwg, t_viga, linhas_221_setas, raio_busca=35.0)
-        dx = nx - t_viga["x1"]
-        dy = ny - t_viga["y1"]
-        dwg.edit.Move(t_viga["addr"], dx, dy)
-        if nang != t_viga["ang"]:
-            try:
-                dwg.edit.ModifyText(t_viga["addr"], t_viga["h"], nang)
-            except Exception:
-                pass
-            t_viga["ang"] = nang
-
-        t_viga["x1"] = nx
-        t_viga["y1"] = ny
-        t_viga["xc"] = nx + 0.5 * (nbox[2] - nbox[0])
-        t_viga["yc"] = ny + 0.5 * (nbox[3] - nbox[1])
-        t_viga["box"] = nbox
-        t_viga["rbox"] = nbox
-
+            apagar_chamadas_antigas_de_inversao(dwg, t_viga, linhas_221_setas, raio_busca=5.5, texts_raw=texts_raw)
+        _aplicar_movimento_viga(nx, ny, nbox)
         desenhar_seta_inversao(
-            dwg, nx, ny, comp_v, h_v, nang, xa_f, ya_f, linhas_221_setas
+            dwg, nx, ny, comp_v, h_v, ang, xa_f, ya_f, linhas_221_setas
         )
         return True
     return False
@@ -2070,46 +2345,42 @@ def executar_anti_sobreposicao(dwg):
                 or seta_vi_colide
             )
             if precisa_mover_vi:
+                vi_ang = vi["ang"]
+                vi_cx = 0.5 * (vi["box"][0] + vi["box"][2])
+                vi_cy = 0.5 * (vi["box"][1] + vi["box"][3])
                 t_meio = 0.5 * (vg["t_min"] + vg["t_max"])
                 if ang == 0.0:
-                    xa_alvo = vi["xc"]
-                    ya_alvo = t_meio
+                    lado_vi = 1.0 if vi_cy >= t_meio else -1.0
+                    xa_alvo = max(vg["l_min"] + 5.0, min(vg["l_max"] - 5.0, vi_cx))
+                    ya_alvo = vg["t_max"] if lado_vi > 0 else vg["t_min"]
                 else:
-                    xa_alvo = t_meio
-                    ya_alvo = vi["yc"]
+                    lado_vi = 1.0 if vi_cx <= t_meio else -1.0
+                    xa_alvo = vg["t_min"] if lado_vi > 0 else vg["t_max"]
+                    ya_alvo = max(vg["l_min"] + 5.0, min(vg["l_max"] - 5.0, vi_cy))
 
                 res = None
                 precisa_seta = False
 
-                # 1o: Tenta posicionamento direto na face da viga
+                # 1o: Tenta posicionamento direto na mesma face ate LIMITE_SEM_SETA_INVERSAO_VIGA (40 cm), mantendo vi_ang
                 candidatos_locais = []
-                # Se tiver secao proxima, testa logo apos ou antes dela ao longo da face
-                sec_viga = vg["secoes"][0] if vg["secoes"] else None
-                sec_bx = sec_viga.get("box") if sec_viga else None
-                if sec_viga and sec_bx:
-                    if ang == 0.0:
-                        candidatos_locais.append((sec_bx[2] + 8.0, sec_viga["y1"], 0.0))
-                        candidatos_locais.append((sec_bx[0] - comp_vi - 8.0, sec_viga["y1"], 0.0))
-                    else:
-                        candidatos_locais.append((sec_viga["x1"], sec_bx[3] + 8.0, 90.0))
-                        candidatos_locais.append((sec_viga["x1"], sec_bx[1] - comp_vi - 8.0, 90.0))
-
-                passos = [0.0] + [d for step in (15.0, 30.0, 50.0, 75.0, 100.0, 130.0, 160.0, 200.0) for d in (step, -step)]
+                passos = [0.0] + [d for step in (8.0, 16.0, 24.0, 32.0, 40.0) for d in (step, -step)]
                 if ang == 0.0:
-                    for cy in (vg["t_max"] + 0.25 * vi["h"] + 3.0, vg["t_min"] - 1.15 * vi["h"] - 3.0):
-                        for d_local in passos:
-                            cx = xa_alvo - 0.5 * comp_vi + d_local
-                            if cx >= vg["l_min"] + 4.0 and cx + comp_vi <= vg["l_max"] - 4.0:
-                                candidatos_locais.append((cx, cy, 0.0))
+                    cy_same = (vg["t_max"] + 0.25 * vi["h"] + 3.5) if lado_vi > 0 else (vg["t_min"] - 1.15 * vi["h"] - 3.5)
+                    for d_local in passos:
+                        cx = xa_alvo - 0.5 * comp_vi + d_local
+                        if cx >= vg["l_min"] - 10.0 and cx + comp_vi <= vg["l_max"] + 10.0:
+                            candidatos_locais.append((cx, cy_same, vi_ang))
                 else:
-                    for cx in (vg["t_min"] - 0.25 * vi["h"] - 3.0, vg["t_max"] + 1.15 * vi["h"] + 3.0):
-                        for d_local in passos:
-                            cy = ya_alvo - 0.5 * comp_vi + d_local
-                            if cy >= vg["l_min"] + 4.0 and cy + comp_vi <= vg["l_max"] - 4.0:
-                                candidatos_locais.append((cx, cy, 90.0))
+                    cx_same = (vg["t_min"] - 0.25 * vi["h"] - 3.5) if lado_vi > 0 else (vg["t_max"] + 1.15 * vi["h"] + 3.5)
+                    for d_local in passos:
+                        cy = ya_alvo - 0.5 * comp_vi + d_local
+                        if cy >= vg["l_min"] - 10.0 and cy + comp_vi <= vg["l_max"] + 10.0:
+                            candidatos_locais.append((cx_same, cy, vi_ang))
 
                 for cd_x, cd_y, cd_ang in candidatos_locais:
                     cand_bx = _bbox_texto(cd_x, cd_y, vi["h"], cd_ang, vi["txt"])
+                    if _dist_ponto_a_box(xa_alvo, ya_alvo, cand_bx) > LIMITE_SEM_SETA_INVERSAO_VIGA:
+                        continue
                     if any(_boxes_colidem(cand_bx, ob, margem=0.5) for ob in obst_com_pilares_vi):
                         continue
                     if _box_colide_com_concreto_alheio(cand_bx, vg, lines_concreto, margem=1.0):
@@ -2117,56 +2388,34 @@ def executar_anti_sobreposicao(dwg):
                     res = (cd_x, cd_y, cand_bx, cd_ang)
                     break
 
-                # 2o: Se nao coube direto, procura posicao com SETA DE CHAMADA (validando linha da seta!)
+                # 2o: Se nao coube direto em <= 40 cm, procura posicao com SETA DE CHAMADA travando vi_ang!
                 if res is None:
                     candidatos_seta = []
-                    for r in (25.0, 40.0, 55.0, 75.0, 95.0, 120.0, 150.0):
-                        for dy in (0.0, 20.0, -20.0, 40.0, -40.0):
-                            candidatos_seta.append((xa_alvo + r, ya_alvo + dy - 0.5 * vi["h"], 0.0))
-                            candidatos_seta.append((xa_alvo - r - comp_vi, ya_alvo + dy - 0.5 * vi["h"], 0.0))
-                        for dx in (0.0, 25.0, -25.0, 50.0, -50.0):
-                            candidatos_seta.append((xa_alvo - 0.5 * comp_vi + dx, ya_alvo + r, 0.0))
-                            candidatos_seta.append((xa_alvo - 0.5 * comp_vi + dx, ya_alvo - r - vi["h"], 0.0))
-                        if ang == 90.0:
-                            for dy in (0.0, 25.0, -25.0):
-                                candidatos_seta.append((xa_alvo + r, ya_alvo - 0.5 * comp_vi + dy, 90.0))
-                                candidatos_seta.append((xa_alvo - r - vi["h"], ya_alvo - 0.5 * comp_vi + dy, 90.0))
+                    for r in (12.0, 25.0, 40.0, 55.0, 75.0, 95.0, 120.0, 150.0):
+                        if _normalizar_angulo(vi_ang) == 90.0:
+                            for s_side in (lado_vi, -lado_vi):
+                                cx_s = (vg["t_min"] - 0.25 * vi["h"] - r) if s_side > 0 else (vg["t_max"] + 1.15 * vi["h"] + r)
+                                for dy in (0.0, -20.0, 20.0, -45.0, 45.0, -75.0, 75.0, -110.0, 110.0):
+                                    candidatos_seta.append((cx_s, ya_alvo - 0.5 * comp_vi + dy, vi_ang))
+                        else:
+                            for s_side in (lado_vi, -lado_vi):
+                                cy_s = (vg["t_max"] + 0.25 * vi["h"] + r) if s_side > 0 else (vg["t_min"] - 1.15 * vi["h"] - r)
+                                for dx in (0.0, -20.0, 20.0, -45.0, 45.0, -75.0, 75.0, -110.0, 110.0):
+                                    candidatos_seta.append((xa_alvo - 0.5 * comp_vi + dx, cy_s, vi_ang))
 
                     for cs_x, cs_y, cs_ang in candidatos_seta:
                         cand_bx = _bbox_texto(cs_x, cs_y, vi["h"], cs_ang, vi["txt"])
-                        if any(_boxes_colidem(cand_bx, ob, margem=2.0) for ob in obst_com_pilares_vi):
+                        if any(_boxes_colidem(cand_bx, ob, margem=1.5) for ob in obst_com_pilares_vi):
                             continue
-                        corta_concreto = False
-                        for lx1, ly1, lx2, ly2, _ in lines_concreto:
-                            if _segmento_colide_box(lx1, ly1, lx2, ly2, cand_bx, margem=1.0):
-                                corta_concreto = True
-                                break
-                        if corta_concreto:
+                        if any(_segmento_colide_box(lx1, ly1, lx2, ly2, cand_bx, margem=0.8) for lx1, ly1, lx2, ly2, _ in lines_concreto):
                             continue
 
-                        # Valida linha da seta
-                        if cs_ang == 0.0:
-                            if cs_x >= xa_alvo:
-                                x_j = cs_x - 2.0
-                                y_j = cs_y - 2.0
-                                x_fp = cs_x + min(35.0, comp_vi)
-                            else:
-                                x_j = cs_x + comp_vi + 2.0
-                                y_j = cs_y - 2.0
-                                x_fp = cs_x + comp_vi - min(35.0, comp_vi)
-                        else:
-                            x_j = (cs_x - 2.0) if cs_x >= xa_alvo else (cs_x + 2.0)
-                            y_j = cs_y + 0.5 * comp_vi
-                            x_fp = None
-
+                        x_j, y_j = _ponto_saida_seta_inversao(cs_x, cs_y, comp_vi, vi["h"], cs_ang, xa_alvo, ya_alvo)
                         corta_seta = False
                         for ob_b in obst_com_pilares_vi:
-                            if abs(xa_alvo - 0.5 * (ob_b[0] + ob_b[2])) < 5.0 and abs(ya_alvo - 0.5 * (ob_b[1] + ob_b[3])) < 5.0:
+                            if _dist_ponto_a_box(xa_alvo, ya_alvo, ob_b) < 2.0:
                                 continue
                             if _segmento_colide_box(x_j, y_j, xa_alvo, ya_alvo, ob_b, margem=0.5):
-                                corta_seta = True
-                                break
-                            if x_fp is not None and _segmento_colide_box(x_fp, y_j, x_j, y_j, ob_b, margem=0.5):
                                 corta_seta = True
                                 break
                         if corta_seta:
@@ -2180,19 +2429,22 @@ def executar_anti_sobreposicao(dwg):
                     nx, ny, nbox, nang = res
                     dx = nx - vi["x1"]
                     dy = ny - vi["y1"]
-                    if math.hypot(dx, dy) > 1.0 or seta_vi_colide:
-                        # Apaga linhas de seta antigas conectadas a vi para nao deixar vestigios
+                    if math.hypot(dx, dy) > 0.5 or seta_vi_colide or precisa_seta:
                         apagar_chamadas_antigas_de_inversao(dwg, vi, linhas_221_setas, raio_busca=40.0)
-
-                        dwg.edit.Move(vi["addr"], dx, dy)
+                        if math.hypot(dx, dy) > 0.1:
+                            dwg.edit.Move(vi["addr"], dx, dy)
                         vi["x1"] = nx
                         vi["y1"] = ny
-                        vi["xc"] = nx
-                        vi["yc"] = ny
+                        if "x2" in vi:
+                            vi["x2"] += dx
+                        if "y2" in vi:
+                            vi["y2"] += dy
+                        vi["xc"] = vi.get("xc", nx) + dx
+                        vi["yc"] = vi.get("yc", ny) + dy
                         vi["box"] = nbox
                         total_ajustes += 1
 
-                        if precisa_seta and math.hypot(nx - xa_alvo, ny - ya_alvo) >= 25.0:
+                        if precisa_seta:
                             desenhar_seta_inversao(
                                 dwg, nx, ny, comp_vi, vi["h"], nang, xa_alvo, ya_alvo, linhas_221_setas
                             )
