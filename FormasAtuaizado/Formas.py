@@ -16,6 +16,7 @@ claro e branco) e delega a execucao para os modulos dedicados:
 """
 import os
 import json
+import base64
 import importlib
 import subprocess
 
@@ -119,6 +120,20 @@ def abrir_tela_formas():
     json_path = os.path.join(pasta_temp, "g3_formas_hub.json")
     json_js = json_path.replace("\\", "\\\\")
 
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo_g3.png")
+    brand_mark_html = '<div class="brand-mark-fallback">G3</div>'
+    if os.path.exists(logo_path):
+        try:
+            with open(logo_path, "rb") as f_logo:
+                b64_logo = base64.b64encode(f_logo.read()).decode("ascii")
+            brand_mark_html = (
+                '<div class="brand-mark">'
+                '<img src="data:image/png;base64,' + b64_logo + '" alt="G3 Engenharia" />'
+                '</div>'
+            )
+        except Exception:
+            pass
+
     if os.path.exists(json_path):
         try:
             os.remove(json_path)
@@ -184,8 +199,29 @@ def abrir_tela_formas():
         }}
 
         .brand-mark {{
-            width: 44px;
-            height: 44px;
+            width: 52px;
+            height: 52px;
+            border-radius: 13px;
+            background: #ffffff;
+            border: 1px solid rgba(59, 130, 246, 0.18);
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 16px rgba(30, 64, 175, 0.08);
+            margin-right: 13px;
+            flex-shrink: 0;
+        }}
+
+        .brand-mark img {{
+            width: 100%;
+            height: 100%;
+            display: block;
+        }}
+
+        .brand-mark-fallback {{
+            width: 48px;
+            height: 48px;
             border-radius: 12px;
             background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
             color: #ffffff;
@@ -292,24 +328,83 @@ def abrir_tela_formas():
             color: #475569;
         }}
 
-        /* COLUNA DIREITA — MENU DE OPCOES (MULTI-SELECAO) */
+        /* COLUNA DIREITA — ABAS ESTILO PASTA + CONTEUDO */
         .right-menu {{
-            width: 375px;
+            width: 385px;
             background: #ffffff;
             border-left: 1px solid rgba(59, 130, 246, 0.14);
-            padding: 26px 24px 18px 24px;
             display: flex;
             flex-direction: column;
             box-shadow: -8px 0 28px rgba(30, 64, 175, 0.04);
+        }}
+
+        /* ABAS ESTILO PASTA / FICHARIO */
+        .folder-tabs {{
+            display: flex;
+            align-items: flex-end;
+            background: #e8f3ff;
+            padding: 14px 20px 0 20px;
+            border-bottom: 1px solid rgba(59, 130, 246, 0.20);
+            flex-shrink: 0;
+        }}
+
+        .folder-tab {{
+            position: relative;
+            top: 1px;
+            background: #d8ebff;
+            color: #475569;
+            border: 1px solid rgba(59, 130, 246, 0.18);
+            border-bottom: 1px solid rgba(59, 130, 246, 0.20);
+            border-radius: 10px 10px 0 0;
+            padding: 9px 18px 8px 18px;
+            margin-right: 6px;
+            font-size: 12.5px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            cursor: pointer;
+            transition: all 0.18s ease-out;
+        }}
+
+        .folder-tab:hover {{
+            background: #eef6ff;
+            color: #1d4ed8;
+        }}
+
+        .folder-tab.active {{
+            background: #ffffff;
+            color: #1d4ed8;
+            border-color: rgba(59, 130, 246, 0.22);
+            border-bottom-color: #ffffff;
+            padding-top: 10px;
+            padding-bottom: 9px;
+            box-shadow: 0 -2px 8px rgba(30, 64, 175, 0.04);
+        }}
+
+        .tab-body {{
+            flex: 1;
+            padding: 16px 24px 18px 24px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }}
+
+        .tab-pane {{
+            display: none;
+            flex-direction: column;
+            flex: 1;
+        }}
+
+        .tab-pane.active {{
+            display: flex;
         }}
 
         .menu-header-row {{
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 2px 12px 2px;
+            padding: 0 2px 10px 2px;
             border-bottom: 1px solid #f1f5f9;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
         }}
 
         .menu-header {{
@@ -318,6 +413,47 @@ def abrir_tela_formas():
             letter-spacing: 0.08em;
             text-transform: uppercase;
             color: #64748b;
+        }}
+
+        .empty-state {{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 28px 22px;
+            background: #f8fbff;
+            border: 1px dashed rgba(59, 130, 246, 0.28);
+            border-radius: 14px;
+        }}
+
+        .empty-icon {{
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
+            color: #3b82f6;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+        }}
+
+        .empty-title {{
+            font-size: 14px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 6px;
+        }}
+
+        .empty-desc {{
+            font-size: 12px;
+            line-height: 1.5;
+            color: #64748b;
+            max-width: 240px;
         }}
 
         .btn-toggle-all {{
@@ -538,6 +674,7 @@ def abrir_tela_formas():
         }};
 
         var selecionadas = {{}};
+        var ultimaFerramenta = "linha_de_corte";
 
         function initDialog() {{
             try {{
@@ -552,9 +689,32 @@ def abrir_tela_formas():
             atualizarBotaoExecutar();
         }}
 
+        function trocarAba(aba) {{
+            var tabF = document.getElementById("tab-ferramentas");
+            var tabT = document.getElementById("tab-tabelas");
+            var paneF = document.getElementById("pane-ferramentas");
+            var paneT = document.getElementById("pane-tabelas");
+
+            if (aba === "tabelas") {{
+                tabF.className = "folder-tab";
+                tabT.className = "folder-tab active";
+                paneF.className = "tab-pane";
+                paneT.className = "tab-pane active";
+                document.getElementById("prev-title").innerText = "Tabelas";
+                document.getElementById("prev-desc").innerText = "Se\u00e7\u00e3o dedicada \u00e0s tabelas de f\u00f4rmas. As op\u00e7\u00f5es ser\u00e3o adicionadas em breve.";
+            }} else {{
+                tabF.className = "folder-tab active";
+                tabT.className = "folder-tab";
+                paneF.className = "tab-pane active";
+                paneT.className = "tab-pane";
+                mostrarPreview(ultimaFerramenta);
+            }}
+        }}
+
         function mostrarPreview(acao) {{
             var info = ferramentas[acao];
             if (!info) return;
+            ultimaFerramenta = acao;
             document.getElementById("prev-title").innerText = info.titulo;
             document.getElementById("prev-desc").innerText = info.desc;
         }}
@@ -657,7 +817,7 @@ def abrir_tela_formas():
             <div class="left-pane">
                 <div>
                     <div class="brand-row">
-                        <div class="brand-mark">G3</div>
+                        {brand_mark_html}
                         <div class="brand-text">
                             <h1>G3 Engenharia</h1>
                             <span>M&oacute;dulo de F&ocirc;rmas &bull; TQS EAG</span>
@@ -666,7 +826,6 @@ def abrir_tela_formas():
 
                     <div class="hero-copy">
                         <span class="hero-pill">Central de F&ocirc;rmas</span>
-                        <h2>Automatize sua planta<br />em um clique</h2>
                         <p>Selecione uma ou mais ferramentas no menu ao lado e clique em <strong>Executar</strong> (ou d&ecirc; duplo clique em uma op&ccedil;&atilde;o para rodar direto).</p>
                     </div>
                 </div>
@@ -680,72 +839,91 @@ def abrir_tela_formas():
                 </div>
             </div>
 
-            <!-- LADO DIREITO: MENU DE FERRAMENTAS (MULTI-SELECAO) -->
+            <!-- LADO DIREITO: ABAS ESTILO PASTA (FERRAMENTAS / TABELAS) -->
             <div class="right-menu">
-                <div class="menu-header-row">
-                    <div class="menu-header">Ferramentas de F&ocirc;rmas</div>
-                    <button id="btn-toggle-all" class="btn-toggle-all" onclick="alternarTodas()">Selecionar tudo</button>
+                <div class="folder-tabs">
+                    <button id="tab-ferramentas" class="folder-tab active" onclick="trocarAba('ferramentas')">Ferramentas de F&ocirc;rmas</button>
+                    <button id="tab-tabelas" class="folder-tab" onclick="trocarAba('tabelas')">Tabelas</button>
                 </div>
-                <div class="menu-list">
-                    <button id="btn-linha_de_corte" class="menu-item"
-                        onmouseover="mostrarPreview('linha_de_corte')"
-                        onclick="alternarItem('linha_de_corte', this)"
-                        ondblclick="executarUnica('linha_de_corte')">
-                        <div class="item-icon">&#9986;</div>
-                        <div class="item-body">
-                            <div class="item-title">Linha de Corte</div>
-                            <div class="item-sub">Conecta marcadores de corte</div>
-                        </div>
-                        <div class="item-check">&#10003;</div>
-                    </button>
 
-                    <button id="btn-criar_cotas" class="menu-item"
-                        onmouseover="mostrarPreview('criar_cotas')"
-                        onclick="alternarItem('criar_cotas', this)"
-                        ondblclick="executarUnica('criar_cotas')">
-                        <div class="item-icon">&#8660;</div>
-                        <div class="item-body">
-                            <div class="item-title">Criar Cotas</div>
-                            <div class="item-sub">Geral, pilares, contorno e detalhes</div>
+                <div class="tab-body">
+                    <!-- ABA 1: FERRAMENTAS DE FORMAS -->
+                    <div id="pane-ferramentas" class="tab-pane active">
+                        <div class="menu-header-row">
+                            <div class="menu-header">Selecione 1 ou mais op&ccedil;&otilde;es</div>
+                            <button id="btn-toggle-all" class="btn-toggle-all" onclick="alternarTodas()">Selecionar tudo</button>
                         </div>
-                        <div class="item-check">&#10003;</div>
-                    </button>
+                        <div class="menu-list">
+                            <button id="btn-linha_de_corte" class="menu-item"
+                                onmouseover="mostrarPreview('linha_de_corte')"
+                                onclick="alternarItem('linha_de_corte', this)"
+                                ondblclick="executarUnica('linha_de_corte')">
+                                <div class="item-icon">&#9986;</div>
+                                <div class="item-body">
+                                    <div class="item-title">Linha de Corte</div>
+                                    <div class="item-sub">Conecta marcadores de corte</div>
+                                </div>
+                                <div class="item-check">&#10003;</div>
+                            </button>
 
-                    <button id="btn-corrigir_vazios" class="menu-item"
-                        onmouseover="mostrarPreview('corrigir_vazios')"
-                        onclick="alternarItem('corrigir_vazios', this)"
-                        ondblclick="executarUnica('corrigir_vazios')">
-                        <div class="item-icon">&#10006;</div>
-                        <div class="item-body">
-                            <div class="item-title">Corrigir Vazio e Indicador</div>
-                            <div class="item-sub">Vazios, indicadores de laje e shafts</div>
-                        </div>
-                        <div class="item-check">&#10003;</div>
-                    </button>
+                            <button id="btn-criar_cotas" class="menu-item"
+                                onmouseover="mostrarPreview('criar_cotas')"
+                                onclick="alternarItem('criar_cotas', this)"
+                                ondblclick="executarUnica('criar_cotas')">
+                                <div class="item-icon">&#8660;</div>
+                                <div class="item-body">
+                                    <div class="item-title">Criar Cotas</div>
+                                    <div class="item-sub">Geral, pilares, contorno e detalhes</div>
+                                </div>
+                                <div class="item-check">&#10003;</div>
+                            </button>
 
-                    <button id="btn-inverter_e_organizar" class="menu-item"
-                        onmouseover="mostrarPreview('inverter_e_organizar')"
-                        onclick="alternarItem('inverter_e_organizar', this)"
-                        ondblclick="executarUnica('inverter_e_organizar')">
-                        <div class="item-icon">&#8635;</div>
-                        <div class="item-body">
-                            <div class="item-title">Inverter e Organizar</div>
-                            <div class="item-sub">Bolinhas e anti-sobreposi&ccedil;&atilde;o</div>
-                        </div>
-                        <div class="item-check">&#10003;</div>
-                    </button>
+                            <button id="btn-corrigir_vazios" class="menu-item"
+                                onmouseover="mostrarPreview('corrigir_vazios')"
+                                onclick="alternarItem('corrigir_vazios', this)"
+                                ondblclick="executarUnica('corrigir_vazios')">
+                                <div class="item-icon">&#10006;</div>
+                                <div class="item-body">
+                                    <div class="item-title">Corrigir Vazio e Indicador</div>
+                                    <div class="item-sub">Vazios, indicadores de laje e shafts</div>
+                                </div>
+                                <div class="item-check">&#10003;</div>
+                            </button>
 
-                    <button id="btn-mudanca_secao_pilares" class="menu-item"
-                        onmouseover="mostrarPreview('mudanca_secao_pilares')"
-                        onclick="alternarItem('mudanca_secao_pilares', this)"
-                        ondblclick="executarUnica('mudanca_secao_pilares')">
-                        <div class="item-icon">&#9635;</div>
-                        <div class="item-body">
-                            <div class="item-title">Mudan&ccedil;a de Se&ccedil;&atilde;o Pilares</div>
-                            <div class="item-sub">Quadro lateral ampliado 1:25</div>
+                            <button id="btn-inverter_e_organizar" class="menu-item"
+                                onmouseover="mostrarPreview('inverter_e_organizar')"
+                                onclick="alternarItem('inverter_e_organizar', this)"
+                                ondblclick="executarUnica('inverter_e_organizar')">
+                                <div class="item-icon">&#8635;</div>
+                                <div class="item-body">
+                                    <div class="item-title">Inverter e Organizar</div>
+                                    <div class="item-sub">Bolinhas e anti-sobreposi&ccedil;&atilde;o</div>
+                                </div>
+                                <div class="item-check">&#10003;</div>
+                            </button>
+
+                            <button id="btn-mudanca_secao_pilares" class="menu-item"
+                                onmouseover="mostrarPreview('mudanca_secao_pilares')"
+                                onclick="alternarItem('mudanca_secao_pilares', this)"
+                                ondblclick="executarUnica('mudanca_secao_pilares')">
+                                <div class="item-icon">&#9635;</div>
+                                <div class="item-body">
+                                    <div class="item-title">Mudan&ccedil;a de Se&ccedil;&atilde;o Pilares</div>
+                                    <div class="item-sub">Quadro lateral ampliado 1:25</div>
+                                </div>
+                                <div class="item-check">&#10003;</div>
+                            </button>
                         </div>
-                        <div class="item-check">&#10003;</div>
-                    </button>
+                    </div>
+
+                    <!-- ABA 2: TABELAS -->
+                    <div id="pane-tabelas" class="tab-pane">
+                        <div class="empty-state">
+                            <div class="empty-icon">&#9638;</div>
+                            <div class="empty-title">Tabelas de F&ocirc;rmas</div>
+                            <div class="empty-desc">Espa&ccedil;o pronto para receber as op&ccedil;&otilde;es de tabelas.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
