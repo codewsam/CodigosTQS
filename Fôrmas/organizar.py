@@ -221,6 +221,8 @@ def _fila_ao_longo(alvo, outro, sinal, gap, texts_raw):
         for t in texts_raw:
             if id(t) in moves or t is outro:
                 continue
+            if t["level"] == 11 and "INVERTIDA" in t.get("txt", "").upper():
+                continue
             if not _sobrepoe(mbox, t["rbox"], gap * 0.5):
                 continue
             if not _colinear(alvo, t):
@@ -306,6 +308,9 @@ def _planos_de_afastamento(alvo, outro, gap, texts_raw, tipo):
     # Nomes/secoes de pilar ficam com a rotina dedicada de pilares (seta + juntas)
     if alvo["level"] in (9, 12):
         return []
+    # Textos de inversao de viga sao tratados exclusivamente pela rotina com trava de 40 cm + seta
+    if alvo["level"] == 11 and "INVERTIDA" in alvo.get("txt", "").upper():
+        return []
     planos = []
     for sinal in (+1, -1):
         m = _fila_ao_longo(alvo, outro, sinal, gap, texts_raw)
@@ -373,6 +378,9 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
         for i in range(len(texts_raw)):
             for j in range(i + 1, len(texts_raw)):
                 tA, tB = texts_raw[i], texts_raw[j]
+                if (tA["level"] == 11 and "INVERTIDA" in tA.get("txt", "").upper()) or \
+                   (tB["level"] == 11 and "INVERTIDA" in tB.get("txt", "").upper()):
+                    continue
                 if _par_pilar_secao(tA, tB) or _par_laje_espessura(tA, tB):
                     continue
                 if not _colisao_real(tA["rbox"], tB["rbox"]):
@@ -417,7 +425,52 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
         if not mudou:
             break
 
-    # 2. Desempate / Fallback: se algum titulo de viga (8) continuar sobreposto a outro texto
+    # 2. Textos de inversao de viga (Nivel 11, 'VIGA INVERTIDA'):
+    # Se e somente se houver colisao real (cubetas, poligonos de pilares, concreto, obstaculos
+    # fixos ou outros textos), reposiciona mantendo a orientacao original e puxando seta se > 40 cm.
+    cubetas_chk = cubetas_boxes or []
+    for t in texts_raw:
+        txt_up = t["txt"].upper()
+        eh_inv = (t["level"] == 11 and "VIGA INVERTIDA" in txt_up)
+        if not eh_inv:
+            continue
+        bate_cubeta = any(_colisao_real(t["rbox"], cb) for cb in cubetas_chk)
+        bate_pilar = any(_colisao_real(t["rbox"], pb) for pb in boxes_pilares)
+        bate_fixo = any(_colisao_real(t["rbox"], ob) for ob in obstaculos_fixos)
+        bate_texto = any(tO is not t and _colisao_real(t["rbox"], tO["rbox"]) for tO in texts_raw)
+        corta_viga = any(
+            anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, t["rbox"], margem=-0.5)
+            for lx1, ly1, lx2, ly2, _ in lines_concreto
+        )
+        seta_colide = False
+        if linhas_221_setas:
+            idxs_s, _ = anti_sobreposicao._encontrar_seta_de_inversao(
+                t, linhas_221_setas, tol_caixa=5.5, texts_raw=texts_raw
+            )
+            for s_idx in idxs_s:
+                ls = linhas_221_setas[s_idx]
+                if math.hypot(ls["x2"] - ls["x1"], ls["y2"] - ls["y1"]) <= 6.8:
+                    continue
+                if any(
+                    tO is not t and anti_sobreposicao._segmento_colide_box(
+                        ls["x1"], ls["y1"], ls["x2"], ls["y2"],
+                        anti_sobreposicao._box_exato_de_texto_dict(tO), margem=0.2
+                    )
+                    for tO in texts_raw
+                ):
+                    seta_colide = True
+                    break
+        if bate_cubeta or bate_pilar or bate_fixo or bate_texto or corta_viga or seta_colide:
+            try:
+                if anti_sobreposicao.resolver_sobreposicao_viga_com_seta(
+                    dwg, t, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas
+                ):
+                    t["rbox"] = _rbox(t)
+                    total_ajustes += 1
+            except Exception:
+                pass
+
+    # 3. Desempate / Fallback: se algum titulo de viga (8) continuar sobreposto a outro texto
     # (ex: V214-B sobre L204-B onde micro-deslocamento nao cabe no vao), resolve com seta executiva!
     for t in texts_raw:
         if t["level"] == 8 and t["txt"].upper().startswith("V"):
@@ -431,31 +484,10 @@ def resolver_micro_sobreposicoes_textos(dwg, texts_raw, lines_concreto, obstacul
                     if anti_sobreposicao.resolver_sobreposicao_viga_com_seta(
                         dwg, t, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas
                     ):
+                        t["rbox"] = _rbox(t)
                         total_ajustes += 1
                 except Exception:
                     pass
-
-    # 3. Textos de inversao de viga sobre cubetas ou cortando linha branca de viga:
-    # move para um local livre (sem cubeta nem concreto) e puxa seta apontando.
-    cubetas_chk = cubetas_boxes or []
-    for t in texts_raw:
-        txt_up = t["txt"].upper()
-        eh_inv = (t["level"] == 11 and "VIGA INVERTIDA" in txt_up)
-        if not eh_inv:
-            continue
-        bate_cubeta = any(_colisao_real(t["rbox"], cb) for cb in cubetas_chk)
-        corta_viga = any(
-            anti_sobreposicao._segmento_colide_box(lx1, ly1, lx2, ly2, t["box"], margem=-2.0)
-            for lx1, ly1, lx2, ly2, _ in lines_concreto
-        )
-        if bate_cubeta or corta_viga:
-            try:
-                if anti_sobreposicao.resolver_sobreposicao_viga_com_seta(
-                    dwg, t, texts_raw, lines_concreto, obstaculos_fixos, poly_pilares, linhas_221_setas
-                ):
-                    total_ajustes += 1
-            except Exception:
-                pass
 
     return total_ajustes
 
@@ -611,12 +643,21 @@ def executar_organizar_tudo(dwg):
                     return True
             return False
 
+        idxs_setas_vigas = set()
+        for tv in texts_raw:
+            t_up = tv.get("txt", "").upper()
+            if (tv["level"] == 11 and "INVERTIDA" in t_up) or (tv["level"] == 8 and t_up.startswith("V")):
+                idxs_v, _ = anti_sobreposicao._encontrar_seta_de_inversao(tv, linhas_221_setas, tol_caixa=5.5, texts_raw=texts_raw)
+                idxs_setas_vigas.update(idxs_v)
+        linhas_221_para_pilares = [l for idx, l in enumerate(linhas_221_setas) if idx not in idxs_setas_vigas]
+
         ids_sobrepostos = set(id(g) for g in pilares_group if _grupo_sobreposto(g))
         ajustes_pilares = anti_sobreposicao.reposicionar_pilares_conflitantes(
             dwg, pilares_group, poly_pilares, lines_concreto, obstaculos_fixos,
-            todos_obstaculos_cotas, texts_raw, linhas_242, linhas_221_setas,
+            todos_obstaculos_cotas, texts_raw, linhas_242, linhas_221_para_pilares,
             forcar_ciclo_se_deslocado=False, apenas_grupos_ids=ids_sobrepostos
         )
+        linhas_221_setas[:] = [linhas_221_setas[i] for i in sorted(idxs_setas_vigas)] + linhas_221_para_pilares
         total_ajustes += ajustes_pilares
     except Exception:
         pass
